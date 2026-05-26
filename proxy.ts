@@ -1,4 +1,8 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  clerkClient,
+  clerkMiddleware,
+  createRouteMatcher,
+} from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 // Next.js 16 renamed Middleware -> Proxy. Clerk's clerkMiddleware() works here
@@ -28,7 +32,18 @@ export default clerkMiddleware(async (auth, req) => {
     return redirectToSignIn({ returnBackUrl: req.url });
   }
 
-  const role = sessionClaims?.metadata?.role;
+  // Prefer the role from the session token. This requires the Clerk dashboard
+  // session token to carry `{"metadata": "{{user.public_metadata}}"}` (see
+  // types/globals.d.ts). If that claim isn't configured, the token won't have
+  // it and `role` would be undefined — which would bounce an onboarded
+  // agency_admin between /agency/dashboard and /agency/onboarding forever. To be
+  // resilient, fall back to reading publicMetadata directly from Clerk.
+  let role = sessionClaims?.metadata?.role;
+  if (!role) {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    role = user.publicMetadata?.role;
+  }
   const home = new URL("/", req.url);
 
   if (isAgencyRoute(req)) {
