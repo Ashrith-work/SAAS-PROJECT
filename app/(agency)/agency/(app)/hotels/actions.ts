@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getPlan, hotelLimit } from "@/lib/plans";
 
 type State = { error: string | null };
 
@@ -15,6 +16,19 @@ export async function createHotel(
 ): Promise<State> {
   const member = await getCurrentMember();
   if (!member) return { error: "Your session has expired — please sign in again." };
+
+  // Enforce the plan's hotel cap (server-side source of truth).
+  const limit = hotelLimit(member.agency.plan);
+  if (Number.isFinite(limit)) {
+    const count = await prisma.hotelClient.count({
+      where: { agencyId: member.agencyId },
+    });
+    if (count >= limit) {
+      return {
+        error: `Your ${getPlan(member.agency.plan).name} plan includes up to ${limit} hotel clients. Upgrade on the Billing page to add more.`,
+      };
+    }
+  }
 
   const get = (k: string) => ((formData.get(k) as string | null) ?? "").trim();
   const name = get("name");

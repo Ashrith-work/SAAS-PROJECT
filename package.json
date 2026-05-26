@@ -11,7 +11,8 @@
     "lint": "eslint",
     "test:encryption": "tsx scripts/test-encryption.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
-    "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts"
+    "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
+    "setup:stripe": "tsx scripts/setup-stripe.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
@@ -21,7 +22,8 @@
     "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "stripe": "^22.1.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

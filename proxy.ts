@@ -19,6 +19,9 @@ const isPublicRoute = createRouteMatcher([
   // The scheduled Meta sync is called by Vercel Cron (no Clerk session); it
   // enforces its own CRON_SECRET bearer-token check.
   "/api/meta/sync(.*)",
+  // Stripe posts webhooks with no Clerk session; the route verifies the Stripe
+  // signature instead.
+  "/api/webhooks/stripe(.*)",
 ]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);

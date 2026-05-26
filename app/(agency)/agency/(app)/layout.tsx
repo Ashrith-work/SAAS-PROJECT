@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { getCurrentMember } from "@/lib/auth";
+import { isActiveStatus } from "@/lib/plans";
 
 // Shell for the signed-in agency app (dashboard, hotel clients, …). Onboarding
-// lives outside this group so it doesn't show the nav before setup is complete.
+// and billing live OUTSIDE this group so they aren't gated by the subscription
+// check below (otherwise billing would redirect to itself).
 export default async function AgencyAppLayout({
   children,
 }: {
@@ -12,6 +14,11 @@ export default async function AgencyAppLayout({
 }) {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
+
+  // Gate the whole agency dashboard behind an active subscription.
+  if (!isActiveStatus(member.agency.subscriptionStatus)) {
+    redirect("/agency/billing?inactive=1");
+  }
 
   return (
     <div className="flex min-h-full flex-col">
@@ -45,6 +52,12 @@ export default async function AgencyAppLayout({
                 className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
               >
                 Settings
+              </Link>
+              <Link
+                href="/agency/billing"
+                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              >
+                Billing
               </Link>
             </nav>
           </div>
