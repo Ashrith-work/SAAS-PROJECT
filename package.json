@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:encryption": "tsx scripts/test-encryption.ts",
-    "seed:test-hotel": "tsx scripts/seed-test-hotel.ts"
+    "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
+    "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
@@ -19,7 +20,8 @@
     "next": "16.2.6",
     "pg": "^8.21.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

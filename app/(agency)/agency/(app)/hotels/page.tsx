@@ -66,7 +66,7 @@ export default async function HotelsPage() {
                 >
                   <td className="px-4 py-3">
                     <Link
-                      href={`/agency/hotels/${h.id}/setup`}
+                      href={`/agency/hotel/${h.id}`}
                       className="font-medium hover:underline"
                     >
                       {h.name}
