@@ -16,6 +16,9 @@ const isPublicRoute = createRouteMatcher([
   // The tracking endpoints are called cross-origin by the snippet on hotel
   // websites with no auth — they must stay public (scoped by the public siteId).
   "/api/track(.*)",
+  // The scheduled Meta sync is called by Vercel Cron (no Clerk session); it
+  // enforces its own CRON_SECRET bearer-token check.
+  "/api/meta/sync(.*)",
 ]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);

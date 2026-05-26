@@ -109,6 +109,9 @@ model HotelClient {
   // dashboard can pull ad spend/ROI for the right account. Nullable until mapped.
   metaAdAccountId    String?
   lastEventAt        DateTime?
+  // When the Meta ad sync (/api/meta/sync) last wrote AdSnapshots for this hotel.
+  // Null until the first successful sync. Surfaced as "last sync" on the dashboard.
+  lastSyncedAt       DateTime?
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)

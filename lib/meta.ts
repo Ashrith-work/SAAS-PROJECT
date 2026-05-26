@@ -259,6 +259,82 @@ export async function getInsights(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// getDailyInsights — one row per day, shaped for an AdSnapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single day's metrics for an ad account, mapped to AdSnapshot columns. */
+export type DailyAdRow = {
+  /** "YYYY-MM-DD" (Meta's date_start for the day). */
+  date: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  /** Booking conversions = pixel purchases. */
+  conversions: number;
+  /** Purchase value / spend for the day. */
+  roas: number;
+  pixelPurchases: number;
+  pixelLeads: number;
+  pixelPageViews: number;
+};
+
+type RawDailyInsights = RawInsights & {
+  date_start?: string;
+  date_stop?: string;
+};
+
+/**
+ * Daily account insights (`time_increment=1`) over a date range — one row per
+ * day with the fields an AdSnapshot needs. Used by the scheduled sync to write
+ * idempotent per-day rows. Pixel conversions are derived from `actions` the
+ * same way {@link getPixelEvents} does.
+ */
+export async function getDailyInsights(
+  accessToken: string,
+  adAccountId: string,
+  range: DateRange,
+): Promise<DailyAdRow[]> {
+  const act = normalizeAccountId(adAccountId);
+  const res = await graphGet<{ data?: RawDailyInsights[] }>(
+    `${act}/insights`,
+    accessToken,
+    {
+      fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values",
+      time_range: JSON.stringify({ since: range.since, until: range.until }),
+      time_increment: "1",
+      level: "account",
+    },
+  );
+
+  return (res.data ?? []).map((row) => {
+    const actions = mapActions(row.actions);
+    const values = mapActions(row.action_values);
+    const spend = toNumber(row.spend);
+    const purchases = Math.round(pickFirst(actions, PIXEL_MATCHERS.purchase));
+    const purchaseValue = pickFirst(values, PIXEL_MATCHERS.purchase);
+    return {
+      date: row.date_start ?? "",
+      spend,
+      impressions: Math.round(toNumber(row.impressions)),
+      reach: Math.round(toNumber(row.reach)),
+      clicks: Math.round(toNumber(row.clicks)),
+      ctr: toNumber(row.ctr),
+      cpc: toNumber(row.cpc),
+      cpm: toNumber(row.cpm),
+      conversions: purchases,
+      roas: spend > 0 ? purchaseValue / spend : 0,
+      pixelPurchases: purchases,
+      pixelLeads: Math.round(pickFirst(actions, PIXEL_MATCHERS.lead)),
+      pixelPageViews: Math.round(pickFirst(actions, PIXEL_MATCHERS.pageView)),
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // getPixelEvents
 // ─────────────────────────────────────────────────────────────────────────────
 
