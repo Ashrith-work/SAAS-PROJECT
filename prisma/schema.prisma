@@ -1,0 +1,19 @@
+// HotelTrack — Prisma schema
+// Docs: https://pris.ly/d/prisma-schema
+//
+// CRITICAL (see CLAUDE.md): HotelTrack is multi-tenant. Every model added here
+// MUST include an `agencyId` column, and every query MUST filter by `agencyId`
+// so that no agency can ever read another agency's data.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Prisma 7: the connection URL is NOT set here anymore. The CLI reads it from
+  // `prisma.config.ts` (datasource.url -> env("DATABASE_URL")), and the runtime
+  // client connects via the @prisma/adapter-pg driver adapter (see lib/prisma.ts).
+  provider = "postgresql"
+}
+
+// Models are added in later steps.
