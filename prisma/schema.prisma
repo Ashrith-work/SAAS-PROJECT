@@ -1,9 +1,9 @@
 // HotelTrack — Prisma schema
 // Docs: https://pris.ly/d/prisma-schema
 //
-// CRITICAL (see CLAUDE.md): HotelTrack is multi-tenant. Every model added here
-// MUST include an `agencyId` column, and every query MUST filter by `agencyId`
-// so that no agency can ever read another agency's data.
+// CRITICAL (see CLAUDE.md): HotelTrack is multi-tenant. Every model except
+// `Agency` carries an `agencyId` column and is indexed on it, and every query
+// MUST filter by `agencyId` so that no agency can ever read another's data.
 
 generator client {
   provider = "prisma-client-js"
@@ -16,4 +16,228 @@ datasource db {
   provider = "postgresql"
 }
 
-// Models are added in later steps.
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+//
+// Enums are used only for fields whose full set of allowed values was specified.
+// Open-ended state fields (subscriptionStatus, plan, snippetStatus, content
+// status, meta token status, deviceType) are kept as String + @default so their
+// vocabularies can grow (e.g. as billing tiers are finalized) without an enum
+// migration.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum MemberRole {
+  admin
+  analyst
+}
+
+enum ConversionMethod {
+  url_change
+  same_page
+  both
+}
+
+enum ContentType {
+  organic
+  paid_ad
+  influencer
+  story
+}
+
+enum Platform {
+  instagram
+  facebook
+  youtube
+}
+
+enum EventType {
+  visit
+  conversion
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Agency {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String
+  stripeCustomerId   String?  @unique // set after the Stripe customer is created
+  subscriptionStatus String   @default("inactive")
+  plan               String   @default("starter")
+  createdAt          DateTime @default(now())
+
+  members           AgencyMember[]
+  hotelClients      HotelClient[]
+  contentPieces     ContentPiece[]
+  trackingEvents    TrackingEvent[]
+  metaTokens        MetaToken[]
+  adSnapshots       AdSnapshot[]
+  couponRedemptions CouponRedemption[]
+  reports           Report[]
+}
+
+model AgencyMember {
+  id        String     @id @default(cuid())
+  agencyId  String
+  clerkId   String     @unique // maps the Clerk user -> this membership
+  email     String
+  name      String
+  role      MemberRole
+  createdAt DateTime   @default(now())
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+}
+
+model HotelClient {
+  id                 String           @id @default(cuid())
+  agencyId           String
+  name               String
+  websiteUrl         String
+  contactName        String
+  contactEmail       String
+  siteId             String           @unique @default(cuid()) // public id embedded in the tracking snippet
+  conversionMethod   ConversionMethod
+  thankYouUrlPattern String? // for conversionMethod = url_change / both
+  successPhrase      String? // for conversionMethod = same_page / both
+  successSelector    String? // for conversionMethod = same_page / both
+  snippetStatus      String           @default("not_installed")
+  lastEventAt        DateTime?
+  createdAt          DateTime         @default(now())
+
+  agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  contentPieces  ContentPiece[]
+  trackingEvents TrackingEvent[]
+  adSnapshots    AdSnapshot[]
+  reports        Report[]
+
+  @@index([agencyId])
+}
+
+model ContentPiece {
+  id             String      @id @default(cuid())
+  agencyId       String
+  hotelClientId  String
+  title          String
+  contentType    ContentType
+  platform       Platform
+  destinationUrl String
+  utmLink        String
+  couponCode     String?
+  influencerName String?
+  status         String      @default("active")
+  createdAt      DateTime    @default(now())
+
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient       HotelClient        @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  couponRedemptions CouponRedemption[]
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+  @@index([couponCode])
+}
+
+model TrackingEvent {
+  id              String    @id @default(cuid())
+  // agencyId is NOT in the original Step 2 field list, but the multi-tenancy
+  // rule requires every non-Agency model to carry it. Denormalized here (from
+  // HotelClient.agencyId at write time) so tenant filtering stays a direct index hit.
+  agencyId        String
+  hotelClientId   String
+  eventType       EventType
+  // UTM params are nullable: direct/untagged visits legitimately have none.
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmContent      String?
+  utmTerm         String?
+  pageUrl         String
+  conversionValue Decimal?  @db.Decimal(12, 2)
+  sessionId       String
+  deviceType      String
+  createdAt       DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+  @@index([hotelClientId, eventType, createdAt]) // funnel queries over time
+  @@index([sessionId]) // stitch a visit to its later conversion
+}
+
+model MetaToken {
+  id             String   @id @default(cuid())
+  agencyId       String
+  encryptedToken String // AES-256-GCM ciphertext (base64). NEVER log or expose.
+  tokenExpiresAt DateTime
+  status         String   @default("disconnected")
+  createdAt      DateTime @default(now())
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+}
+
+model AdSnapshot {
+  id             String   @id @default(cuid())
+  agencyId       String
+  hotelClientId  String
+  metaAccountId  String
+  date           DateTime @db.Date
+  spend          Decimal  @db.Decimal(12, 2)
+  impressions    Int
+  reach          Int
+  clicks         Int
+  ctr            Float
+  cpc            Decimal  @db.Decimal(12, 4)
+  cpm            Decimal  @db.Decimal(12, 4)
+  conversions    Int
+  roas           Float
+  pixelPurchases Int
+  pixelLeads     Int
+  pixelPageViews Int
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date]) // one snapshot per hotel per day
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  agencyId       String
+  contentPieceId String
+  redemptionDate DateTime
+  orderValue     Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+
+  agency       Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  contentPiece ContentPiece @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([contentPieceId])
+}
+
+model Report {
+  id                 String    @id @default(cuid())
+  agencyId           String
+  hotelClientId      String
+  dateRangeStart     DateTime
+  dateRangeEnd       DateTime
+  pdfUrl             String?
+  shareLink          String?   @unique // public, shareable token
+  shareLinkExpiresAt DateTime?
+  createdAt          DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
