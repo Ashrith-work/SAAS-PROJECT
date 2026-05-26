@@ -12,18 +12,22 @@
     "test:encryption": "tsx scripts/test-encryption.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
-    "setup:stripe": "tsx scripts/setup-stripe.ts"
+    "setup:stripe": "tsx scripts/setup-stripe.ts",
+    "dev:activate": "tsx scripts/dev-activate-subscription.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "16.2.6",
     "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "stripe": "^22.1.1"
+    "stripe": "^22.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

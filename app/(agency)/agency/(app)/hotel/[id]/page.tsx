@@ -24,6 +24,8 @@ import {
 import { DateRangeSelector } from "./DateRangeSelector";
 import { ContentPerformanceTable } from "./ContentPerformanceTable";
 import { SpendChart } from "./SpendChart";
+import { ReportMenu } from "./ReportMenu";
+import type { ReportData } from "./ReportDocument";
 
 function KpiCard({
   label,
@@ -173,6 +175,55 @@ export default async function HotelDashboardPage({
   const realAdRevenue = paidCampaigns.reduce((sum, c) => sum + c.revenue, 0);
   const realRoi = trueRoi(realAdRevenue, ads.spend);
 
+  // Serializable snapshot passed to the client report generator.
+  const reportData: ReportData = {
+    hotelName: hotel.name,
+    websiteUrl: hotel.websiteUrl,
+    agencyName: member.agency.name,
+    rangeLabel: range.label,
+    from: range.fromInput,
+    to: range.toInput,
+    generatedAt: new Date().toLocaleDateString(),
+    kpis: {
+      visits: kpis.visits,
+      bookings: kpis.bookings,
+      revenue: kpis.revenue,
+      spend: kpis.spend,
+      costPerBooking: kpis.costPerBooking,
+      roas: kpis.roas,
+    },
+    topContent: [...contentPerf]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10)
+      .map((c) => ({
+        title: c.title,
+        contentType: c.contentType,
+        clicks: c.clicks,
+        sessions: c.sessions,
+        bookings: c.bookings,
+        revenue: c.revenue,
+        conversionRate: c.conversionRate,
+      })),
+    ads: {
+      spend: ads.spend,
+      bookingsFromAds: ads.bookingsFromAds,
+      metaRoas: ads.metaRoas,
+      trueRoi: realRoi,
+      campaigns: paidCampaigns.map((c) => ({
+        title: c.title,
+        sessions: c.sessions,
+        bookings: c.bookings,
+        revenue: c.revenue,
+      })),
+    },
+    influencers: influencerRows.map((r) => ({
+      influencerName: r.influencerName,
+      couponCode: r.couponCode,
+      redemptions: r.redemptions,
+      revenue: r.revenue,
+    })),
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -188,12 +239,20 @@ export default async function HotelDashboardPage({
             <h1 className="text-2xl font-semibold tracking-tight">{hotel.name}</h1>
             <p className="text-zinc-500">{hotel.websiteUrl}</p>
           </div>
-          <Link
-            href={`/agency/hotels/${hotel.id}/setup`}
-            className="text-sm text-zinc-500 hover:underline"
-          >
-            Snippet setup →
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href={`/agency/hotels/${hotel.id}/setup`}
+              className="text-sm text-zinc-500 hover:underline"
+            >
+              Snippet setup →
+            </Link>
+            <ReportMenu
+              hotelId={hotel.id}
+              from={range.fromInput}
+              to={range.toInput}
+              data={reportData}
+            />
+          </div>
         </div>
       </div>
 
