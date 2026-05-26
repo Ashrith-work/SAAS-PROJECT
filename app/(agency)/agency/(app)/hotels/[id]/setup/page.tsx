@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
-import { CopyButton } from "./CopyButton";
+import { CopyButton } from "@/components/ui/CopyButton";
 
 export default async function HotelSetupPage({
   params,

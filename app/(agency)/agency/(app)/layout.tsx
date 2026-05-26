@@ -34,6 +34,12 @@ export default async function AgencyAppLayout({
               >
                 Hotel Clients
               </Link>
+              <Link
+                href="/agency/content"
+                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              >
+                Content
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
