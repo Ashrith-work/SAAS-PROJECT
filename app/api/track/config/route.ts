@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 
 // Public endpoint hit cross-origin by the tracking snippet (t.js) on hotel
 // websites. Returns ONLY the conversion config for the one hotel identified by
-// its public, unguessable siteId — no agency data is ever exposed.
+// its public, unguessable siteId — no agency data is ever exposed. Resilient:
+// validates input and never throws.
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -20,18 +21,24 @@ export async function GET(request: Request) {
     return Response.json({ error: "Missing id" }, { status: 400, headers: CORS });
   }
 
-  const hotel = await prisma.hotelClient.findUnique({
-    where: { siteId },
-    select: {
-      conversionMethod: true,
-      thankYouUrlPattern: true,
-      successPhrase: true,
-      successSelector: true,
-    },
-  });
+  let hotel;
+  try {
+    hotel = await prisma.hotelClient.findUnique({
+      where: { siteId },
+      select: {
+        conversionMethod: true,
+        thankYouUrlPattern: true,
+        successPhrase: true,
+        successSelector: true,
+      },
+    });
+  } catch {
+    return Response.json({ error: "Temporarily unavailable" }, { status: 503, headers: CORS });
+  }
 
+  // Reject unknown Hotel Site IDs.
   if (!hotel) {
-    return Response.json({ error: "Unknown site" }, { status: 404, headers: CORS });
+    return Response.json({ error: "Unknown site id" }, { status: 403, headers: CORS });
   }
 
   return Response.json(

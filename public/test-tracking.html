@@ -43,6 +43,9 @@
       <button class="primary" onclick="convUrl()">2b. Simulate conversion — url_change</button>
       <button onclick="resetSession()">Reset session (allow re-converting)</button>
     </div>
+    <div class="row">
+      <button onclick="testUnknown()">Test unknown site ID (expect HTTP 403)</button>
+    </div>
 
     <div id="confirmation"></div>
 
@@ -62,6 +65,21 @@
       }
       function clearAttr() { del("_ht_attr"); location.href = "/test-tracking.html"; }
       function resetSession() { del("_ht_sid"); del("_ht_conv"); location.href = "/test-tracking.html"; }
+
+      // Verify the endpoint validates the Site ID: an unknown id must get a 403.
+      async function testUnknown() {
+        try {
+          var r = await fetch("/api/track/event", {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify({ siteId: "does-not-exist", type: "visit" }),
+          });
+          lines.push(new Date().toLocaleTimeString() + "  UNKNOWN-ID TEST  HTTP " + r.status + " (expected 403)");
+        } catch (e) {
+          lines.push("unknown-id test error: " + e);
+        }
+        logEl.textContent = lines.join("\n");
+      }
 
       function convSamePage() {
         if (document.getElementById("booking-confirmation")) return;

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 // "conversion" events (sent via navigator.sendBeacon as text/plain, so no CORS
 // preflight). Resolves the public siteId to a hotel (and its agencyId) and
 // records a TrackingEvent. Stores ONLY UTM + page data — never personal data.
+// Designed to be fast and resilient: it validates input and never throws on a
+// bad payload.
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -11,36 +13,46 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-// Beacons are fire-and-forget; always answer 204 so a bad payload never throws
-// a visible error on the hotel's site.
-const ok = () => new Response(null, { status: 204, headers: CORS });
+function reply(status: number, body?: unknown) {
+  return body === undefined
+    ? new Response(null, { status, headers: CORS })
+    : Response.json(body, { status, headers: CORS });
+}
 
 export async function OPTIONS() {
-  return ok();
+  return reply(204);
 }
 
 export async function POST(request: Request) {
+  // Resilient parse — never throw on malformed input.
   let body: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(await request.text());
-    body = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    if (!parsed || typeof parsed !== "object") return reply(400, { error: "Invalid body" });
+    body = parsed as Record<string, unknown>;
   } catch {
-    return ok();
+    return reply(400, { error: "Invalid JSON" });
   }
 
-  const str = (v: unknown) =>
-    typeof v === "string" && v.length ? v.slice(0, 512) : null;
+  const str = (v: unknown) => (typeof v === "string" && v.length ? v.slice(0, 512) : null);
 
   const siteId = str(body.siteId);
   const type =
     body.type === "conversion" ? "conversion" : body.type === "visit" ? "visit" : null;
-  if (!siteId || !type) return ok();
+  if (!siteId || !type) return reply(400, { error: "Missing siteId or type" });
 
-  const hotel = await prisma.hotelClient.findUnique({
-    where: { siteId },
-    select: { id: true, agencyId: true },
-  });
-  if (!hotel) return ok();
+  let hotel;
+  try {
+    hotel = await prisma.hotelClient.findUnique({
+      where: { siteId },
+      select: { id: true, agencyId: true, snippetStatus: true },
+    });
+  } catch {
+    return reply(503, { error: "Temporarily unavailable" });
+  }
+
+  // Validate the Hotel Site ID — reject unknown IDs.
+  if (!hotel) return reply(403, { error: "Unknown site id" });
 
   let conversionValue: string | null = null;
   if (type === "conversion" && body.value != null) {
@@ -48,28 +60,35 @@ export async function POST(request: Request) {
     if (Number.isFinite(n) && n >= 0) conversionValue = n.toFixed(2);
   }
 
-  await prisma.trackingEvent.create({
-    data: {
-      agencyId: hotel.agencyId,
-      hotelClientId: hotel.id,
-      eventType: type,
-      utmSource: str(body.utmSource),
-      utmMedium: str(body.utmMedium),
-      utmCampaign: str(body.utmCampaign),
-      utmContent: str(body.utmContent),
-      utmTerm: str(body.utmTerm),
-      pageUrl: str(body.pageUrl) ?? "",
-      conversionValue,
-      sessionId: str(body.sessionId) ?? "",
-      deviceType: str(body.deviceType) ?? "unknown",
-    },
-  });
+  try {
+    await prisma.trackingEvent.create({
+      data: {
+        agencyId: hotel.agencyId,
+        hotelClientId: hotel.id,
+        eventType: type,
+        utmSource: str(body.utmSource),
+        utmMedium: str(body.utmMedium),
+        utmCampaign: str(body.utmCampaign),
+        utmContent: str(body.utmContent),
+        utmTerm: str(body.utmTerm),
+        pageUrl: str(body.pageUrl) ?? "",
+        conversionValue,
+        sessionId: str(body.sessionId) ?? "",
+        deviceType: str(body.deviceType) ?? "unknown",
+      },
+    });
 
-  // Best-effort: flag the snippet as live and record last activity.
-  await prisma.hotelClient.update({
-    where: { id: hotel.id },
-    data: { lastEventAt: new Date(), snippetStatus: "active" },
-  });
+    // Always refresh last activity; flip the snippet to "live" on the first event.
+    await prisma.hotelClient.update({
+      where: { id: hotel.id },
+      data: {
+        lastEventAt: new Date(),
+        ...(hotel.snippetStatus !== "live" ? { snippetStatus: "live" } : {}),
+      },
+    });
+  } catch {
+    return reply(503, { error: "Temporarily unavailable" });
+  }
 
-  return ok();
+  return reply(204);
 }
