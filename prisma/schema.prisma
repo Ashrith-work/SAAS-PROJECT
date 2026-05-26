@@ -105,6 +105,9 @@ model HotelClient {
   successPhrase      String? // for conversionMethod = same_page / both
   successSelector    String? // for conversionMethod = same_page / both
   snippetStatus      String           @default("not_installed")
+  // Meta ad account (act_<id>) mapped to this hotel on /agency/settings, so its
+  // dashboard can pull ad spend/ROI for the right account. Nullable until mapped.
+  metaAdAccountId    String?
   lastEventAt        DateTime?
   createdAt          DateTime         @default(now())
 

@@ -40,6 +40,12 @@ export default async function AgencyAppLayout({
               >
                 Content
               </Link>
+              <Link
+                href="/agency/settings"
+                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              >
+                Settings
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
