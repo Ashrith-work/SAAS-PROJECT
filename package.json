@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "build:snippet": "esbuild scripts/snippet.src.js --minify --legal-comments=none --banner:js=\"/* HotelTrack tracking snippet — generated from scripts/snippet.src.js */\" --outfile=public/t.js",
+    "prebuild": "npm run build:snippet",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:encryption": "tsx scripts/test-encryption.ts"
+    "test:encryption": "tsx scripts/test-encryption.ts",
+    "seed:test-hotel": "tsx scripts/seed-test-hotel.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
@@ -24,6 +27,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^17.4.2",
+    "esbuild": "^0.28.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "prisma": "^7.8.0",

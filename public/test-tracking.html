@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HotelTrack — tracking snippet test</title>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #18181b; }
+      h1 { font-size: 22px; }
+      code { background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      button { cursor: pointer; border: 1px solid #d4d4d8; background: #fff; border-radius: 8px; padding: 8px 12px; font: inherit; }
+      button:hover { background: #f4f4f5; }
+      button.primary { background: #111; color: #fff; border-color: #111; }
+      .card { border: 1px solid #e4e4e7; border-radius: 12px; padding: 16px; margin: 16px 0; }
+      pre { background: #0a0a0a; color: #e4e4e7; padding: 12px; border-radius: 8px; overflow: auto; max-height: 320px; }
+      .muted { color: #71717a; }
+      #confirmation { margin-top: 12px; color: #15803d; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>HotelTrack — tracking snippet test</h1>
+    <p class="muted">
+      This page loads <code>/t.js?id=test-site-hoteltrack&amp;debug=1</code>. Run
+      <code>npm run seed:test-hotel</code> first so the site ID exists.
+      The test hotel uses conversion method <code>both</code> (url_change +
+      same_page), thank-you pattern <code>/thank-you</code>, success phrase
+      <code>"Booking confirmed"</code>, success selector
+      <code>#booking-confirmation</code>.
+    </p>
+
+    <div class="card">
+      <strong>State</strong>
+      <div id="state" class="muted">reading…</div>
+    </div>
+
+    <div class="row">
+      <button class="primary" onclick="applyUtm()">1. Apply Instagram UTM &amp; reload (visit)</button>
+      <button onclick="clearAttr()">Clear attribution cookie &amp; reload</button>
+    </div>
+    <div class="row">
+      <button class="primary" onclick="convSamePage()">2a. Simulate conversion — same_page</button>
+      <button class="primary" onclick="convUrl()">2b. Simulate conversion — url_change</button>
+      <button onclick="resetSession()">Reset session (allow re-converting)</button>
+    </div>
+
+    <div id="confirmation"></div>
+
+    <div class="card">
+      <strong>Live event log</strong> <span class="muted">(from the snippet's debug mode)</span>
+      <pre id="log">waiting for events…</pre>
+    </div>
+
+    <script>
+      var SITE_ID = "test-site-hoteltrack";
+
+      function del(n) { document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/"; }
+      function cookie(n) { var m = document.cookie.match("(?:^|; )" + n + "=([^;]*)"); return m ? decodeURIComponent(m[1]) : null; }
+
+      function applyUtm() {
+        location.href = "/test-tracking.html?utm_source=instagram&utm_medium=social&utm_campaign=summer_sale&utm_content=story_01";
+      }
+      function clearAttr() { del("_ht_attr"); location.href = "/test-tracking.html"; }
+      function resetSession() { del("_ht_sid"); del("_ht_conv"); location.href = "/test-tracking.html"; }
+
+      function convSamePage() {
+        if (document.getElementById("booking-confirmation")) return;
+        var el = document.createElement("div");
+        el.id = "booking-confirmation";
+        el.setAttribute("data-ht-value", "249.00");
+        el.textContent = "Booking confirmed — thank you!";
+        document.getElementById("confirmation").appendChild(el);
+      }
+      function convUrl() {
+        history.pushState({}, "", "/thank-you");
+        document.getElementById("confirmation").textContent =
+          "URL changed to /thank-you (snippet should fire a conversion).";
+        renderState();
+      }
+
+      function renderState() {
+        var q = new URLSearchParams(location.search);
+        var utm = ["utm_source","utm_medium","utm_campaign","utm_content","utm_term"]
+          .map(function (k) { return q.get(k) ? k + "=" + q.get(k) : null; })
+          .filter(Boolean).join(", ") || "(none in URL)";
+        document.getElementById("state").innerHTML =
+          "Current URL UTMs: <code>" + utm + "</code><br>" +
+          "First-touch cookie (_ht_attr): <code>" + (cookie("_ht_attr") || "(not set)") + "</code><br>" +
+          "Session (_ht_sid): <code>" + (cookie("_ht_sid") || "(not set)") + "</code><br>" +
+          "Converted this session (_ht_conv): <code>" + (cookie("_ht_conv") || "(no)") + "</code><br>" +
+          "Path: <code>" + location.pathname + "</code>";
+      }
+
+      var logEl = document.getElementById("log");
+      var lines = [];
+      window.addEventListener("hoteltrack:event", function (e) {
+        var d = e.detail;
+        lines.push(new Date().toLocaleTimeString() + "  " + d.type.toUpperCase() + "  " + JSON.stringify(d.payload));
+        logEl.textContent = lines.join("\n");
+        renderState();
+      });
+
+      renderState();
+    </script>
+
+    <!-- The snippet under test. debug=1 makes it log + emit hoteltrack:event. -->
+    <script src="/t.js?id=test-site-hoteltrack&debug=1" async></script>
+  </body>
+</html>

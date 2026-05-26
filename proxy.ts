@@ -5,7 +5,14 @@ import { NextResponse } from "next/server";
 // unchanged. This guards every non-public route and enforces the three platform
 // roles by URL prefix.
 
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  // The tracking endpoints are called cross-origin by the snippet on hotel
+  // websites with no auth — they must stay public (scoped by the public siteId).
+  "/api/track(.*)",
+]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
