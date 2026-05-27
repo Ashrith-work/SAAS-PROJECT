@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import type { ContentPerf } from "@/lib/attribution";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 
+// Sortable content-performance table. Shared by the agency hotel dashboard and
+// the public /share view, so it lives in components/ rather than a route folder.
+
 const TYPE_LABELS: Record<string, string> = {
   organic: "Organic",
   paid_ad: "Paid ad",

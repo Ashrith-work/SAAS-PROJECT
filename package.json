@@ -14,7 +14,8 @@
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
     "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",
     "setup:stripe": "tsx scripts/setup-stripe.ts",
-    "dev:activate": "tsx scripts/dev-activate-subscription.ts"
+    "dev:activate": "tsx scripts/dev-activate-subscription.ts",
+    "set:super-admin": "tsx scripts/set-super-admin.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",

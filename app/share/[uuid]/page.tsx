@@ -1,0 +1,122 @@
+import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
+import { resolveRange } from "@/lib/attribution";
+import { loadHotelReport } from "@/lib/report-data";
+import { unlockCookieName, verifyUnlock } from "@/lib/share";
+import { PasswordGate } from "./PasswordGate";
+import { PublicReport } from "./PublicReport";
+
+// Public, no-login view of a hotel's dashboard, addressed by an unguessable
+// share token. Access is gated entirely inside this route (token validity,
+// expiry, revocation, optional password) — never by a Clerk session.
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Hotel performance report · HotelTrack",
+  robots: { index: false, follow: false }, // shared privately; keep out of search
+};
+
+function ShareMessage({ title, body }: { title: string; body: string }) {
+  return (
+    <main className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-6 py-16 text-center">
+      <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+        HotelTrack
+      </p>
+      <h1 className="mt-3 text-xl font-semibold tracking-tight">{title}</h1>
+      <p className="mt-2 text-sm text-zinc-500">{body}</p>
+    </main>
+  );
+}
+
+export default async function SharePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ uuid: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { uuid } = await params;
+
+  const link = await prisma.shareLink.findUnique({
+    where: { token: uuid },
+    select: {
+      id: true,
+      agencyId: true,
+      hotelClientId: true,
+      passwordHash: true,
+      expiresAt: true,
+      revokedAt: true,
+      hotelClient: { select: { name: true, websiteUrl: true } },
+      agency: { select: { name: true, suspendedAt: true } },
+    },
+  });
+
+  // Unknown token or revoked → don't reveal which; show a neutral message.
+  if (!link || link.revokedAt || link.agency.suspendedAt) {
+    return (
+      <ShareMessage
+        title="Link unavailable"
+        body="This report link is no longer active. Please ask the agency for a new one."
+      />
+    );
+  }
+  if (link.expiresAt < new Date()) {
+    return (
+      <ShareMessage
+        title="Link expired"
+        body="This report link has expired. Please ask the agency to generate a fresh one."
+      />
+    );
+  }
+
+  // Optional password gate.
+  if (link.passwordHash) {
+    const jar = await cookies();
+    const unlocked = verifyUnlock(uuid, jar.get(unlockCookieName(uuid))?.value);
+    if (!unlocked) {
+      return (
+        <PasswordGate
+          token={uuid}
+          hotelName={link.hotelClient.name}
+          agencyName={link.agency.name}
+        />
+      );
+    }
+  }
+
+  // View tracking. Awaited so the write isn't dropped on a serverless runtime,
+  // but never allowed to break the page if it fails.
+  try {
+    await prisma.shareLink.update({
+      where: { id: link.id },
+      data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
+    });
+  } catch {
+    // ignore — a missed view count must never block the report
+  }
+
+  const sp = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const range = resolveRange({ range: one(sp.range) });
+
+  const report = await loadHotelReport({
+    agencyId: link.agencyId,
+    hotelId: link.hotelClientId,
+    since: range.since,
+    until: range.until,
+  });
+
+  return (
+    <PublicReport
+      token={uuid}
+      hotelName={link.hotelClient.name}
+      websiteUrl={link.hotelClient.websiteUrl}
+      agencyName={link.agency.name}
+      rangeKey={range.key}
+      rangeLabel={range.label}
+      report={report}
+    />
+  );
+}

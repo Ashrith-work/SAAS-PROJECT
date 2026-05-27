@@ -15,6 +15,11 @@ export default async function AgencyAppLayout({
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
+  // A super admin can suspend an agency independently of billing — block here.
+  if (member.agency.suspendedAt) {
+    redirect("/agency/suspended");
+  }
+
   // Gate the whole agency dashboard behind an active subscription.
   if (!isActiveStatus(member.agency.subscriptionStatus)) {
     redirect("/agency/billing?inactive=1");

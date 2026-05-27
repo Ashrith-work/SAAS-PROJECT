@@ -13,6 +13,9 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Public, UUID-addressed hotel report links. No login: access is gated by the
+  // unguessable token (and an optional password) inside the route itself.
+  "/share(.*)",
   // The tracking endpoints are called cross-origin by the snippet on hotel
   // websites with no auth — they must stay public (scoped by the public siteId).
   "/api/track(.*)",

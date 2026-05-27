@@ -22,9 +22,10 @@ import {
   formatPercent,
 } from "@/lib/format";
 import { DateRangeSelector } from "./DateRangeSelector";
-import { ContentPerformanceTable } from "./ContentPerformanceTable";
-import { SpendChart } from "./SpendChart";
+import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
+import { SpendChart } from "@/components/report/SpendChart";
 import { ReportMenu } from "./ReportMenu";
+import { ShareLinkManager } from "./ShareLinkManager";
 import type { ReportData } from "./ReportDocument";
 
 function KpiCard({
@@ -84,6 +85,33 @@ export default async function HotelDashboardPage({
     select: { id: true, name: true, websiteUrl: true, metaAdAccountId: true },
   });
   if (!hotel) notFound();
+
+  // Latest non-revoked public share link for this hotel (may be expired — the
+  // manager shows that so the agency can regenerate). Scoped to this agency.
+  const shareLinkRow = await prisma.shareLink.findFirst({
+    where: { agencyId: member.agencyId, hotelClientId: hotel.id, revokedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      token: true,
+      passwordHash: true,
+      expiresAt: true,
+      viewCount: true,
+      lastViewedAt: true,
+    },
+  });
+  const activeLink = shareLinkRow
+    ? {
+        id: shareLinkRow.id,
+        token: shareLinkRow.token,
+        hasPassword: shareLinkRow.passwordHash != null,
+        expiresAt: shareLinkRow.expiresAt.toISOString(),
+        expired: shareLinkRow.expiresAt < new Date(),
+        viewCount: shareLinkRow.viewCount,
+        lastViewedAt: shareLinkRow.lastViewedAt?.toISOString() ?? null,
+      }
+    : null;
+  const shareBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
   const sp = await searchParams;
   const one = (v: string | string[] | undefined) =>
@@ -454,6 +482,18 @@ export default async function HotelDashboardPage({
             </p>
           </div>
         )}
+      </SectionCard>
+
+      {/* Shareable read-only link for the hotel owner */}
+      <SectionCard
+        title="Share with the hotel"
+        subtitle="A private, read-only link the hotel owner can open on their phone — no login required."
+      >
+        <ShareLinkManager
+          hotelId={hotel.id}
+          shareBaseUrl={shareBaseUrl}
+          link={activeLink}
+        />
       </SectionCard>
     </div>
   );

@@ -73,6 +73,9 @@ model Agency {
   stripeCustomerId   String?  @unique // set after the Stripe customer is created
   subscriptionStatus String   @default("inactive")
   plan               String   @default("starter")
+  // Set by a super admin to suspend the agency, independent of Stripe billing.
+  // When set, access to the agency dashboard is blocked (see the agency layout).
+  suspendedAt        DateTime?
   createdAt          DateTime @default(now())
 
   members           AgencyMember[]
@@ -84,6 +87,7 @@ model Agency {
   couponRedemptions CouponRedemption[]
   reports           Report[]
   alerts            Alert[]
+  shareLinks        ShareLink[]
 }
 
 model AgencyMember {
@@ -126,8 +130,9 @@ model HotelClient {
   contentPieces  ContentPiece[]
   trackingEvents TrackingEvent[]
   adSnapshots    AdSnapshot[]
-  reports        Report[]
-  alerts         Alert[]
+  reports         Report[]
+  alerts          Alert[]
+  shareLinks      ShareLink[]
 
   @@index([agencyId])
 }
@@ -280,5 +285,28 @@ model Alert {
 
   @@index([agencyId])
   @@index([agencyId, type, createdAt]) // dedup lookups + history listing
+  @@index([hotelClientId])
+}
+
+// A public, UUID-addressed link to a read-only view of one hotel's dashboard, so
+// an agency can share results with the hotel owner without giving them a login.
+// The `token` is the unguessable id in the /share/<token> URL. Optional password
+// (scrypt hash), expires after a window, and is revocable (revokedAt) anytime.
+model ShareLink {
+  id            String    @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  token         String    @unique @default(uuid()) // the public id in /share/<token>
+  passwordHash  String? // scrypt "salt:hash"; null = no password
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
   @@index([hotelClientId])
 }

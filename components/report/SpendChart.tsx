@@ -11,6 +11,9 @@ import {
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
 
+// Ad-spend-over-time line chart. Shared by the agency hotel dashboard and the
+// public /share view, so it lives in components/ rather than a route folder.
+
 // "2026-05-26" -> "05/26"
 function shortDate(d: string): string {
   return d.slice(5).replace("-", "/");
