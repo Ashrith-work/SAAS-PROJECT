@@ -48,6 +48,12 @@ export default async function AgencyAppLayout({
                 Content
               </Link>
               <Link
+                href="/agency/alerts"
+                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+              >
+                Alerts
+              </Link>
+              <Link
                 href="/agency/settings"
                 className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
               >

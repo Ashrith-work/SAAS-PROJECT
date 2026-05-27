@@ -55,6 +55,13 @@ enum EventType {
   conversion
 }
 
+enum AlertType {
+  performance_drop
+  snippet_error
+  meta_token_expiry
+  weekly_summary
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,6 +83,7 @@ model Agency {
   adSnapshots       AdSnapshot[]
   couponRedemptions CouponRedemption[]
   reports           Report[]
+  alerts            Alert[]
 }
 
 model AgencyMember {
@@ -119,6 +127,7 @@ model HotelClient {
   trackingEvents TrackingEvent[]
   adSnapshots    AdSnapshot[]
   reports        Report[]
+  alerts         Alert[]
 
   @@index([agencyId])
 }
@@ -245,5 +254,31 @@ model Report {
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
   @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+// Email alert history. One row per alert we raised (and tried to email), so the
+// agency can audit what fired and when at /agency/alerts. Multi-tenant: every
+// row carries agencyId. hotelClientId is null for agency-wide alerts (the weekly
+// summary); it's SetNull-on-delete so removing a hotel keeps the audit trail.
+model Alert {
+  id            String    @id @default(cuid())
+  agencyId      String
+  hotelClientId String?
+  type          AlertType
+  severity      String    @default("warning") // info | warning | critical
+  title         String
+  message       String    @db.Text
+  // Recipient + delivery outcome of the email sent for this alert.
+  emailTo       String?
+  emailStatus   String    @default("pending") // pending | sent | failed | skipped
+  emailError    String?
+  createdAt     DateTime  @default(now())
+
+  agency      Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient? @relation(fields: [hotelClientId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([agencyId, type, createdAt]) // dedup lookups + history listing
   @@index([hotelClientId])
 }

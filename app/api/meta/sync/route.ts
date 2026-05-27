@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { decryptToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
+import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
 
 // Scheduled Meta Ads sync. Runs on Vercel Cron once a day (see vercel.json) and
 // can be triggered manually for testing. Guarded by CRON_SECRET — Vercel Cron
@@ -135,6 +136,16 @@ export async function GET(request: Request) {
     }
   }
 
+  // Email alerts run after the Meta data is fresh so performance/summary alerts
+  // reflect the latest numbers. Fully isolated: a failure here NEVER affects the
+  // sync result above. The weekly summary self-gates to Mondays inside the engine.
+  let alerts: RunAlertsResult | { error: string };
+  try {
+    alerts = await runDailyAlerts({ now });
+  } catch (err) {
+    alerts = { error: err instanceof Error ? err.message : "Alerts run failed." };
+  }
+
   return Response.json({
     ok: true,
     range,
@@ -143,6 +154,7 @@ export async function GET(request: Request) {
     snapshotsWritten,
     tokensDisconnected,
     errors,
+    alerts,
     syncedAt: now.toISOString(),
   });
 }

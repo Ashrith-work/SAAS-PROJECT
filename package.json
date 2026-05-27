@@ -12,6 +12,7 @@
     "test:encryption": "tsx scripts/test-encryption.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
+    "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",
     "setup:stripe": "tsx scripts/setup-stripe.ts",
     "dev:activate": "tsx scripts/dev-activate-subscription.ts"
   },
@@ -26,6 +27,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "resend": "^6.12.4",
     "stripe": "^22.1.1",
     "xlsx": "^0.18.5"
   },
