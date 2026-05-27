@@ -24,6 +24,7 @@ import {
 import { DateRangeSelector } from "./DateRangeSelector";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
 import { SpendChart } from "@/components/report/SpendChart";
+import { FollowerChart } from "@/components/report/FollowerChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
 import type { ReportData } from "./ReportDocument";
@@ -172,6 +173,78 @@ export default async function HotelDashboardPage({
           select: { contentPieceId: true, orderValue: true },
         })
       : [];
+
+  // ── Organic social (Instagram) — all scoped to this agency + hotel ──
+  // `priorFollowerSnap` is the last reading BEFORE the range, so follower growth
+  // can be measured against the prior period. Post metrics drive engagement rate
+  // (account-level engagement isn't synced), and the top-posts table.
+  const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg] =
+    await Promise.all([
+      prisma.socialAccount.findFirst({
+        where: { agencyId: member.agencyId, hotelClientId: hotel.id, platform: "instagram" },
+        select: { status: true, username: true, lastSyncedAt: true },
+      }),
+      prisma.socialSnapshot.findMany({
+        where: {
+          agencyId: member.agencyId,
+          hotelClientId: hotel.id,
+          date: { gte: range.since, lte: range.until },
+        },
+        orderBy: { date: "asc" },
+        select: { date: true, followers: true, reach: true, impressions: true, profileViews: true },
+      }),
+      prisma.socialSnapshot.findFirst({
+        where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { lt: range.since } },
+        orderBy: { date: "desc" },
+        select: { followers: true },
+      }),
+      prisma.postSnapshot.findMany({
+        where: {
+          agencyId: member.agencyId,
+          hotelClientId: hotel.id,
+          postedAt: { gte: range.since, lte: range.until },
+        },
+        orderBy: { reach: "desc" },
+        take: 10,
+        select: {
+          mediaId: true,
+          caption: true,
+          mediaType: true,
+          permalink: true,
+          postedAt: true,
+          reach: true,
+          engagement: true,
+          saves: true,
+        },
+      }),
+      prisma.postSnapshot.aggregate({
+        where: {
+          agencyId: member.agencyId,
+          hotelClientId: hotel.id,
+          postedAt: { gte: range.since, lte: range.until },
+        },
+        _sum: { engagement: true, reach: true },
+      }),
+    ]);
+
+  const hasSocialData = socialSnaps.length > 0 || topPosts.length > 0;
+  const followerSeries = socialSnaps.map((s) => ({
+    date: s.date.toISOString().slice(0, 10),
+    followers: s.followers,
+  }));
+  const currentFollowers = socialSnaps.length
+    ? socialSnaps[socialSnaps.length - 1].followers
+    : (priorFollowerSnap?.followers ?? 0);
+  const priorFollowers =
+    priorFollowerSnap?.followers ?? (socialSnaps.length ? socialSnaps[0].followers : 0);
+  const followerGrowth = currentFollowers - priorFollowers;
+  const followerGrowthPct = priorFollowers > 0 ? followerGrowth / priorFollowers : null;
+  const socialReach = socialSnaps.reduce((sum, s) => sum + s.reach, 0);
+  const socialImpressions = socialSnaps.reduce((sum, s) => sum + s.impressions, 0);
+  const socialProfileViews = socialSnaps.reduce((sum, s) => sum + s.profileViews, 0);
+  const postReachSum = postAgg._sum.reach ?? 0;
+  const engagementRate = postReachSum > 0 ? (postAgg._sum.engagement ?? 0) / postReachSum : null;
+  const socialLastUpdated = socialAccount?.lastSyncedAt ?? null;
 
   // ── Normalise Prisma Decimals -> plain numbers for the pure helpers ──
   const contentInputs: ContentInput[] = content;
@@ -480,6 +553,116 @@ export default async function HotelDashboardPage({
               Cost / booking shows once influencer fees are tracked per
               collaboration.
             </p>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Section 5 — Social media performance (organic Instagram) */}
+      <SectionCard
+        title="Social media performance"
+        subtitle={
+          socialAccount?.username ? `Organic Instagram · @${socialAccount.username}` : "Organic Instagram"
+        }
+      >
+        {!hasSocialData ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-zinc-500">No organic social data yet.</p>
+            <Link
+              href={`/agency/hotels/${hotel.id}/setup`}
+              className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
+            >
+              Connect this hotel&apos;s Instagram in Setup →
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-5 p-4">
+            <p className="text-xs text-zinc-500">
+              {socialLastUpdated
+                ? `Last updated ${new Date(socialLastUpdated).toLocaleString()} · `
+                : ""}
+              Refreshes on a schedule, not in real time.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <KpiCard
+                label="Followers"
+                value={formatNumber(currentFollowers)}
+                hint={`${followerGrowth >= 0 ? "+" : "−"}${formatNumber(
+                  Math.abs(followerGrowth),
+                )} vs prior${
+                  followerGrowthPct != null ? ` · ${formatPercent(Math.abs(followerGrowthPct))}` : ""
+                }`}
+              />
+              <KpiCard label="Reach" value={formatNumber(socialReach)} hint="Unique accounts" />
+              <KpiCard label="Impressions" value={formatNumber(socialImpressions)} />
+              <KpiCard label="Profile views" value={formatNumber(socialProfileViews)} />
+              <KpiCard
+                label="Engagement rate"
+                value={engagementRate == null ? "—" : formatPercent(engagementRate)}
+                hint="Engagement ÷ reach"
+              />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Follower growth
+              </p>
+              <FollowerChart data={followerSeries} />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Top posts by reach
+              </p>
+              {topPosts.length === 0 ? (
+                <p className="text-sm text-zinc-500">No posts published in this range.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                      <tr>
+                        <th className="px-4 py-2 font-medium">Post</th>
+                        <th className="px-4 py-2 text-right font-medium">Reach</th>
+                        <th className="px-4 py-2 text-right font-medium">Engagement</th>
+                        <th className="px-4 py-2 text-right font-medium">Saves</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topPosts.map((p) => (
+                        <tr key={p.mediaId} className="border-t border-zinc-100 dark:border-zinc-800">
+                          <td className="px-4 py-2">
+                            {p.permalink ? (
+                              <a
+                                href={p.permalink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium hover:underline"
+                              >
+                                {p.caption ? p.caption.slice(0, 60) : p.mediaType ?? "Post"}
+                              </a>
+                            ) : (
+                              <span className="font-medium">
+                                {p.caption ? p.caption.slice(0, 60) : p.mediaType ?? "Post"}
+                              </span>
+                            )}
+                            {p.postedAt && (
+                              <span className="block text-xs text-zinc-500">
+                                {new Date(p.postedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.reach)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {formatNumber(p.engagement)}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.saves)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </SectionCard>

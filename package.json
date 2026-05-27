@@ -13,6 +13,7 @@
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
     "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",
+    "seed:social-demo": "tsx scripts/seed-social-demo.ts",
     "setup:stripe": "tsx scripts/setup-stripe.ts",
     "dev:activate": "tsx scripts/dev-activate-subscription.ts",
     "set:super-admin": "tsx scripts/set-super-admin.ts"
