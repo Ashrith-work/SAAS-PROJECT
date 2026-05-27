@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
 import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
+import { runSocialSync, type SocialSyncResult } from "@/lib/social-sync";
 
 // Scheduled Meta Ads sync. Runs on Vercel Cron once a day (see vercel.json) and
 // can be triggered manually for testing. Guarded by CRON_SECRET — Vercel Cron
@@ -17,7 +18,9 @@ import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Higher ceiling: this daily run also does the (rate-limit-spaced) social sync.
+// Capped to the plan's max; partial work persists via idempotent upserts.
+export const maxDuration = 300;
 
 const DAY_MS = 86_400_000;
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -136,7 +139,17 @@ export async function GET(request: Request) {
     }
   }
 
-  // Email alerts run after the Meta data is fresh so performance/summary alerts
+  // Extend the daily job to also refresh organic social. The dedicated
+  // /api/social/sync cron runs this more often (every 6h); doing it here keeps
+  // the daily run complete. Isolated: a social failure NEVER affects the result.
+  let social: SocialSyncResult | { error: string };
+  try {
+    social = await runSocialSync();
+  } catch (err) {
+    social = { error: err instanceof Error ? err.message : "Social sync failed." };
+  }
+
+  // Email alerts run after the data is fresh so performance/summary alerts
   // reflect the latest numbers. Fully isolated: a failure here NEVER affects the
   // sync result above. The weekly summary self-gates to Mondays inside the engine.
   let alerts: RunAlertsResult | { error: string };
@@ -154,6 +167,7 @@ export async function GET(request: Request) {
     snapshotsWritten,
     tokensDisconnected,
     errors,
+    social,
     alerts,
     syncedAt: now.toISOString(),
   });

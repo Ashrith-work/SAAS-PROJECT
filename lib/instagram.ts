@@ -282,16 +282,22 @@ function metricsFor(mediaType: string | undefined): string[] {
   return base;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * The most recent posts for an IG account, each with its organic insights
  * (impressions, reach, engagement, saves, shares, video_views). Resilient: one
  * post whose insights fail (e.g. a metric unsupported for its type) is returned
  * with zeroed metrics rather than failing the whole batch.
+ *
+ * `delayMs` spaces out the per-post insight calls to respect Instagram's rate
+ * limit (~200 requests/hour) — pass a small value from a scheduled batch sync.
  */
 export async function getMediaInsights(
   accessToken: string,
   igUserId: string,
   limit = 12,
+  delayMs = 0,
 ): Promise<PostInsight[]> {
   const media = await graphGet<{ data?: RawMedia[] }>(`${igUserId}/media`, accessToken, {
     fields: "id,caption,media_type,permalink,timestamp",
@@ -299,7 +305,10 @@ export async function getMediaInsights(
   });
 
   const posts: PostInsight[] = [];
+  let first = true;
   for (const m of media.data ?? []) {
+    if (!first && delayMs > 0) await sleep(delayMs);
+    first = false;
     const post: PostInsight = {
       mediaId: m.id,
       caption: m.caption ?? null,

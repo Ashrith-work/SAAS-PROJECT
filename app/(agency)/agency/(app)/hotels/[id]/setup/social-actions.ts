@@ -3,18 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptToken, decryptToken } from "@/lib/encryption";
+import { encryptToken } from "@/lib/encryption";
 import {
   connectInstagramAccount,
-  getAccountInsights,
-  getMediaInsights,
   getTokenExpiry,
   InstagramAuthError,
   InstagramSetupError,
   type IgAccount,
 } from "@/lib/instagram";
-
-const DAY_MS = 86_400_000;
+import { syncSocialAccount } from "@/lib/social-sync";
 
 // Verifies the hotel belongs to the signed-in agency (multi-tenant guard).
 async function ownedHotel(hotelId: string) {
@@ -159,82 +156,28 @@ export async function syncSocialInsights(
 
   const account = await prisma.socialAccount.findFirst({
     where: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, platform: "instagram" },
-    select: { id: true, igUserId: true, encryptedToken: true },
+    select: {
+      id: true,
+      agencyId: true,
+      hotelClientId: true,
+      igUserId: true,
+      encryptedToken: true,
+    },
   });
   if (!account) {
     return { error: "Connect an Instagram account first.", ok: false, message: null };
   }
 
-  let token: string;
-  try {
-    token = decryptToken(account.encryptedToken);
-  } catch {
-    return { error: "Stored token couldn't be read. Please reconnect.", ok: false, message: null };
-  }
+  // Reuse the shared engine (also used by the cron). One account, so no spacing.
+  const res = await syncSocialAccount(account, { perRequestDelayMs: 0 });
+  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
 
-  const until = new Date();
-  const since = new Date(until.getTime() - 29 * DAY_MS);
-
-  try {
-    const insights = await getAccountInsights(token, account.igUserId, { since, until });
-    for (const day of insights.daily) {
-      const date = new Date(`${day.date}T00:00:00.000Z`);
-      const data = {
-        followers: day.followers,
-        reach: day.reach,
-        impressions: day.impressions,
-        profileViews: day.profileViews,
-        engagement: 0, // account-level engagement isn't fetched; it lives on posts
-      };
-      await prisma.socialSnapshot.upsert({
-        where: { hotelClientId_date: { hotelClientId: ctx.hotelId, date } },
-        create: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, date, ...data },
-        update: data,
-      });
-    }
-
-    const posts = await getMediaInsights(token, account.igUserId, 12);
-    for (const p of posts) {
-      const data = {
-        agencyId: ctx.agencyId,
-        caption: p.caption,
-        mediaType: p.mediaType,
-        permalink: p.permalink,
-        postedAt: p.timestamp ? new Date(p.timestamp) : null,
-        impressions: p.impressions,
-        reach: p.reach,
-        engagement: p.engagement,
-        saves: p.saves,
-        shares: p.shares,
-        videoViews: p.videoViews,
-        fetchedAt: new Date(),
-      };
-      await prisma.postSnapshot.upsert({
-        where: { hotelClientId_mediaId: { hotelClientId: ctx.hotelId, mediaId: p.mediaId } },
-        create: { hotelClientId: ctx.hotelId, mediaId: p.mediaId, ...data },
-        update: data,
-      });
-    }
-
-    await prisma.socialAccount.update({
-      where: { id: account.id },
-      data: { lastSyncedAt: new Date(), status: "connected" },
-    });
-
-    revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  if (res.ok) {
     return {
       error: null,
       ok: true,
-      message: `Synced ${insights.followers.toLocaleString()} followers and ${posts.length} recent posts.`,
+      message: `Synced ${(res.followers ?? 0).toLocaleString()} followers and ${res.postsSynced ?? 0} recent posts.`,
     };
-  } catch (err) {
-    if (err instanceof InstagramAuthError) {
-      await prisma.socialAccount.update({
-        where: { id: account.id },
-        data: { status: "disconnected" },
-      });
-      return { error: err.message, ok: false, message: null };
-    }
-    return { error: igErrorMessage(err), ok: false, message: null };
   }
+  return { error: res.error ?? "Sync failed.", ok: false, message: null };
 }

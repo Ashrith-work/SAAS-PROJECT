@@ -4,6 +4,10 @@
     {
       "path": "/api/meta/sync",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/social/sync",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
