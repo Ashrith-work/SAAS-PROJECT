@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "seed": "tsx prisma/seed.ts",
     "test:encryption": "tsx scripts/test-encryption.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
