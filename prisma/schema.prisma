@@ -88,6 +88,9 @@ model Agency {
   reports           Report[]
   alerts            Alert[]
   shareLinks        ShareLink[]
+  socialAccounts    SocialAccount[]
+  socialSnapshots   SocialSnapshot[]
+  postSnapshots     PostSnapshot[]
 }
 
 model AgencyMember {
@@ -133,6 +136,9 @@ model HotelClient {
   reports         Report[]
   alerts          Alert[]
   shareLinks      ShareLink[]
+  socialAccounts  SocialAccount[]
+  socialSnapshots SocialSnapshot[]
+  postSnapshots   PostSnapshot[]
 
   @@index([agencyId])
 }
@@ -307,6 +313,78 @@ model ShareLink {
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Organic social (Instagram/Facebook) — SEPARATE from the Meta *Ads* integration
+// (MetaToken/AdSnapshot above). One SocialAccount per hotel per platform holds
+// the IG Business account id + its own encrypted token. SocialSnapshot stores
+// daily account metrics; PostSnapshot stores per-post metrics.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id             String    @id @default(cuid())
+  agencyId       String
+  hotelClientId  String
+  platform       Platform  @default(instagram)
+  igUserId       String // the Instagram Business account id (resolved from a Page)
+  username       String?
+  encryptedToken String // AES-256-GCM ciphertext (base64). NEVER log or expose.
+  tokenExpiresAt DateTime?
+  status         String    @default("disconnected")
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, platform]) // one social account per hotel per platform
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model SocialSnapshot {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  date          DateTime @db.Date
+  followers     Int      @default(0)
+  reach         Int      @default(0)
+  impressions   Int      @default(0)
+  profileViews  Int      @default(0)
+  engagement    Int      @default(0)
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date]) // one snapshot per hotel per day
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model PostSnapshot {
+  id            String    @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  mediaId       String
+  caption       String?   @db.Text
+  mediaType     String?
+  permalink     String?
+  postedAt      DateTime?
+  impressions   Int       @default(0)
+  reach         Int       @default(0)
+  engagement    Int       @default(0)
+  saves         Int       @default(0)
+  shares        Int       @default(0)
+  videoViews    Int       @default(0)
+  fetchedAt     DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, mediaId]) // latest metrics per post
   @@index([agencyId])
   @@index([hotelClientId])
 }
