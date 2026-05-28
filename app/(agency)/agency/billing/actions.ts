@@ -39,7 +39,9 @@ export async function subscribeToPlan(formData: FormData) {
   const member = await getCurrentMember();
   if (!member) redirect("/sign-in");
 
-  const planKey = String(formData.get("plan") ?? "") as PlanKey;
+  const rawPlan = String(formData.get("plan") ?? "");
+  if (!(rawPlan in PLANS)) redirect("/agency/billing?error=invalid_plan");
+  const planKey = rawPlan as PlanKey;
   const priceId = PLANS[planKey]?.priceId;
   if (!priceId) redirect("/agency/billing?error=config");
 

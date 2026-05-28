@@ -15,6 +15,7 @@ export async function createAgencyForCurrentUser(formData: FormData) {
 
   const name = (formData.get("agencyName") as string | null)?.trim();
   if (!name) return { error: "Agency name is required." };
+  if (name.length > 120) return { error: "Agency name must be 120 characters or fewer." };
 
   const user = await currentUser();
   const email =

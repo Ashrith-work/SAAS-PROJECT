@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+
+// Per (siteId + IP) cap. Generous enough that a real user's session — a few
+// page views + a conversion — never trips it, but tight enough that a scraper
+// or a buggy script can't write millions of rows.
+const RATE_LIMIT_PER_MIN = 60;
 
 // Public ingestion endpoint for the tracking snippet. Receives "visit" and
 // "conversion" events (sent via navigator.sendBeacon as text/plain, so no CORS
@@ -40,6 +46,22 @@ export async function POST(request: Request) {
   const type =
     body.type === "conversion" ? "conversion" : body.type === "visit" ? "visit" : null;
   if (!siteId || !type) return reply(400, { error: "Missing siteId or type" });
+
+  const ip = clientIpFromHeaders(request.headers);
+  const rl = checkRateLimit(`evt:${siteId}:${ip}`, {
+    limit: RATE_LIMIT_PER_MIN,
+    windowMs: 60_000,
+  });
+  if (!rl.ok) {
+    return new Response(JSON.stringify({ error: "Too many events" }), {
+      status: 429,
+      headers: {
+        ...CORS,
+        "Content-Type": "application/json",
+        "Retry-After": Math.ceil(rl.resetInMs / 1000).toString(),
+      },
+    });
+  }
 
   let hotel;
   try {

@@ -23,6 +23,8 @@ export async function unlockShare(
   const token = ((formData.get("token") as string | null) ?? "").trim();
   const password = (formData.get("password") as string | null) ?? "";
   if (!token) return { error: "This link is invalid." };
+  // Defensive cap so a hostile request can't force expensive hash work.
+  if (password.length > 1024) return { error: "Password is too long." };
 
   const link = await prisma.shareLink.findUnique({
     where: { token },

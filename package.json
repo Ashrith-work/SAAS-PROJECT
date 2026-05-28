@@ -18,7 +18,9 @@
     "setup:stripe": "tsx scripts/setup-stripe.ts",
     "dev:activate": "tsx scripts/dev-activate-subscription.ts",
     "set:super-admin": "tsx scripts/set-super-admin.ts",
-    "attach:member": "tsx scripts/attach-member.ts"
+    "attach:member": "tsx scripts/attach-member.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
@@ -47,6 +49,7 @@
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.7"
   }
 }
