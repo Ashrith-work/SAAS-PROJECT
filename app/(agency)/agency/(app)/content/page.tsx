@@ -5,6 +5,7 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { utmContentFor } from "@/lib/utm";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { ContentFilters } from "./ContentFilters";
 
 const CONTENT_TYPES = ["organic", "paid_ad", "influencer", "story"] as const;
@@ -139,12 +140,15 @@ export default async function ContentLibraryPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Content Library</h1>
-        <Link
-          href="/agency/content/new"
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        >
-          New Content Piece
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportMenu basePath="/api/content/export" />
+          <Link
+            href="/agency/content/new"
+            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            New Content Piece
+          </Link>
+        </div>
       </div>
 
       <ContentFilters

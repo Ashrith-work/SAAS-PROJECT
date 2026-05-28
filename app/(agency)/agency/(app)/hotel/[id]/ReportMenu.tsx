@@ -24,6 +24,7 @@ export function ReportMenu({
   const [error, setError] = useState<string | null>(null);
 
   const excelHref = `/api/reports/excel?hotelId=${encodeURIComponent(hotelId)}&from=${from}&to=${to}`;
+  const csvHref = `/api/reports/csv?hotelId=${encodeURIComponent(hotelId)}&from=${from}&to=${to}`;
 
   async function handlePdf() {
     setGenerating(true);
@@ -100,6 +101,14 @@ export function ReportMenu({
           >
             Excel export
             <span className="block text-xs text-zinc-500">4 sheets · raw data</span>
+          </a>
+          <a
+            href={csvHref}
+            onClick={() => setOpen(false)}
+            className="block w-full border-t border-zinc-100 px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
+          >
+            CSV export
+            <span className="block text-xs text-zinc-500">Event log · one flat file</span>
           </a>
         </div>
       )}

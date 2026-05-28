@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 
 function formatLastEvent(d: Date | null): string {
   if (!d) return "No events yet";
@@ -30,12 +31,15 @@ export default async function HotelsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Hotel Clients</h1>
-        <Link
-          href="/agency/hotels/new"
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        >
-          Add Hotel Client
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportMenu basePath="/api/hotels/export" />
+          <Link
+            href="/agency/hotels/new"
+            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            Add Hotel Client
+          </Link>
+        </div>
       </div>
 
       {hotels.length === 0 ? (

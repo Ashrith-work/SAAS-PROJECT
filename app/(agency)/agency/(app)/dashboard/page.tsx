@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import {
   formatCurrency,
   formatMultiple,
@@ -98,12 +99,15 @@ export default async function AgencyDashboardPage() {
             All hotel clients · last 30 days
           </p>
         </div>
-        <Link
-          href="/agency/hotels/new"
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        >
-          Add Hotel Client
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportMenu basePath="/api/agency/export" />
+          <Link
+            href="/agency/hotels/new"
+            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            Add Hotel Client
+          </Link>
+        </div>
       </div>
 
       {/* Summary KPIs across all hotels */}
