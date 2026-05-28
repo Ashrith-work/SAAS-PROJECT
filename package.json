@@ -17,7 +17,8 @@
     "seed:social-demo": "tsx scripts/seed-social-demo.ts",
     "setup:stripe": "tsx scripts/setup-stripe.ts",
     "dev:activate": "tsx scripts/dev-activate-subscription.ts",
-    "set:super-admin": "tsx scripts/set-super-admin.ts"
+    "set:super-admin": "tsx scripts/set-super-admin.ts",
+    "attach:member": "tsx scripts/attach-member.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
