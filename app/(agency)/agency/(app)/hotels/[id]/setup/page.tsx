@@ -6,6 +6,7 @@ import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { InstagramConnect } from "./InstagramConnect";
 import { InstagramActions } from "./InstagramActions";
+import { isPixelMode } from "@/lib/tracking-mode";
 
 const DAY_MS = 86_400_000;
 
@@ -30,6 +31,7 @@ export default async function HotelSetupPage({
     "",
   );
   const snippet = `<script src="${appUrl}/t.js?id=${hotel.siteId}" async></script>`;
+  const pixelMode = isPixelMode();
 
   // ── Instagram (organic social) connection + latest stored insights ──
   const social = await prisma.socialAccount.findFirst({
@@ -82,50 +84,94 @@ export default async function HotelSetupPage({
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{hotel.name}</h1>
         <p className="text-zinc-500">{hotel.websiteUrl}</p>
-        <div className="mt-2">
-          <SnippetStatusBadge status={hotel.snippetStatus} />
-        </div>
+        {!pixelMode && (
+          <div className="mt-2">
+            <SnippetStatusBadge status={hotel.snippetStatus} />
+          </div>
+        )}
       </div>
 
-      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
-        <h2 className="font-semibold">Install the tracking snippet</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Add this one line to every page of {hotel.websiteUrl}.
-        </p>
-        <div className="mt-4 flex items-start gap-2">
-          <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
-            {snippet}
-          </code>
-          <CopyButton text={snippet} />
-        </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          Site ID: <code>{hotel.siteId}</code>
-        </p>
-      </section>
+      {pixelMode ? (
+        <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+          <h2 className="font-semibold">Website tracking · Facebook Pixel</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            This agency uses Meta&apos;s Pixel for website tracking. Conversions
+            and ROAS for {hotel.name} will appear under <strong>Paid ads
+            performance</strong> on the hotel dashboard, sourced from the Meta
+            Marketing API.
+          </p>
+          <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
+            <li>
+              In Meta Events Manager, create (or open) the Pixel for this
+              hotel&apos;s website and copy its base code.
+            </li>
+            <li>
+              Paste the Pixel base code just before <code>&lt;/head&gt;</code>{" "}
+              on every page of <strong>{hotel.websiteUrl}</strong>.
+            </li>
+            <li>
+              Fire a <code>Purchase</code> event (with{" "}
+              <code>value</code> + <code>currency</code>) from the booking
+              confirmation page.
+            </li>
+            <li>
+              Map this hotel&apos;s Meta ad account on{" "}
+              <Link href="/agency/settings" className="underline">
+                Settings
+              </Link>{" "}
+              so the daily sync pulls spend, conversions, and ROAS into the
+              dashboard.
+            </li>
+          </ol>
+          <p className="mt-3 text-xs text-zinc-500">
+            Per-content / per-Instagram-post attribution (which post drove which
+            booking) is not available in Pixel-only mode — Meta&apos;s Pixel
+            reports at the ad-account / campaign level only.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+            <h2 className="font-semibold">Install the tracking snippet</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Add this one line to every page of {hotel.websiteUrl}.
+            </p>
+            <div className="mt-4 flex items-start gap-2">
+              <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+                {snippet}
+              </code>
+              <CopyButton text={snippet} />
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              Site ID: <code>{hotel.siteId}</code>
+            </p>
+          </section>
 
-      <section>
-        <h2 className="font-semibold">Step-by-step for the hotel&apos;s developer</h2>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>Copy the snippet above.</li>
-          <li>
-            Paste it just before the closing <code>&lt;/head&gt;</code> tag on{" "}
-            <strong>every page</strong> of the website — the homepage, room
-            pages, and the whole booking flow.
-          </li>
-          <li>
-            Deploy the change. The <code>async</code> attribute means it never
-            blocks or slows down the page.
-          </li>
-          <li>
-            Make a test booking. Within a few seconds the status above flips to{" "}
-            <strong>Live</strong>.
-          </li>
-          <li>
-            That&apos;s it — no other configuration needed. We only collect
-            campaign (UTM) and page data, never personal information.
-          </li>
-        </ol>
-      </section>
+          <section>
+            <h2 className="font-semibold">Step-by-step for the hotel&apos;s developer</h2>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
+              <li>Copy the snippet above.</li>
+              <li>
+                Paste it just before the closing <code>&lt;/head&gt;</code> tag on{" "}
+                <strong>every page</strong> of the website — the homepage, room
+                pages, and the whole booking flow.
+              </li>
+              <li>
+                Deploy the change. The <code>async</code> attribute means it never
+                blocks or slows down the page.
+              </li>
+              <li>
+                Make a test booking. Within a few seconds the status above flips to{" "}
+                <strong>Live</strong>.
+              </li>
+              <li>
+                That&apos;s it — no other configuration needed. We only collect
+                campaign (UTM) and page data, never personal information.
+              </li>
+            </ol>
+          </section>
+        </>
+      )}
 
       {/* ── Instagram (organic social) ──────────────────────────────────── */}
       <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">

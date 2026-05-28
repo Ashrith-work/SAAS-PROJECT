@@ -27,6 +27,7 @@ import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
+import { isPixelMode } from "@/lib/tracking-mode";
 import type { ReportData } from "./ReportDocument";
 
 function KpiCard({
@@ -79,6 +80,7 @@ export default async function HotelDashboardPage({
   const { id } = await params;
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
+  const pixelMode = isPixelMode();
 
   // Multi-tenant: scope by id AND agencyId so one agency can't open another's hotel.
   const hotel = await prisma.hotelClient.findFirst({
@@ -136,20 +138,28 @@ export default async function HotelDashboardPage({
         influencerName: true,
       },
     }),
-    prisma.trackingEvent.findMany({
-      where: {
-        agencyId: member.agencyId,
-        hotelClientId: hotel.id,
-        createdAt: { gte: range.since, lte: range.until },
-      },
-      select: {
-        eventType: true,
-        utmContent: true,
-        utmCampaign: true,
-        sessionId: true,
-        conversionValue: true,
-      },
-    }),
+    pixelMode
+      ? Promise.resolve([] as Array<{
+          eventType: "visit" | "conversion";
+          utmContent: string | null;
+          utmCampaign: string | null;
+          sessionId: string;
+          conversionValue: import("@prisma/client").Prisma.Decimal | null;
+        }>)
+      : prisma.trackingEvent.findMany({
+          where: {
+            agencyId: member.agencyId,
+            hotelClientId: hotel.id,
+            createdAt: { gte: range.since, lte: range.until },
+          },
+          select: {
+            eventType: true,
+            utmContent: true,
+            utmCampaign: true,
+            sessionId: true,
+            conversionValue: true,
+          },
+        }),
     prisma.adSnapshot.findMany({
       where: {
         agencyId: member.agencyId,
@@ -367,34 +377,38 @@ export default async function HotelDashboardPage({
         <span className="text-sm text-zinc-500">{range.label}</span>
       </div>
 
-      {/* Section 1 — KPI cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Visits" value={formatNumber(kpis.visits)} />
-        <KpiCard label="Bookings" value={formatNumber(kpis.bookings)} />
-        <KpiCard label="Revenue attributed" value={formatCurrency(kpis.revenue)} />
-        <KpiCard
-          label="Cost / booking"
-          value={
-            kpis.costPerBooking == null
-              ? "—"
-              : formatCurrencyCents(kpis.costPerBooking)
-          }
-          hint="Ad spend ÷ bookings"
-        />
-        <KpiCard
-          label="Overall ROAS"
-          value={formatMultiple(kpis.roas)}
-          hint="Revenue ÷ ad spend"
-        />
-      </div>
+      {/* Section 1 — KPI cards (attribution-dependent; hidden in pixel mode) */}
+      {!pixelMode && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiCard label="Visits" value={formatNumber(kpis.visits)} />
+          <KpiCard label="Bookings" value={formatNumber(kpis.bookings)} />
+          <KpiCard label="Revenue attributed" value={formatCurrency(kpis.revenue)} />
+          <KpiCard
+            label="Cost / booking"
+            value={
+              kpis.costPerBooking == null
+                ? "—"
+                : formatCurrencyCents(kpis.costPerBooking)
+            }
+            hint="Ad spend ÷ bookings"
+          />
+          <KpiCard
+            label="Overall ROAS"
+            value={formatMultiple(kpis.roas)}
+            hint="Revenue ÷ ad spend"
+          />
+        </div>
+      )}
 
-      {/* Section 2 — Content performance */}
-      <SectionCard
-        title="Content performance"
-        subtitle="Every content piece for this hotel, attributed via its utm_content tag. Click a column to sort."
-      >
-        <ContentPerformanceTable rows={contentPerf} />
-      </SectionCard>
+      {/* Section 2 — Content performance (attribution-dependent; hidden in pixel mode) */}
+      {!pixelMode && (
+        <SectionCard
+          title="Content performance"
+          subtitle="Every content piece for this hotel, attributed via its utm_content tag. Click a column to sort."
+        >
+          <ContentPerformanceTable rows={contentPerf} />
+        </SectionCard>
+      )}
 
       {/* Section 3 — Paid ads */}
       <SectionCard
@@ -432,15 +446,17 @@ export default async function HotelDashboardPage({
             </p>
             <p className="mt-0.5 text-xs text-zinc-500">Platform-reported</p>
           </div>
-          <div className="bg-white p-4 dark:bg-zinc-950">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              True ROI
-            </p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
-              {realRoi == null ? "—" : formatPercent(realRoi)}
-            </p>
-            <p className="mt-0.5 text-xs text-zinc-500">Real bookings ÷ spend</p>
-          </div>
+          {!pixelMode && (
+            <div className="bg-white p-4 dark:bg-zinc-950">
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                True ROI
+              </p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {realRoi == null ? "—" : formatPercent(realRoi)}
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-500">Real bookings ÷ spend</p>
+            </div>
+          )}
         </div>
 
         <div className="p-4">
@@ -450,15 +466,16 @@ export default async function HotelDashboardPage({
           <SpendChart data={ads.spendOverTime} />
         </div>
 
-        <div className="border-t border-zinc-200 dark:border-zinc-800">
-          <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
-            Campaign breakdown
-          </p>
-          {paidCampaigns.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-zinc-500">
-              No paid-ad content for this hotel yet.
+        {!pixelMode && (
+          <div className="border-t border-zinc-200 dark:border-zinc-800">
+            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Campaign breakdown
             </p>
-          ) : (
+            {paidCampaigns.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-zinc-500">
+                No paid-ad content for this hotel yet.
+              </p>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-zinc-500">
@@ -487,11 +504,12 @@ export default async function HotelDashboardPage({
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </SectionCard>
 
       {/* Section 4 — Influencer impact */}

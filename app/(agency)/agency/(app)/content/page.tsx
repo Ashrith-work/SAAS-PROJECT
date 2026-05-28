@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { utmContentFor } from "@/lib/utm";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { ExportMenu } from "@/components/ui/ExportMenu";
+import { isPixelMode } from "@/lib/tracking-mode";
 import { ContentFilters } from "./ContentFilters";
 
 const CONTENT_TYPES = ["organic", "paid_ad", "influencer", "story"] as const;
@@ -50,6 +51,7 @@ export default async function ContentLibraryPage({
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
+  const pixelMode = isPixelMode();
   const sp = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] ?? "" : v ?? "");
   const fHotel = one(sp.hotel);
@@ -107,7 +109,7 @@ export default async function ContentLibraryPage({
   const metrics = new Map<string, { clicks: number; visits: number; bookings: number }>();
   const blank = () => ({ clicks: 0, visits: 0, bookings: 0 });
 
-  if (keys.length > 0) {
+  if (keys.length > 0 && !pixelMode) {
     const [grouped, distinctVisits] = await Promise.all([
       prisma.trackingEvent.groupBy({
         by: ["utmContent", "eventType"],
@@ -177,9 +179,13 @@ export default async function ContentLibraryPage({
                   <th className="px-4 py-3 font-medium">Content</th>
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Platform</th>
-                  <th className="px-4 py-3 text-right font-medium">Clicks</th>
-                  <th className="px-4 py-3 text-right font-medium">Visits</th>
-                  <th className="px-4 py-3 text-right font-medium">Bookings</th>
+                  {!pixelMode && (
+                    <>
+                      <th className="px-4 py-3 text-right font-medium">Clicks</th>
+                      <th className="px-4 py-3 text-right font-medium">Visits</th>
+                      <th className="px-4 py-3 text-right font-medium">Bookings</th>
+                    </>
+                  )}
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Link</th>
                 </tr>
@@ -204,9 +210,13 @@ export default async function ContentLibraryPage({
                       <td className="px-4 py-3 whitespace-nowrap">
                         {PLATFORM_LABELS[p.platform] ?? p.platform}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{m.clicks}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{m.visits}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{m.bookings}</td>
+                      {!pixelMode && (
+                        <>
+                          <td className="px-4 py-3 text-right tabular-nums">{m.clicks}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{m.visits}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{m.bookings}</td>
+                        </>
+                      )}
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -230,12 +240,20 @@ export default async function ContentLibraryPage({
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-zinc-500">
-            <strong>Clicks</strong> counts every tracked arrival from a link;{" "}
-            <strong>visits</strong> counts the unique sessions behind them;{" "}
-            <strong>bookings</strong> counts conversions. All are matched to a
-            piece via its <code>utm_content</code> tag.
-          </p>
+          {pixelMode ? (
+            <p className="text-xs text-zinc-500">
+              Per-content performance (clicks / visits / bookings) is not
+              available in Facebook Pixel mode — Meta&apos;s Pixel reports at
+              the ad-account / campaign level only.
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500">
+              <strong>Clicks</strong> counts every tracked arrival from a link;{" "}
+              <strong>visits</strong> counts the unique sessions behind them;{" "}
+              <strong>bookings</strong> counts conversions. All are matched to a
+              piece via its <code>utm_content</code> tag.
+            </p>
+          )}
         </>
       )}
     </div>

@@ -7,6 +7,7 @@ import { ExportMenu } from "@/components/ui/ExportMenu";
 import { RevenueTrendChart } from "@/components/dashboard/RevenueTrendChart";
 import { RevenueByHotelChart } from "@/components/dashboard/RevenueByHotelChart";
 import { TrafficSourceChart } from "@/components/dashboard/TrafficSourceChart";
+import { isPixelMode } from "@/lib/tracking-mode";
 import {
   formatCurrency,
   formatMultiple,
@@ -112,11 +113,14 @@ export default async function AgencyDashboardPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
+  const pixelMode = isPixelMode();
   const now = new Date();
   const since = new Date(now.getTime() - THIRTY_DAYS_MS);
   const priorSince = new Date(now.getTime() - 2 * THIRTY_DAYS_MS);
 
-  // Multi-tenant: everything scoped to this agency.
+  // Multi-tenant: everything scoped to this agency. In pixel mode we skip the
+  // tracking-event queries entirely — those rows don't exist when the agency
+  // uses FB Pixel instead of the HotelTrack snippet.
   const [hotels, events, priorEvents, spendAgg, priorSpendAgg, hotelNameRows] = await Promise.all([
     prisma.hotelClient.findMany({
       where: { agencyId: member.agencyId },
@@ -129,25 +133,39 @@ export default async function AgencyDashboardPage() {
         lastSyncedAt: true,
       },
     }),
-    prisma.trackingEvent.findMany({
-      where: { agencyId: member.agencyId, createdAt: { gte: since } },
-      select: {
-        createdAt: true,
-        eventType: true,
-        utmSource: true,
-        conversionValue: true,
-        hotelClientId: true,
-      },
-    }),
-    prisma.trackingEvent.groupBy({
-      by: ["eventType"],
-      where: {
-        agencyId: member.agencyId,
-        createdAt: { gte: priorSince, lt: since },
-      },
-      _count: { _all: true },
-      _sum: { conversionValue: true },
-    }),
+    pixelMode
+      ? Promise.resolve([] as Array<{
+          createdAt: Date;
+          eventType: string;
+          utmSource: string | null;
+          conversionValue: import("@prisma/client").Prisma.Decimal | null;
+          hotelClientId: string;
+        }>)
+      : prisma.trackingEvent.findMany({
+          where: { agencyId: member.agencyId, createdAt: { gte: since } },
+          select: {
+            createdAt: true,
+            eventType: true,
+            utmSource: true,
+            conversionValue: true,
+            hotelClientId: true,
+          },
+        }),
+    pixelMode
+      ? Promise.resolve([] as Array<{
+          eventType: string;
+          _count: { _all: number };
+          _sum: { conversionValue: import("@prisma/client").Prisma.Decimal | null };
+        }>)
+      : prisma.trackingEvent.groupBy({
+          by: ["eventType"],
+          where: {
+            agencyId: member.agencyId,
+            createdAt: { gte: priorSince, lt: since },
+          },
+          _count: { _all: true },
+          _sum: { conversionValue: true },
+        }),
     prisma.adSnapshot.aggregate({
       where: { agencyId: member.agencyId, date: { gte: since } },
       _sum: { spend: true },
@@ -198,7 +216,9 @@ export default async function AgencyDashboardPage() {
     blank(),
   );
   const totalSpend = Number(spendAgg._sum.spend ?? 0);
+  const priorTotalSpend = Number(priorSpendAgg._sum.spend ?? 0);
   const roas = totalSpend > 0 ? totals.revenue / totalSpend : null;
+  const deltaSpend = pctChange(totalSpend, priorTotalSpend);
 
   // ── Prior period (for KPI deltas) ──
   const prior = blank();
@@ -266,57 +286,82 @@ export default async function AgencyDashboardPage() {
       </div>
 
       {/* Summary KPIs across all hotels */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Hotels" value={formatNumber(hotels.length)} accent="zinc" />
-        <KpiCard
-          label="Visits"
-          value={formatNumber(totals.visits)}
-          delta={deltaVisits}
-          accent="blue"
-        />
-        <KpiCard
-          label="Bookings"
-          value={formatNumber(totals.bookings)}
-          delta={deltaBookings}
-          accent="amber"
-        />
-        <KpiCard
-          label="Revenue"
-          value={formatCurrency(totals.revenue)}
-          delta={deltaRevenue}
-          accent="emerald"
-        />
-        <KpiCard
-          label="ROAS"
-          value={formatMultiple(roas)}
-          delta={deltaRoas}
-          accent="violet"
-        />
-      </div>
+      {pixelMode ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <KpiCard label="Hotels" value={formatNumber(hotels.length)} accent="zinc" />
+          <KpiCard
+            label="Meta ad spend"
+            value={formatCurrency(totalSpend)}
+            delta={deltaSpend}
+            accent="violet"
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiCard label="Hotels" value={formatNumber(hotels.length)} accent="zinc" />
+          <KpiCard
+            label="Visits"
+            value={formatNumber(totals.visits)}
+            delta={deltaVisits}
+            accent="blue"
+          />
+          <KpiCard
+            label="Bookings"
+            value={formatNumber(totals.bookings)}
+            delta={deltaBookings}
+            accent="amber"
+          />
+          <KpiCard
+            label="Revenue"
+            value={formatCurrency(totals.revenue)}
+            delta={deltaRevenue}
+            accent="emerald"
+          />
+          <KpiCard
+            label="ROAS"
+            value={formatMultiple(roas)}
+            delta={deltaRoas}
+            accent="violet"
+          />
+        </div>
+      )}
 
-      {/* Revenue trend (full width) */}
-      <ChartCard
-        title="Revenue & bookings"
-        subtitle="Daily attributed revenue (area) and bookings (line) across all hotels"
-      >
-        <RevenueTrendChart data={dailySeries} />
-      </ChartCard>
+      {/* Charts — only meaningful when the HotelTrack snippet is feeding events */}
+      {!pixelMode && (
+        <>
+          <ChartCard
+            title="Revenue & bookings"
+            subtitle="Daily attributed revenue (area) and bookings (line) across all hotels"
+          >
+            <RevenueTrendChart data={dailySeries} />
+          </ChartCard>
 
-      {/* Two-up: hotel ranking + traffic source */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ChartCard
-          title="Revenue by hotel"
-          subtitle="Top hotels by attributed revenue (last 30 days)"
-        >
-          <RevenueByHotelChart data={hotelRevenue} />
-        </ChartCard>
-        <ChartCard
-          title="Traffic by source"
-          subtitle="Visits attributed to each platform via utm_source"
-        >
-          <TrafficSourceChart data={sourceSeries} />
-        </ChartCard>
-      </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <ChartCard
+              title="Revenue by hotel"
+              subtitle="Top hotels by attributed revenue (last 30 days)"
+            >
+              <RevenueByHotelChart data={hotelRevenue} />
+            </ChartCard>
+            <ChartCard
+              title="Traffic by source"
+              subtitle="Visits attributed to each platform via utm_source"
+            >
+              <TrafficSourceChart data={sourceSeries} />
+            </ChartCard>
+          </div>
+        </>
+      )}
+
+      {pixelMode && (
+        <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+          Per-content / per-source attribution is disabled in Facebook Pixel mode.
+          The Pixel reports website conversions to Meta, not HotelTrack — open
+          Meta Ads Manager for content-level breakdowns, and the{" "}
+          <span className="font-medium">Paid ads performance</span> section on
+          each hotel for Meta-reported ROAS.
+        </div>
+      )}
 
       {/* Hotel client grid */}
       <div>
@@ -355,28 +400,30 @@ export default async function AgencyDashboardPage() {
                     <SnippetStatusBadge status={h.snippetStatus} />
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div>
-                      <p className="text-xs text-zinc-500">Visits</p>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {formatNumber(m.visits)}
-                      </p>
+                  {!pixelMode && (
+                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                      <div>
+                        <p className="text-xs text-zinc-500">Visits</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {formatNumber(m.visits)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">Bookings</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {formatNumber(m.bookings)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">Revenue</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {formatCurrency(m.revenue)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-zinc-500">Bookings</p>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {formatNumber(m.bookings)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500">Revenue</p>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {formatCurrency(m.revenue)}
-                      </p>
-                    </div>
-                  </div>
+                  )}
 
-                  <p className="mt-3 text-xs text-zinc-400">
+                  <p className={`text-xs text-zinc-400 ${pixelMode ? "mt-3" : "mt-3"}`}>
                     {formatLastSync(h.lastSyncedAt)}
                   </p>
                 </Link>
