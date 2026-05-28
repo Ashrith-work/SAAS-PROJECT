@@ -20,7 +20,8 @@
     "set:super-admin": "tsx scripts/set-super-admin.ts",
     "attach:member": "tsx scripts/attach-member.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tunnel": "ngrok http 3001"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
