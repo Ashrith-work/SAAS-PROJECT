@@ -133,7 +133,8 @@ RESEND_FROM_EMAIL=alerts@example.com
 
 | Doc | What's inside |
 |---|---|
-| `docs/adding-a-hotel-client.md` | Operational runbook: how to onboard a new hotel client (FB Pixel + Meta ad mapping + IG + share link) |
+| `docs/agency-owner-setup.md` | First-time setup for an agency owner: sign up, plan, Meta connection, alerts |
+| `docs/adding-a-hotel-client.md` | Per-hotel onboarding: dual-snippet install (HotelTrack + Meta Pixel), ad-account mapping, IG, content links, share link |
 | `docs/deploying-to-vercel.md` | 10-step Vercel deploy + pre-launch checklist + troubleshooting |
 | `docs/deploying-to-render.md` | 10-step Render deploy + pre-launch checklist + troubleshooting |
 
