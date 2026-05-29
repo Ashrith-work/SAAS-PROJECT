@@ -3,15 +3,29 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptToken } from "@/lib/encryption";
+import { encryptToken, decryptToken } from "@/lib/encryption";
 import {
   connectInstagramAccount,
   getTokenExpiry,
   InstagramAuthError,
   InstagramSetupError,
+  isInstagramLoginToken,
+  testInstagramConnection,
   type IgAccount,
 } from "@/lib/instagram";
 import { syncSocialAccount } from "@/lib/social-sync";
+
+// Tokens beginning with "IGAA" come from the "Instagram API with Instagram
+// Login" flow (graph.instagram.com) and are not compatible with our Graph API
+// client. Reject before any network call so the agency gets a clear, actionable
+// error instead of an opaque Graph failure. See lib/instagram.ts header.
+const IGAA_REJECTION =
+  "This looks like an \"Instagram API with Instagram Login\" token (starts with " +
+  "\"IGAA…\"). That flow uses graph.instagram.com and isn't compatible with " +
+  "HotelTrack. Please generate a Facebook Graph API token instead, from " +
+  "Meta for Developers → your Facebook app → Tools → Graph API Explorer. " +
+  "The token will start with \"EAA…\". See the \"How to get this token\" guide " +
+  "on this page for the full steps.";
 
 // Verifies the hotel belongs to the signed-in agency (multi-tenant guard).
 async function ownedHotel(hotelId: string) {
@@ -56,6 +70,7 @@ export async function findInstagramAccounts(
   const ctx = await ownedHotel(hotelId);
   if (!ctx) return { error: "That hotel wasn't found for your agency.", accounts: [] };
   if (!token) return { error: "Paste an access token first.", accounts: [] };
+  if (isInstagramLoginToken(token)) return { error: IGAA_REJECTION, accounts: [] };
 
   try {
     const accounts = await connectInstagramAccount(token);
@@ -88,6 +103,7 @@ export async function linkInstagramAccount(
   const ctx = await ownedHotel(hotelId);
   if (!ctx) return { error: "That hotel wasn't found for your agency.", ok: false };
   if (!token || !igUserId) return { error: "Missing token or account selection.", ok: false };
+  if (isInstagramLoginToken(token)) return { error: IGAA_REJECTION, ok: false };
 
   // Re-resolve server-side; never trust the client's igUserId — it must be one
   // this token actually manages.
@@ -180,4 +196,71 @@ export async function syncSocialInsights(
     };
   }
   return { error: res.error ?? "Sync failed.", ok: false, message: null };
+}
+
+// ── Test connection: live Graph call from the stored token ───────────────────
+
+export type TestConnectionState = {
+  error: string | null;
+  ok: boolean;
+  username: string | null;
+  followersCount: number | null;
+};
+
+export async function testInstagramConnectionAction(
+  _prev: TestConnectionState,
+  formData: FormData,
+): Promise<TestConnectionState> {
+  const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
+  const ctx = await ownedHotel(hotelId);
+  if (!ctx) {
+    return {
+      error: "That hotel wasn't found for your agency.",
+      ok: false,
+      username: null,
+      followersCount: null,
+    };
+  }
+
+  const account = await prisma.socialAccount.findFirst({
+    where: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, platform: "instagram" },
+    select: { igUserId: true, encryptedToken: true },
+  });
+  if (!account) {
+    return {
+      error: "Connect an Instagram account first.",
+      ok: false,
+      username: null,
+      followersCount: null,
+    };
+  }
+
+  let token: string;
+  try {
+    token = decryptToken(account.encryptedToken);
+  } catch {
+    return {
+      error: "Stored token could not be decrypted. Please reconnect.",
+      ok: false,
+      username: null,
+      followersCount: null,
+    };
+  }
+
+  try {
+    const probe = await testInstagramConnection(token, account.igUserId);
+    return {
+      error: null,
+      ok: true,
+      username: probe.username,
+      followersCount: probe.followersCount,
+    };
+  } catch (err) {
+    return {
+      error: igErrorMessage(err),
+      ok: false,
+      username: null,
+      followersCount: null,
+    };
+  }
 }

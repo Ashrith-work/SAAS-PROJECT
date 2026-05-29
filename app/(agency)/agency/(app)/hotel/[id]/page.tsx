@@ -22,11 +22,16 @@ import {
   formatPercent,
 } from "@/lib/format";
 import { DateRangeSelector } from "./DateRangeSelector";
+import { PostTypeFilter } from "./PostTypeFilter";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
 import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
+
+const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
+type PostType = (typeof POST_TYPES)[number];
+const DAY_MS = 86_400_000;
 import { isPixelMode } from "@/lib/tracking-mode";
 import type { ReportData } from "./ReportDocument";
 
@@ -124,6 +129,11 @@ export default async function HotelDashboardPage({
     from: one(sp.from),
     to: one(sp.to),
   });
+  const rawPostType = one(sp.postType);
+  const postType: PostType | null =
+    rawPostType && (POST_TYPES as readonly string[]).includes(rawPostType)
+      ? (rawPostType as PostType)
+      : null;
 
   // All five queries scoped to this agency + hotel + range.
   const [content, events, snapshots] = await Promise.all([
@@ -213,6 +223,7 @@ export default async function HotelDashboardPage({
           agencyId: member.agencyId,
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
+          ...(postType ? { mediaType: postType } : {}),
         },
         orderBy: { reach: "desc" },
         take: 10,
@@ -223,6 +234,8 @@ export default async function HotelDashboardPage({
           permalink: true,
           postedAt: true,
           reach: true,
+          likes: true,
+          comments: true,
           engagement: true,
           saves: true,
         },
@@ -237,7 +250,49 @@ export default async function HotelDashboardPage({
       }),
     ]);
 
-  const hasSocialData = socialSnaps.length > 0 || topPosts.length > 0;
+  // ── Stories: last 30 days only (older stories disappear from the Graph API,
+  //    but we still keep their snapshots — query window is a UX cap, not data
+  //    retention). ────────────────────────────────────────────────────────
+  const storyWindowStart = new Date(Date.now() - 30 * DAY_MS);
+  const [recentStories, storyAgg] = await Promise.all([
+    prisma.storySnapshot.findMany({
+      where: {
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        postedAt: { gte: storyWindowStart },
+      },
+      orderBy: { postedAt: "desc" },
+      take: 20,
+      select: {
+        storyId: true,
+        mediaType: true,
+        postedAt: true,
+        reach: true,
+        impressions: true,
+        tapsForward: true,
+        tapsBack: true,
+        exits: true,
+        replies: true,
+      },
+    }),
+    prisma.storySnapshot.aggregate({
+      where: {
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        postedAt: { gte: range.since, lte: range.until },
+      },
+      _sum: { impressions: true, exits: true },
+    }),
+  ]);
+  const storyImpressionsRange = storyAgg._sum.impressions ?? 0;
+  const storyExitsRange = storyAgg._sum.exits ?? 0;
+  const storyCompletionRate =
+    storyImpressionsRange > 0
+      ? (storyImpressionsRange - storyExitsRange) / storyImpressionsRange
+      : null;
+
+  const hasSocialData =
+    socialSnaps.length > 0 || topPosts.length > 0 || recentStories.length > 0;
   const followerSeries = socialSnaps.map((s) => ({
     date: s.date.toISOString().slice(0, 10),
     followers: s.followers,
@@ -333,6 +388,32 @@ export default async function HotelDashboardPage({
       redemptions: r.redemptions,
       revenue: r.revenue,
     })),
+    social: {
+      handle: socialAccount?.username ?? null,
+      followers: currentFollowers,
+      followerGrowth,
+      engagementRate,
+      storyCompletionRate,
+      topPosts: topPosts.map((p) => ({
+        caption: p.caption,
+        mediaType: p.mediaType,
+        postedAt: p.postedAt ? p.postedAt.toLocaleDateString() : null,
+        reach: p.reach,
+        likes: p.likes,
+        comments: p.comments,
+        engagement: p.engagement,
+        saves: p.saves,
+      })),
+      stories: recentStories.map((s) => ({
+        postedAt: s.postedAt ? s.postedAt.toLocaleString() : null,
+        mediaType: s.mediaType,
+        reach: s.reach,
+        impressions: s.impressions,
+        tapsForward: s.tapsForward,
+        exits: s.exits,
+        replies: s.replies,
+      })),
+    },
   };
 
   return (
@@ -601,7 +682,7 @@ export default async function HotelDashboardPage({
               Refreshes on a schedule, not in real time.
             </p>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <KpiCard
                 label="Followers"
                 value={formatNumber(currentFollowers)}
@@ -619,6 +700,11 @@ export default async function HotelDashboardPage({
                 value={engagementRate == null ? "—" : formatPercent(engagementRate)}
                 hint="Engagement ÷ reach"
               />
+              <KpiCard
+                label="Story completion"
+                value={storyCompletionRate == null ? "—" : formatPercent(storyCompletionRate)}
+                hint="(impressions − exits) ÷ impressions"
+              />
             </div>
 
             <div>
@@ -629,18 +715,26 @@ export default async function HotelDashboardPage({
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Top posts by reach
-              </p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Top posts by reach
+                </p>
+                <PostTypeFilter current={postType ?? "all"} />
+              </div>
               {topPosts.length === 0 ? (
-                <p className="text-sm text-zinc-500">No posts published in this range.</p>
+                <p className="text-sm text-zinc-500">
+                  No {postType ? `${postType} ` : ""}posts published in this range.
+                </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
                       <tr>
                         <th className="px-4 py-2 font-medium">Post</th>
+                        <th className="px-4 py-2 font-medium">Type</th>
                         <th className="px-4 py-2 text-right font-medium">Reach</th>
+                        <th className="px-4 py-2 text-right font-medium">Likes</th>
+                        <th className="px-4 py-2 text-right font-medium">Comments</th>
                         <th className="px-4 py-2 text-right font-medium">Engagement</th>
                         <th className="px-4 py-2 text-right font-medium">Saves</th>
                       </tr>
@@ -669,11 +763,73 @@ export default async function HotelDashboardPage({
                               </span>
                             )}
                           </td>
+                          <td className="px-4 py-2 text-xs capitalize text-zinc-500">
+                            {p.mediaType ?? "—"}
+                          </td>
                           <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.reach)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.likes)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {formatNumber(p.comments)}
+                          </td>
                           <td className="px-4 py-2 text-right tabular-nums">
                             {formatNumber(p.engagement)}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.saves)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Stories performance · last 30 days
+              </p>
+              {recentStories.length === 0 ? (
+                <p className="text-sm text-zinc-500">
+                  No stories captured in the last 30 days. Stories expire 24h
+                  after posting — the cron at <code>/api/social/sync-stories</code>{" "}
+                  runs every 2 hours to catch them.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                      <tr>
+                        <th className="px-4 py-2 font-medium">Story</th>
+                        <th className="px-4 py-2 text-right font-medium">Reach</th>
+                        <th className="px-4 py-2 text-right font-medium">Impressions</th>
+                        <th className="px-4 py-2 text-right font-medium">Taps fwd</th>
+                        <th className="px-4 py-2 text-right font-medium">Exits</th>
+                        <th className="px-4 py-2 text-right font-medium">Replies</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentStories.map((s) => (
+                        <tr key={s.storyId} className="border-t border-zinc-100 dark:border-zinc-800">
+                          <td className="px-4 py-2">
+                            <span className="text-xs capitalize text-zinc-500">
+                              {s.mediaType ?? "story"}
+                            </span>
+                            {s.postedAt && (
+                              <span className="block text-xs text-zinc-500">
+                                {new Date(s.postedAt).toLocaleString()}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(s.reach)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {formatNumber(s.impressions)}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {formatNumber(s.tapsForward)}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(s.exits)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {formatNumber(s.replies)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

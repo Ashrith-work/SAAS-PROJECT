@@ -2,7 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { decryptToken } from "@/lib/encryption";
-import { getAccountInsights, getMediaInsights, InstagramAuthError } from "@/lib/instagram";
+import {
+  getAccountInsights,
+  getMediaInsights,
+  getStoryInsights,
+  InstagramAuthError,
+} from "@/lib/instagram";
 
 // Shared organic-social sync engine. Pulls Instagram account + post insights and
 // upserts SocialSnapshot / PostSnapshot rows. Used by:
@@ -25,16 +30,23 @@ export type SyncTuning = {
   days?: number;
   /** Recent posts to refresh per account. Default 12. */
   postsPerAccount?: number;
-  /** Delay between each per-post insights call (ms). Default 350. */
+  /** Delay between each per-post / per-story insights call (ms). Default 350. */
   perRequestDelayMs?: number;
   /** Delay between accounts (ms). Default 1500. */
   accountDelayMs?: number;
+  /**
+   * Which parts of the IG payload to refresh. Defaults to "full" (account +
+   * posts + stories). The 2-hour stories cron passes "stories" to skip the
+   * heavier post/account calls and only capture stories before they expire.
+   */
+  mode?: "full" | "stories" | "no-stories";
 };
 
 export type AccountSyncResult = {
   ok: boolean;
   followers?: number;
   postsSynced?: number;
+  storiesSynced?: number;
   /** The token was dead — the account was marked disconnected. */
   disconnected?: boolean;
   error?: string;
@@ -59,6 +71,7 @@ export async function syncSocialAccount(
   const days = tuning.days ?? 30;
   const postsPerAccount = tuning.postsPerAccount ?? 12;
   const perRequestDelayMs = tuning.perRequestDelayMs ?? 350;
+  const mode = tuning.mode ?? "full";
 
   let token: string;
   try {
@@ -71,51 +84,91 @@ export async function syncSocialAccount(
   const since = new Date(until.getTime() - (days - 1) * DAY_MS);
 
   try {
-    const insights = await getAccountInsights(token, account.igUserId, { since, until });
-    for (const day of insights.daily) {
-      const date = new Date(`${day.date}T00:00:00.000Z`);
-      const data = {
-        followers: day.followers,
-        reach: day.reach,
-        impressions: day.impressions,
-        profileViews: day.profileViews,
-        engagement: 0, // account-level engagement isn't fetched; it lives on posts
-      };
-      await prisma.socialSnapshot.upsert({
-        where: { hotelClientId_date: { hotelClientId: account.hotelClientId, date } },
-        create: { agencyId: account.agencyId, hotelClientId: account.hotelClientId, date, ...data },
-        update: data,
-      });
+    let followers = 0;
+    let postsSynced = 0;
+    let storiesSynced = 0;
+
+    // ── Account + posts (skipped in stories-only mode) ────────────────────
+    if (mode !== "stories") {
+      const insights = await getAccountInsights(token, account.igUserId, { since, until });
+      for (const day of insights.daily) {
+        const date = new Date(`${day.date}T00:00:00.000Z`);
+        const data = {
+          followers: day.followers,
+          reach: day.reach,
+          impressions: day.impressions,
+          profileViews: day.profileViews,
+          engagement: 0, // account-level engagement isn't fetched; it lives on posts
+        };
+        await prisma.socialSnapshot.upsert({
+          where: { hotelClientId_date: { hotelClientId: account.hotelClientId, date } },
+          create: { agencyId: account.agencyId, hotelClientId: account.hotelClientId, date, ...data },
+          update: data,
+        });
+      }
+      followers = insights.followers;
+
+      const posts = await getMediaInsights(
+        token,
+        account.igUserId,
+        postsPerAccount,
+        perRequestDelayMs,
+      );
+      for (const p of posts) {
+        const data = {
+          agencyId: account.agencyId,
+          caption: p.caption,
+          mediaType: p.mediaType,
+          permalink: p.permalink,
+          postedAt: p.timestamp ? new Date(p.timestamp) : null,
+          impressions: p.impressions,
+          reach: p.reach,
+          likes: p.likes,
+          comments: p.comments,
+          engagement: p.engagement,
+          saves: p.saves,
+          shares: p.shares,
+          videoViews: p.videoViews,
+          fetchedAt: new Date(),
+        };
+        await prisma.postSnapshot.upsert({
+          where: {
+            hotelClientId_mediaId: { hotelClientId: account.hotelClientId, mediaId: p.mediaId },
+          },
+          create: { hotelClientId: account.hotelClientId, mediaId: p.mediaId, ...data },
+          update: data,
+        });
+      }
+      postsSynced = posts.length;
     }
 
-    const posts = await getMediaInsights(
-      token,
-      account.igUserId,
-      postsPerAccount,
-      perRequestDelayMs,
-    );
-    for (const p of posts) {
-      const data = {
-        agencyId: account.agencyId,
-        caption: p.caption,
-        mediaType: p.mediaType,
-        permalink: p.permalink,
-        postedAt: p.timestamp ? new Date(p.timestamp) : null,
-        impressions: p.impressions,
-        reach: p.reach,
-        engagement: p.engagement,
-        saves: p.saves,
-        shares: p.shares,
-        videoViews: p.videoViews,
-        fetchedAt: new Date(),
-      };
-      await prisma.postSnapshot.upsert({
-        where: {
-          hotelClientId_mediaId: { hotelClientId: account.hotelClientId, mediaId: p.mediaId },
-        },
-        create: { hotelClientId: account.hotelClientId, mediaId: p.mediaId, ...data },
-        update: data,
-      });
+    // ── Stories (skipped in no-stories mode) ──────────────────────────────
+    // Stories expire after 24h, so we capture every story still visible on
+    // each run and keep the StorySnapshot row forever for historical reports.
+    if (mode !== "no-stories") {
+      const stories = await getStoryInsights(token, account.igUserId, perRequestDelayMs);
+      for (const s of stories) {
+        const data = {
+          agencyId: account.agencyId,
+          mediaType: s.mediaType,
+          postedAt: s.timestamp ? new Date(s.timestamp) : null,
+          reach: s.reach,
+          impressions: s.impressions,
+          tapsForward: s.tapsForward,
+          tapsBack: s.tapsBack,
+          exits: s.exits,
+          replies: s.replies,
+          fetchedAt: new Date(),
+        };
+        await prisma.storySnapshot.upsert({
+          where: {
+            hotelClientId_storyId: { hotelClientId: account.hotelClientId, storyId: s.storyId },
+          },
+          create: { hotelClientId: account.hotelClientId, storyId: s.storyId, ...data },
+          update: data,
+        });
+      }
+      storiesSynced = stories.length;
     }
 
     await prisma.socialAccount.update({
@@ -123,7 +176,7 @@ export async function syncSocialAccount(
       data: { lastSyncedAt: new Date(), status: "connected" },
     });
 
-    return { ok: true, followers: insights.followers, postsSynced: posts.length };
+    return { ok: true, followers, postsSynced, storiesSynced };
   } catch (err) {
     if (err instanceof InstagramAuthError) {
       // Dead/expired/revoked token — flag for reconnection (same as ads sync).
@@ -141,6 +194,7 @@ export type SocialSyncResult = {
   accountsProcessed: number;
   accountsSynced: number;
   postsSynced: number;
+  storiesSynced: number;
   accountsDisconnected: number;
   errors: { agencyId: string; hotelClientId: string; error: string }[];
 };
@@ -172,6 +226,7 @@ export async function runSocialSync(
     accountsProcessed: 0,
     accountsSynced: 0,
     postsSynced: 0,
+    storiesSynced: 0,
     accountsDisconnected: 0,
     errors: [],
   };
@@ -186,6 +241,7 @@ export async function runSocialSync(
     if (res.ok) {
       result.accountsSynced += 1;
       result.postsSynced += res.postsSynced ?? 0;
+      result.storiesSynced += res.storiesSynced ?? 0;
     } else {
       if (res.disconnected) result.accountsDisconnected += 1;
       result.errors.push({

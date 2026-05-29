@@ -8,6 +8,10 @@
     {
       "path": "/api/social/sync",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/social/sync-stories",
+      "schedule": "0 */2 * * *"
     }
   ]
 }

@@ -91,6 +91,7 @@ model Agency {
   socialAccounts    SocialAccount[]
   socialSnapshots   SocialSnapshot[]
   postSnapshots     PostSnapshot[]
+  storySnapshots    StorySnapshot[]
 }
 
 model AgencyMember {
@@ -139,6 +140,7 @@ model HotelClient {
   socialAccounts  SocialAccount[]
   socialSnapshots SocialSnapshot[]
   postSnapshots   PostSnapshot[]
+  storySnapshots  StorySnapshot[]
 
   @@index([agencyId])
 }
@@ -370,11 +372,20 @@ model PostSnapshot {
   hotelClientId String
   mediaId       String
   caption       String?   @db.Text
+  // Normalised to one of: "image" | "video" | "carousel" | "reels".
+  // The Graph API returns IMAGE / VIDEO / CAROUSEL_ALBUM (with REELS distinguished
+  // by media_product_type=REELS); we normalise at write time so the dashboard
+  // filter has a stable, lowercase value to match.
   mediaType     String?
   permalink     String?
   postedAt      DateTime?
   impressions   Int       @default(0)
   reach         Int       @default(0)
+  // Likes + comments come from /{ig-user-id}/media (like_count, comments_count),
+  // not from /insights. `engagement` is the Meta-reported aggregate (sum-of-parts
+  // plus the platform's own definition) and is kept alongside the raw counts.
+  likes         Int       @default(0)
+  comments      Int       @default(0)
   engagement    Int       @default(0)
   saves         Int       @default(0)
   shares        Int       @default(0)
@@ -387,4 +398,33 @@ model PostSnapshot {
   @@unique([hotelClientId, mediaId]) // latest metrics per post
   @@index([agencyId])
   @@index([hotelClientId])
+}
+
+// Instagram Stories. Stories only live ~24 hours on the platform — once they
+// expire they're gone from the Graph API, so the dedicated /api/social/sync-stories
+// cron runs every 2 hours (not 6h like posts) to capture each story's final
+// metrics before the API drops it. We then KEEP the StorySnapshot row forever,
+// even after the story disappears from Instagram, so historical reporting works.
+model StorySnapshot {
+  id            String    @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  storyId       String // Instagram media id of the story
+  postedAt      DateTime?
+  mediaType     String? // normalised: "image" | "video"
+  reach         Int       @default(0)
+  impressions   Int       @default(0)
+  tapsForward   Int       @default(0) @map("taps_forward")
+  tapsBack      Int       @default(0) @map("taps_back")
+  exits         Int       @default(0)
+  replies       Int       @default(0)
+  fetchedAt     DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, storyId])
+  @@index([agencyId])
+  @@index([hotelClientId])
+  @@index([postedAt]) // for the "last 30 days" dashboard filter
 }

@@ -1,17 +1,54 @@
 import "server-only";
 
-// Instagram/Facebook ORGANIC social client (Graph API v21+). This is deliberately
-// separate from lib/meta.ts, which covers paid *Ads* insights. Here we resolve a
-// hotel's Instagram Business account from a Facebook Page the token manages, then
-// read account- and post-level organic insights.
+// ============================================================================
+// Instagram organic-social client — GRAPH API (EAA tokens) ONLY
+// ============================================================================
+//
+// This module talks to **graph.facebook.com** (the Facebook Graph API), not
+// graph.instagram.com. The access token it expects begins with **"EAA…"** and
+// is generated from:
+//
+//   Meta for Developers → your Facebook app (type: Business)
+//     → Tools → Graph API Explorer
+//     → with the Facebook Page the IG Business account is linked to
+//     → scopes: instagram_basic, instagram_manage_insights, pages_show_list,
+//               pages_read_engagement, business_management
+//
+// Why the Graph API / EAA path and not the newer Instagram Login flow (IGAA)?
+//
+//   1. Our Meta Ads integration (lib/meta.ts) already uses EAA tokens, so one
+//      consistent token type covers paid + organic across the platform.
+//   2. Meta Ads requires a Facebook Page anyway — so every hotel an agency
+//      runs ads for already meets the prerequisite for this flow (an IG
+//      Business account linked to a Facebook Page).
+//   3. /me/accounts → each Page's instagram_business_account lets us discover
+//      the IG Business Account ID server-side without a second OAuth round-trip.
+//
+// The other ("Instagram API with Instagram Login") path issues tokens starting
+// with **"IGAA…"** and is served from **graph.instagram.com**. Those tokens
+// are NOT compatible with this client and are rejected at the connect server
+// action — see app/(agency)/agency/(app)/hotels/[id]/setup/social-actions.ts.
+//
+// This module is the counterpart to lib/meta.ts (paid Ads insights).
 //
 // SECURITY (see CLAUDE.md): the decrypted token is a secret. It's sent in the
 // `Authorization: Bearer` header (never the query string) so it can't land in
 // request logs, and this module is `server-only`. Callers must NEVER log the
 // token or pass it to the frontend.
+// ============================================================================
 
 const GRAPH_API_VERSION = process.env.IG_GRAPH_API_VERSION ?? "v21.0";
+// Host: graph.facebook.com — NOT graph.instagram.com. See header comment.
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+
+/**
+ * Returns true if the token looks like an "Instagram API with Instagram Login"
+ * (IGAA) token rather than a Graph API (EAA) token. Used by the connect server
+ * action to reject incompatible tokens before any Graph call.
+ */
+export function isInstagramLoginToken(token: string): boolean {
+  return token.trim().startsWith("IGAA");
+}
 
 /** Token is invalid, expired, or revoked — the agency must paste a fresh one. */
 export class InstagramAuthError extends Error {
@@ -109,9 +146,13 @@ type RawPage = {
  * Lists the Instagram Business/Creator accounts reachable from the Facebook Pages
  * this token manages (`/me/accounts` → each Page's `instagram_business_account`).
  *
- * Throws {@link InstagramSetupError} when the login manages no Page with a linked
- * IG Business account (personal account, or unlinked) so the UI can explain the
- * fix, and {@link InstagramAuthError} when the token itself is bad.
+ * Throws two distinct {@link InstagramSetupError} messages so the UI can guide
+ * the agency to the right fix:
+ *   • No Facebook Pages at all on this token → the token wasn't generated with
+ *     a Page selected, or the user has no Pages.
+ *   • Pages exist but none have an instagram_business_account → the hotel's IG
+ *     isn't a Business/Creator account, or it isn't linked to a Page yet.
+ * Throws {@link InstagramAuthError} when the token itself is bad.
  */
 export async function connectInstagramAccount(accessToken: string): Promise<IgAccount[]> {
   const res = await graphGet<{ data?: RawPage[] }>("me/accounts", accessToken, {
@@ -119,8 +160,17 @@ export async function connectInstagramAccount(accessToken: string): Promise<IgAc
     limit: "100",
   });
 
+  const pages = res.data ?? [];
+  if (pages.length === 0) {
+    throw new InstagramSetupError(
+      "This token has no Facebook Pages linked. The hotel's Instagram must be a " +
+        "Business/Creator account linked to a Facebook Page. Generate the token " +
+        "again with that Page selected in Graph API Explorer.",
+    );
+  }
+
   const accounts: IgAccount[] = [];
-  for (const page of res.data ?? []) {
+  for (const page of pages) {
     const ig = page.instagram_business_account;
     if (!ig?.id) continue;
     accounts.push({
@@ -132,8 +182,48 @@ export async function connectInstagramAccount(accessToken: string): Promise<IgAc
     });
   }
 
-  if (accounts.length === 0) throw new InstagramSetupError();
+  if (accounts.length === 0) {
+    throw new InstagramSetupError(
+      "This Facebook Page has no Instagram Business account linked. Please link " +
+        "the hotel's Instagram account to this Facebook Page in Meta Business " +
+        "Suite first, then generate the token again.",
+    );
+  }
   return accounts;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// testConnection — one small Graph call to confirm the stored token still works
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type IgConnectionTest = {
+  igUserId: string;
+  username: string;
+  followersCount: number;
+};
+
+/**
+ * Reads the IG Business account's username + live follower count from
+ * `/{ig-user-id}?fields=id,username,followers_count`. Used by the
+ * "Test connection" button on the connect screen as proof the stored,
+ * encrypted token still works against `graph.facebook.com`.
+ */
+export async function testInstagramConnection(
+  accessToken: string,
+  igUserId: string,
+): Promise<IgConnectionTest> {
+  const res = await graphGet<{
+    id?: string;
+    username?: string;
+    followers_count?: number;
+  }>(igUserId, accessToken, {
+    fields: "id,username,followers_count",
+  });
+  return {
+    igUserId: res.id ?? igUserId,
+    username: res.username ?? "(unknown)",
+    followersCount: res.followers_count ?? 0,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,15 +342,24 @@ export async function getAccountInsights(
 // getMediaInsights — recent posts + their per-post insights
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Normalised post media types, stable across the DB + dashboard filter. */
+export type NormalisedMediaType = "image" | "video" | "carousel" | "reels";
+
 export type PostInsight = {
   mediaId: string;
   caption: string | null;
-  mediaType: string | null;
+  /** Normalised: "image" | "video" | "carousel" | "reels" — null if unknown. */
+  mediaType: NormalisedMediaType | null;
   permalink: string | null;
   /** ISO timestamp the post was published. */
   timestamp: string | null;
   impressions: number;
   reach: number;
+  /** From /media (like_count) — NOT from /insights. */
+  likes: number;
+  /** From /media (comments_count) — NOT from /insights. */
+  comments: number;
+  /** Meta-reported aggregate engagement; kept alongside raw likes/comments. */
   engagement: number;
   saves: number;
   shares: number;
@@ -270,12 +369,37 @@ export type PostInsight = {
 type RawMedia = {
   id: string;
   caption?: string;
-  media_type?: string;
+  media_type?: string; // IMAGE | VIDEO | CAROUSEL_ALBUM
+  media_product_type?: string; // FEED | REELS | STORY | AD — distinguishes Reels
   permalink?: string;
   timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
 };
 
-/** Metrics valid for a given media type. video_views only applies to video. */
+/**
+ * Normalises the Graph API's media_type + media_product_type into the four
+ * values the dashboard + filter understand. Reels are returned as VIDEO with
+ * media_product_type=REELS, so we check that combination first.
+ */
+export function normaliseMediaType(
+  mediaType: string | undefined,
+  mediaProductType: string | undefined,
+): NormalisedMediaType | null {
+  if (mediaProductType === "REELS") return "reels";
+  switch (mediaType) {
+    case "IMAGE":
+      return "image";
+    case "VIDEO":
+      return "video";
+    case "CAROUSEL_ALBUM":
+      return "carousel";
+    default:
+      return null;
+  }
+}
+
+/** Metrics valid for a given media type. video_views only applies to video/reels. */
 function metricsFor(mediaType: string | undefined): string[] {
   const base = ["reach", "impressions", "saved", "shares", "engagement"];
   if (mediaType === "VIDEO") return [...base, "video_views"];
@@ -286,9 +410,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The most recent posts for an IG account, each with its organic insights
- * (impressions, reach, engagement, saves, shares, video_views). Resilient: one
- * post whose insights fail (e.g. a metric unsupported for its type) is returned
- * with zeroed metrics rather than failing the whole batch.
+ * plus likes + comments. Resilient: one post whose insights fail (e.g. a
+ * metric unsupported for its type) is returned with zeroed metrics rather
+ * than failing the whole batch.
+ *
+ * Likes and comments come from /{ig-user-id}/media (like_count, comments_count)
+ * — NOT from /insights. We fetch both fields on the single media list call so
+ * we don't burn an extra request per post.
  *
  * `delayMs` spaces out the per-post insight calls to respect Instagram's rate
  * limit (~200 requests/hour) — pass a small value from a scheduled batch sync.
@@ -300,7 +428,8 @@ export async function getMediaInsights(
   delayMs = 0,
 ): Promise<PostInsight[]> {
   const media = await graphGet<{ data?: RawMedia[] }>(`${igUserId}/media`, accessToken, {
-    fields: "id,caption,media_type,permalink,timestamp",
+    fields:
+      "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
     limit: String(Math.min(Math.max(limit, 1), 50)),
   });
 
@@ -312,11 +441,13 @@ export async function getMediaInsights(
     const post: PostInsight = {
       mediaId: m.id,
       caption: m.caption ?? null,
-      mediaType: m.media_type ?? null,
+      mediaType: normaliseMediaType(m.media_type, m.media_product_type),
       permalink: m.permalink ?? null,
       timestamp: m.timestamp ?? null,
       impressions: 0,
       reach: 0,
+      likes: m.like_count ?? 0,
+      comments: m.comments_count ?? 0,
       engagement: 0,
       saves: 0,
       shares: 0,
@@ -361,4 +492,112 @@ export async function getMediaInsights(
   }
 
   return posts;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getStoryInsights — active Stories + per-story insights
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type StoryInsight = {
+  storyId: string;
+  /** "image" | "video" — stories are never carousels. */
+  mediaType: "image" | "video" | null;
+  /** ISO timestamp the story was published. */
+  timestamp: string | null;
+  reach: number;
+  impressions: number;
+  tapsForward: number;
+  tapsBack: number;
+  exits: number;
+  replies: number;
+};
+
+type RawStory = {
+  id: string;
+  media_type?: string;
+  timestamp?: string;
+};
+
+/**
+ * Active Instagram Stories + their per-story insights.
+ *
+ * IMPORTANT: Instagram Stories expire 24 hours after posting and disappear from
+ * `/{ig-user-id}/stories` once they do. Any story not captured before expiry is
+ * gone forever. This is why the dedicated cron at /api/social/sync-stories runs
+ * every 2 hours instead of the post sync's 6 hours.
+ *
+ * Resilient: one story whose insights call fails (a known metric quirk on the
+ * Stories API around the edge of the 24h window) is returned with zeroed
+ * metrics, never aborting the batch. A dead token still surfaces.
+ *
+ * `delayMs` spaces out the per-story calls — typical hotels post 3-8 stories at
+ * once so the per-call rate adds up across many accounts.
+ */
+export async function getStoryInsights(
+  accessToken: string,
+  igUserId: string,
+  delayMs = 0,
+): Promise<StoryInsight[]> {
+  const list = await graphGet<{ data?: RawStory[] }>(`${igUserId}/stories`, accessToken, {
+    fields: "id,media_type,timestamp",
+    limit: "50",
+  });
+
+  const stories: StoryInsight[] = [];
+  let first = true;
+  for (const s of list.data ?? []) {
+    if (!first && delayMs > 0) await sleep(delayMs);
+    first = false;
+
+    const story: StoryInsight = {
+      storyId: s.id,
+      mediaType: s.media_type === "VIDEO" ? "video" : s.media_type === "IMAGE" ? "image" : null,
+      timestamp: s.timestamp ?? null,
+      reach: 0,
+      impressions: 0,
+      tapsForward: 0,
+      tapsBack: 0,
+      exits: 0,
+      replies: 0,
+    };
+
+    try {
+      const ins = await graphGet<{ data?: RawInsightMetric[] }>(
+        `${s.id}/insights`,
+        accessToken,
+        { metric: "reach,impressions,taps_forward,taps_back,exits,replies" },
+      );
+      for (const metric of ins.data ?? []) {
+        const value = metric.values?.[0]?.value ?? 0;
+        switch (metric.name) {
+          case "reach":
+            story.reach = value;
+            break;
+          case "impressions":
+            story.impressions = value;
+            break;
+          case "taps_forward":
+            story.tapsForward = value;
+            break;
+          case "taps_back":
+            story.tapsBack = value;
+            break;
+          case "exits":
+            story.exits = value;
+            break;
+          case "replies":
+            story.replies = value;
+            break;
+        }
+      }
+    } catch (err) {
+      if (err instanceof InstagramAuthError) throw err;
+      // Some stories near the 24h boundary return a metric error; persist what
+      // we have rather than dropping the batch.
+    }
+
+    stories.push(story);
+  }
+
+  return stories;
 }

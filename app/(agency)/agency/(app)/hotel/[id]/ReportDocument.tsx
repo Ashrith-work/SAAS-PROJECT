@@ -49,6 +49,32 @@ export type ReportData = {
     redemptions: number;
     revenue: number;
   }[];
+  social: {
+    handle: string | null;
+    followers: number;
+    followerGrowth: number;
+    engagementRate: number | null;
+    storyCompletionRate: number | null;
+    topPosts: {
+      caption: string | null;
+      mediaType: string | null;
+      postedAt: string | null;
+      reach: number;
+      likes: number;
+      comments: number;
+      engagement: number;
+      saves: number;
+    }[];
+    stories: {
+      postedAt: string | null;
+      mediaType: string | null;
+      reach: number;
+      impressions: number;
+      tapsForward: number;
+      exits: number;
+      replies: number;
+    }[];
+  };
 };
 
 const BRAND = "#7c3aed";
@@ -316,6 +342,134 @@ export function ReportDocument({ data }: { data: ReportData }) {
                 ))}
               </tbody>
             </table>
+          )}
+        </section>
+
+        <section style={{ marginTop: 32 }}>
+          <SectionTitle>
+            Social performance{data.social.handle ? ` · @${data.social.handle}` : ""}
+          </SectionTitle>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <KpiTile label="Followers" value={formatNumber(data.social.followers)} />
+            <KpiTile
+              label="Follower growth"
+              value={`${data.social.followerGrowth >= 0 ? "+" : "−"}${formatNumber(
+                Math.abs(data.social.followerGrowth),
+              )}`}
+            />
+            <KpiTile
+              label="Engagement rate"
+              value={
+                data.social.engagementRate == null
+                  ? "—"
+                  : formatPercent(data.social.engagementRate)
+              }
+            />
+            <KpiTile
+              label="Story completion"
+              value={
+                data.social.storyCompletionRate == null
+                  ? "—"
+                  : formatPercent(data.social.storyCompletionRate)
+              }
+            />
+          </div>
+
+          {data.social.topPosts.length > 0 && (
+            <>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: MUTE,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  margin: "4px 0 8px",
+                }}
+              >
+                Top posts by reach
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 18 }}>
+                <thead>
+                  <tr>
+                    <th style={th("left")}>Post</th>
+                    <th style={th("left")}>Type</th>
+                    <th style={th("right")}>Reach</th>
+                    <th style={th("right")}>Likes</th>
+                    <th style={th("right")}>Comments</th>
+                    <th style={th("right")}>Engagement</th>
+                    <th style={th("right")}>Saves</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.social.topPosts.map((p, i) => (
+                    <tr key={i}>
+                      <td style={td("left")}>
+                        {p.caption ? p.caption.slice(0, 60) : p.mediaType ?? "Post"}
+                        {p.postedAt && (
+                          <div style={{ fontSize: 11, color: MUTE, marginTop: 2 }}>
+                            {p.postedAt}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...td("left"), textTransform: "capitalize" }}>
+                        {p.mediaType ?? "—"}
+                      </td>
+                      <td style={td("right")}>{formatNumber(p.reach)}</td>
+                      <td style={td("right")}>{formatNumber(p.likes)}</td>
+                      <td style={td("right")}>{formatNumber(p.comments)}</td>
+                      <td style={td("right")}>{formatNumber(p.engagement)}</td>
+                      <td style={td("right")}>{formatNumber(p.saves)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {data.social.stories.length > 0 && (
+            <>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: MUTE,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  margin: "4px 0 8px",
+                }}
+              >
+                Stories · last 30 days
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th("left")}>Posted</th>
+                    <th style={th("left")}>Type</th>
+                    <th style={th("right")}>Reach</th>
+                    <th style={th("right")}>Impressions</th>
+                    <th style={th("right")}>Taps fwd</th>
+                    <th style={th("right")}>Exits</th>
+                    <th style={th("right")}>Replies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.social.stories.map((s, i) => (
+                    <tr key={i}>
+                      <td style={td("left")}>{s.postedAt ?? "—"}</td>
+                      <td style={{ ...td("left"), textTransform: "capitalize" }}>
+                        {s.mediaType ?? "story"}
+                      </td>
+                      <td style={td("right")}>{formatNumber(s.reach)}</td>
+                      <td style={td("right")}>{formatNumber(s.impressions)}</td>
+                      <td style={td("right")}>{formatNumber(s.tapsForward)}</td>
+                      <td style={td("right")}>{formatNumber(s.exits)}</td>
+                      <td style={td("right")}>{formatNumber(s.replies)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </section>
 
