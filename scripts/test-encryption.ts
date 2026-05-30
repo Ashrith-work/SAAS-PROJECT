@@ -18,10 +18,16 @@ const encrypted = encryptToken(sample);
 console.log("Encrypted:  ", encrypted);
 
 const decrypted = decryptToken(encrypted);
-console.log("Decrypted:  ", decrypted);
+// decrypted is a SecretToken — logging it prints "[REDACTED]", not the value.
+console.log("Decrypted:  ", decrypted, "(reveal):", decrypted.reveal());
 
-assert(decrypted === sample, "round-trip did not match the original");
+assert(decrypted.reveal() === sample, "round-trip did not match the original");
 console.log("✅ Round-trip matches the original.");
+assert(
+  String(decrypted) === "[REDACTED]" && JSON.stringify(decrypted) === '"[REDACTED]"',
+  "SecretToken must redact on toString/JSON",
+);
+console.log("✅ SecretToken redacts on log/serialize.");
 
 // A fresh random IV per call means the same input encrypts differently.
 assert(

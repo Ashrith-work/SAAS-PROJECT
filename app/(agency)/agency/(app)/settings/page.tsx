@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
-import { decryptToken } from "@/lib/encryption";
+import { getTokenForApiCall } from "@/lib/token-access";
 import { getAdAccounts, MetaAuthError, type AdAccount } from "@/lib/meta";
 import { MetaTokenForm } from "./MetaTokenForm";
 import { AdAccountMapping } from "./AdAccountMapping";
@@ -21,13 +21,9 @@ export default async function SettingsPage() {
   // Multi-tenant: agencyScoped restricts to this agency's Meta connection.
   const token = await agencyScoped(prisma.metaToken).findFirst({
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      status: true,
-      tokenExpiresAt: true,
-      // Decrypted server-side only; NEVER passed to a client component.
-      encryptedToken: true,
-    },
+    // The ciphertext is never selected here — it's read + decrypted only through
+    // getTokenForApiCall below, which audits the access.
+    select: { id: true, status: true, tokenExpiresAt: true },
   });
 
   let connected = token?.status === "connected";
@@ -36,7 +32,14 @@ export default async function SettingsPage() {
 
   if (token && connected) {
     try {
-      accounts = await getAdAccounts(decryptToken(token.encryptedToken));
+      accounts = await getAdAccounts(
+        (
+          await getTokenForApiCall("meta_ads", token.id, {
+            agencyId: member.agencyId,
+            source: "page:settings",
+          })
+        ).reveal(),
+      );
     } catch (err) {
       if (err instanceof MetaAuthError) {
         // The token expired or was revoked since we stored it. Mark the

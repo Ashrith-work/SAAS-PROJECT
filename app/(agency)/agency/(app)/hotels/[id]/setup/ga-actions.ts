@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
-import { encryptToken, decryptToken } from "@/lib/encryption";
+import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
+import { getTokenForApiCall } from "@/lib/token-access";
 import {
   GaAuthError,
   isServiceAccountJson,
@@ -104,7 +105,12 @@ export async function connectGoogleAnalytics(
   // Encrypt the whole JSON blob with the same AES-256-GCM utility we use for
   // Meta tokens. We re-serialise from `credentials` so any junk fields the
   // user accidentally added get stripped first.
-  const encryptedCredentials = encryptToken(JSON.stringify(credentials));
+  const encryptedCredentials = await encryptWithAudit(JSON.stringify(credentials), {
+    agencyId: ctx.agencyId,
+    hotelClientId: ctx.hotelId,
+    tokenType: "ga_credentials",
+    source: "action:connectGoogleAnalytics",
+  });
 
   await agencyScoped(prisma.googleAnalyticsConnection).upsert({
     // hotelClientId is unique per hotel and was ownership-verified above, so it
@@ -138,6 +144,13 @@ export async function disconnectGoogleAnalytics(formData: FormData): Promise<voi
   await agencyScoped(prisma.googleAnalyticsConnection).deleteMany({
     where: { hotelClientId: ctx.hotelId },
   });
+  await logTokenAudit({
+    agencyId: ctx.agencyId,
+    hotelClientId: ctx.hotelId,
+    tokenType: "ga_credentials",
+    action: "deleted",
+    source: "action:disconnectGoogleAnalytics",
+  });
   revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
 }
 
@@ -158,13 +171,21 @@ export async function testGaConnectionAction(
 
   const conn = await agencyScoped(prisma.googleAnalyticsConnection).findFirst({
     where: { hotelClientId: ctx.hotelId },
-    select: { propertyId: true, encryptedCredentials: true },
+    select: { id: true, propertyId: true },
   });
   if (!conn) return { error: "Connect Google Analytics first.", ok: false };
 
   let credentials: ServiceAccountCredentials;
   try {
-    credentials = JSON.parse(decryptToken(conn.encryptedCredentials)) as ServiceAccountCredentials;
+    credentials = JSON.parse(
+      (
+        await getTokenForApiCall("ga_credentials", conn.id, {
+          agencyId: ctx.agencyId,
+          hotelClientId: ctx.hotelId,
+          source: "action:testGaConnection",
+        })
+      ).reveal(),
+    ) as ServiceAccountCredentials;
   } catch {
     return { error: "Stored credentials could not be decrypted. Please reconnect.", ok: false };
   }
@@ -206,13 +227,8 @@ export async function syncGaInsights(
 
   const conn = await agencyScoped(prisma.googleAnalyticsConnection).findFirst({
     where: { hotelClientId: ctx.hotelId },
-    select: {
-      id: true,
-      agencyId: true,
-      hotelClientId: true,
-      propertyId: true,
-      encryptedCredentials: true,
-    },
+    // No ciphertext here — syncGaConnection resolves it via getTokenForApiCall.
+    select: { id: true, agencyId: true, hotelClientId: true, propertyId: true },
   });
   if (!conn) {
     return { error: "Connect Google Analytics first.", ok: false, message: null };

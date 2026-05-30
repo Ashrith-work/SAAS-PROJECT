@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { decryptToken } from "@/lib/encryption";
+import { getTokenForApiCall } from "@/lib/token-access";
 import {
   GaAuthError,
   getDailyMetrics,
@@ -46,7 +46,6 @@ type SyncableConnection = {
   agencyId: string;
   hotelClientId: string;
   propertyId: string;
-  encryptedCredentials: string;
 };
 
 /**
@@ -62,8 +61,12 @@ export async function syncGaConnection(
 
   let credentials: ServiceAccountCredentials;
   try {
-    const json = decryptToken(conn.encryptedCredentials);
-    credentials = JSON.parse(json) as ServiceAccountCredentials;
+    const json = await getTokenForApiCall("ga_credentials", conn.id, {
+      agencyId: conn.agencyId,
+      hotelClientId: conn.hotelClientId,
+      source: "sync:ga",
+    });
+    credentials = JSON.parse(json.reveal()) as ServiceAccountCredentials;
   } catch {
     return { ok: false, error: "Stored credentials could not be decrypted." };
   }
@@ -166,7 +169,6 @@ export async function runGaSync(
       agencyId: true,
       hotelClientId: true,
       propertyId: true,
-      encryptedCredentials: true,
     },
   });
 

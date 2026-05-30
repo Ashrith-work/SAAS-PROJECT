@@ -1,6 +1,5 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAgencyId, requireSuperAdmin } from "@/lib/tenant";
 
@@ -18,7 +17,14 @@ import { requireAgencyId, requireSuperAdmin } from "@/lib/tenant";
 // the app connects as the non-owner `hoteltrack_app` role.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tx = Prisma.TransactionClient;
+// The interactive-transaction client type, derived from our EXTENDED client (the
+// strip extension changes the client type, so the plain Prisma.TransactionClient
+// no longer matches). This is the client minus the methods unavailable inside a
+// transaction.
+type Tx = Omit<
+  typeof prisma,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
 
 /** Set the tenant GUC on an EXISTING interactive transaction. */
 export async function setAgencyContextOnTx(tx: Tx, agencyId: string): Promise<void> {

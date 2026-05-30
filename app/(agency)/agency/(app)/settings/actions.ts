@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
-import { encryptToken } from "@/lib/encryption";
+import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
@@ -43,7 +43,11 @@ export async function saveMetaToken(
     };
   }
 
-  const encryptedToken = encryptToken(raw);
+  const encryptedToken = await encryptWithAudit(raw, {
+    agencyId: member.agencyId,
+    tokenType: "meta_ads",
+    source: "action:saveMetaToken",
+  });
   const tokenExpiresAt = validation.expiresAt ?? NEVER_EXPIRES;
 
   // Scoped to this agency (multi-tenant). agencyId isn't unique on MetaToken, so
@@ -81,6 +85,12 @@ export async function disconnectMetaToken(): Promise<void> {
   if (!member) return;
 
   await agencyScoped(prisma.metaToken).deleteMany();
+  await logTokenAudit({
+    agencyId: member.agencyId,
+    tokenType: "meta_ads",
+    action: "deleted",
+    source: "action:disconnectMetaToken",
+  });
   revalidatePath("/agency/settings");
 }
 

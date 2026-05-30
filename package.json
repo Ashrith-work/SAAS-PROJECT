@@ -11,6 +11,7 @@
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
     "test:encryption": "tsx scripts/test-encryption.ts",
+    "rotate:keys": "tsx scripts/rotate-encryption-keys.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
     "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",

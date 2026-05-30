@@ -1,9 +1,10 @@
-name: Multi-tenant isolation
+name: Security & isolation tests
 
-# Runs the cross-tenant isolation suite on every push and PR. Make this a
-# REQUIRED status check (Settings → Branches → branch protection, and/or your
-# Vercel "required checks") so a failure BLOCKS the deployment — a tenant-
-# isolation regression must never ship.
+# Runs the security test suite — token encryption (tests/encryption.test.ts) and
+# cross-tenant isolation (tests/isolation.test.ts) — on every push and PR. Make
+# this a REQUIRED status check (Settings → Branches → branch protection, and/or
+# your Vercel "required checks") so a failure BLOCKS the deployment — an
+# encryption or tenant-isolation regression must never ship.
 
 on:
   push:
@@ -11,7 +12,7 @@ on:
   pull_request:
 
 jobs:
-  isolation:
+  security-tests:
     runs-on: ubuntu-latest
     env:
       # A dedicated test database is strongly recommended (the suite creates and
@@ -35,5 +36,6 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
-      - name: Run isolation suite
-        run: npm run test:isolation
+      # Runs ALL test files (tests/**/*.test.ts) — encryption + isolation.
+      - name: Run security & isolation suite
+        run: npm test

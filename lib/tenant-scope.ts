@@ -132,4 +132,5 @@ export const MULTI_TENANT_MODELS = [
   "googleAnalyticsConnection",
   "gaSnapshot",
   "gaSourceBreakdown",
+  "tokenAuditLog",
 ] as const;
