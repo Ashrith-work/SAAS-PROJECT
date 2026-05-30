@@ -1,0 +1,38 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Layer-2 RLS ACTIVATION (run by a human against the Neon database).
+--
+-- Migration 20260530100000_enable_rls already:
+--   • enabled RLS + tenant_isolation policies on every multi-tenant table,
+--   • created the non-owner role `hoteltrack_app` (NOLOGIN) and granted it
+--     SELECT/INSERT/UPDATE/DELETE.
+--
+-- RLS only ENFORCES once the app connects as that non-owner role (the owner
+-- bypasses RLS). To activate:
+--
+--   1. Give the role a login + password (keep the password OUT of git):
+--
+--        ALTER ROLE hoteltrack_app LOGIN PASSWORD 'CHOOSE_A_STRONG_PASSWORD';
+--
+--      On Neon you can instead create a dedicated role in the console and grant
+--      it membership in hoteltrack_app:  GRANT hoteltrack_app TO <neon_role>;
+--
+--   2. Point the app at the new role by setting DATABASE_URL to that role's
+--      connection string (same host/db, role=hoteltrack_app). Keep the OWNER
+--      connection string as MIGRATE_DATABASE_URL so `prisma migrate`/DDL still
+--      runs as the owner.
+--
+--   3. Ensure every query path sets the GUC (lib/rls.ts):
+--        • authenticated requests → withRequestAgencyContext()
+--        • tracking ingest / cron / share → withAgencyContext(resolvedAgencyId, …)
+--        • onboarding (creates the Agency) + super-admin → withSuperAdminContext()
+--      Until a path is wrapped, RLS will (correctly) return zero rows for it.
+--
+-- Verify enforcement at any time WITHOUT switching the connection:
+--   npx tsx scripts/smoke-rls.ts
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Optional hardening: also subject the OWNER to RLS (defense in depth). Only do
+-- this AFTER every query path sets the GUC, or the app will return no rows.
+--   ALTER TABLE "HotelClient"   FORCE ROW LEVEL SECURITY;
+--   ALTER TABLE "TrackingEvent" FORCE ROW LEVEL SECURITY;
+--   -- … repeat for every table in MULTI_TENANT_MODELS + "Agency"

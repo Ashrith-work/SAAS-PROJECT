@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 
@@ -14,9 +15,8 @@ export default async function HotelsPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
-  // Multi-tenant: only this agency's hotels.
-  const hotels = await prisma.hotelClient.findMany({
-    where: { agencyId: member.agencyId },
+  // Multi-tenant: agencyScoped injects { agencyId } automatically.
+  const hotels = await agencyScoped(prisma.hotelClient).findMany({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

@@ -1,0 +1,39 @@
+name: Multi-tenant isolation
+
+# Runs the cross-tenant isolation suite on every push and PR. Make this a
+# REQUIRED status check (Settings → Branches → branch protection, and/or your
+# Vercel "required checks") so a failure BLOCKS the deployment — a tenant-
+# isolation regression must never ship.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    env:
+      # A dedicated test database is strongly recommended (the suite creates and
+      # deletes TEST_ISO*-prefixed rows). Point this secret at it.
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL || secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # Ensures the RLS policies + the hoteltrack_app role exist on the test DB
+      # (Layer 2 migration). The suite needs them for the DB-level RLS checks.
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Run isolation suite
+        run: npm run test:isolation

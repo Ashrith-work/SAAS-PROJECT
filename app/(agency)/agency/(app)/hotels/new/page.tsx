@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { getPlan, hotelLimit } from "@/lib/plans";
 import { HotelForm } from "./HotelForm";
 
@@ -11,7 +12,7 @@ export default async function NewHotelPage() {
 
   const limit = hotelLimit(member.agency.plan);
   const count = Number.isFinite(limit)
-    ? await prisma.hotelClient.count({ where: { agencyId: member.agencyId } })
+    ? await agencyScoped(prisma.hotelClient).count()
     : 0;
   const atLimit = Number.isFinite(limit) && count >= limit;
 

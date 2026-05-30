@@ -18,6 +18,7 @@ import { encryptToken } from "../lib/encryption";
 const WINDOW_DAYS = 60;
 const POST_COUNT = 10;
 const STORY_COUNT = 8; // last ~7 days of stories
+const GA_WINDOW_DAYS = 60;
 const DAY_MS = 86_400_000;
 
 const rnd = (min: number, max: number) => min + Math.random() * (max - min);
@@ -158,8 +159,91 @@ async function main() {
     });
   }
 
+  // ── GA4: demo connection + 60 days of snapshots + source breakdown ──
+  // Demo source mix favours instagram + google_organic to mirror what a hotel
+  // running paid+organic social would actually see; numbers scale with day
+  // index so the dashboard chart shows realistic shape.
+  const existingGa = await prisma.googleAnalyticsConnection.findFirst({
+    where: { agencyId, hotelClientId: hid },
+    select: { id: true },
+  });
+  if (existingGa) {
+    await prisma.googleAnalyticsConnection.update({
+      where: { id: existingGa.id },
+      data: { status: "connected", lastSyncedAt: new Date() },
+    });
+  } else {
+    await prisma.googleAnalyticsConnection.create({
+      data: {
+        agencyId,
+        hotelClientId: hid,
+        propertyId: "demo-ga-property",
+        encryptedCredentials: encryptToken("ga-demo-credentials-not-real"),
+        status: "connected",
+        lastSyncedAt: new Date(),
+      },
+    });
+  }
+
+  for (let d = 0; d < GA_WINDOW_DAYS; d++) {
+    const date = dateOnly(daysAgo(d));
+    const sessions = rndInt(120, 950);
+    const conversions = Math.round(sessions * rnd(0.012, 0.05));
+    const data = {
+      agencyId,
+      totalUsers: Math.round(sessions * rnd(0.85, 0.97)),
+      newUsers: Math.round(sessions * rnd(0.55, 0.78)),
+      sessions,
+      bounceRate: rnd(0.32, 0.62),
+      avgSessionDuration: rnd(40, 220),
+      pageviews: Math.round(sessions * rnd(2.2, 4.8)),
+      conversions,
+      conversionRate: sessions > 0 ? conversions / sessions : 0,
+    };
+    await prisma.gaSnapshot.upsert({
+      where: { hotelClientId_date: { hotelClientId: hid, date } },
+      create: { hotelClientId: hid, date, ...data },
+      update: data,
+    });
+
+    // Source breakdown — weights roughly match real hotel marketing mixes.
+    const sourceWeights: Array<[string, string, number]> = [
+      ["instagram", "social", 0.28],
+      ["facebook", "social", 0.12],
+      ["google_organic", "organic", 0.30],
+      ["google_paid", "cpc", 0.10],
+      ["direct", "(none)", 0.15],
+      ["referral", "referral", 0.05],
+    ];
+    let remaining = sessions;
+    for (let i = 0; i < sourceWeights.length; i++) {
+      const [source, medium, weight] = sourceWeights[i];
+      const share =
+        i === sourceWeights.length - 1
+          ? remaining
+          : Math.round(sessions * (weight + rnd(-0.04, 0.04)));
+      const value = Math.max(0, Math.min(share, remaining));
+      remaining -= value;
+      const sourceConversions = Math.round(value * rnd(0.005, 0.06));
+      const breakdownData = {
+        agencyId,
+        medium,
+        sessions: value,
+        conversions: sourceConversions,
+        revenue: sourceConversions * rnd(80, 350),
+      };
+      await prisma.gaSourceBreakdown.upsert({
+        where: {
+          hotelClientId_date_source: { hotelClientId: hid, date, source },
+        },
+        create: { hotelClientId: hid, date, source, ...breakdownData },
+        update: breakdownData,
+      });
+    }
+  }
+
   console.log(
-    `Done: ${WINDOW_DAYS} account snapshots + ${POST_COUNT} posts + ${STORY_COUNT} stories.\n` +
+    `Done: ${WINDOW_DAYS} account snapshots + ${POST_COUNT} posts + ${STORY_COUNT} stories + ${GA_WINDOW_DAYS} GA days.\n` +
       `Open the dashboard at:  /agency/hotel/${hid}\n`,
   );
 }

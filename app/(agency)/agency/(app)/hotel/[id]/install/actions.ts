@@ -2,6 +2,7 @@
 
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import {
   classifyConnection,
   detectSnippet,
@@ -15,9 +16,9 @@ import {
 async function ownedHotel(hotelId: string) {
   const member = await getCurrentMember();
   if (!member) return null;
-  return prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
-    select: { id: true, agencyId: true, websiteUrl: true, siteId: true },
+  return agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
+    select: { id: true, websiteUrl: true, siteId: true },
   });
 }
 
@@ -66,28 +67,17 @@ export async function testSnippetConnection(
 
   // 2) Have we actually received events from this hotel (is it firing)?
   const since = new Date(Date.now() - RECENT_WINDOW_MS);
+  const events = agencyScoped(prisma.trackingEvent);
   const [eventsEver, recentEvents, lastEvent, lastConversion] = await Promise.all([
-    prisma.trackingEvent.count({
-      where: { agencyId: hotel.agencyId, hotelClientId: hotel.id },
-    }),
-    prisma.trackingEvent.count({
-      where: {
-        agencyId: hotel.agencyId,
-        hotelClientId: hotel.id,
-        createdAt: { gte: since },
-      },
-    }),
-    prisma.trackingEvent.findFirst({
-      where: { agencyId: hotel.agencyId, hotelClientId: hotel.id },
+    events.count({ where: { hotelClientId: hotel.id } }),
+    events.count({ where: { hotelClientId: hotel.id, createdAt: { gte: since } } }),
+    events.findFirst({
+      where: { hotelClientId: hotel.id },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),
-    prisma.trackingEvent.findFirst({
-      where: {
-        agencyId: hotel.agencyId,
-        hotelClientId: hotel.id,
-        eventType: "conversion",
-      },
+    events.findFirst({
+      where: { hotelClientId: hotel.id, eventType: "conversion" },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

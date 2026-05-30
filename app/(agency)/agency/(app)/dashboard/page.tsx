@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { RevenueTrendChart } from "@/components/dashboard/RevenueTrendChart";
@@ -122,8 +123,7 @@ export default async function AgencyDashboardPage() {
   // tracking-event queries entirely — those rows don't exist when the agency
   // uses FB Pixel instead of the HotelTrack snippet.
   const [hotels, events, priorEvents, spendAgg, priorSpendAgg, hotelNameRows] = await Promise.all([
-    prisma.hotelClient.findMany({
-      where: { agencyId: member.agencyId },
+    agencyScoped(prisma.hotelClient).findMany({
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -141,8 +141,8 @@ export default async function AgencyDashboardPage() {
           conversionValue: import("@prisma/client").Prisma.Decimal | null;
           hotelClientId: string;
         }>)
-      : prisma.trackingEvent.findMany({
-          where: { agencyId: member.agencyId, createdAt: { gte: since } },
+      : agencyScoped(prisma.trackingEvent).findMany({
+          where: { createdAt: { gte: since } },
           select: {
             createdAt: true,
             eventType: true,
@@ -157,25 +157,21 @@ export default async function AgencyDashboardPage() {
           _count: { _all: number };
           _sum: { conversionValue: import("@prisma/client").Prisma.Decimal | null };
         }>)
-      : prisma.trackingEvent.groupBy({
+      : agencyScoped(prisma.trackingEvent).groupBy({
           by: ["eventType"],
-          where: {
-            agencyId: member.agencyId,
-            createdAt: { gte: priorSince, lt: since },
-          },
+          where: { createdAt: { gte: priorSince, lt: since } },
           _count: { _all: true },
           _sum: { conversionValue: true },
         }),
-    prisma.adSnapshot.aggregate({
-      where: { agencyId: member.agencyId, date: { gte: since } },
+    agencyScoped(prisma.adSnapshot).aggregate({
+      where: { date: { gte: since } },
       _sum: { spend: true },
     }),
-    prisma.adSnapshot.aggregate({
-      where: { agencyId: member.agencyId, date: { gte: priorSince, lt: since } },
+    agencyScoped(prisma.adSnapshot).aggregate({
+      where: { date: { gte: priorSince, lt: since } },
       _sum: { spend: true },
     }),
-    prisma.hotelClient.findMany({
-      where: { agencyId: member.agencyId },
+    agencyScoped(prisma.hotelClient).findMany({
       select: { id: true, name: true },
     }),
   ]);

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { decryptToken } from "@/lib/encryption";
 import { getAdAccounts, MetaAuthError, type AdAccount } from "@/lib/meta";
 import { MetaTokenForm } from "./MetaTokenForm";
@@ -17,9 +18,8 @@ export default async function SettingsPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
-  // Multi-tenant: only this agency's Meta connection.
-  const token = await prisma.metaToken.findFirst({
-    where: { agencyId: member.agencyId },
+  // Multi-tenant: agencyScoped restricts to this agency's Meta connection.
+  const token = await agencyScoped(prisma.metaToken).findFirst({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -42,7 +42,7 @@ export default async function SettingsPage() {
         // The token expired or was revoked since we stored it. Mark the
         // connection disconnected so the UI shows a clear reconnect prompt
         // (CLAUDE.md: handle expired tokens gracefully).
-        await prisma.metaToken.update({
+        await agencyScoped(prisma.metaToken).update({
           where: { id: token.id },
           data: { status: "disconnected" },
         });
@@ -57,8 +57,7 @@ export default async function SettingsPage() {
   }
 
   const hotels = connected
-    ? await prisma.hotelClient.findMany({
-        where: { agencyId: member.agencyId },
+    ? await agencyScoped(prisma.hotelClient).findMany({
         orderBy: { createdAt: "desc" },
         select: { id: true, name: true, metaAdAccountId: true },
       })

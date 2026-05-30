@@ -1,5 +1,6 @@
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { resolveRange, contentIdFromUtmContent } from "@/lib/attribution";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
 
@@ -19,8 +20,8 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from") ?? undefined;
   const to = url.searchParams.get("to") ?? undefined;
 
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true, name: true },
   });
   if (!hotel) return Response.json({ error: "Not found" }, { status: 404 });
@@ -28,13 +29,12 @@ export async function GET(request: Request) {
   const range = resolveRange({ from, to });
 
   const [content, events] = await Promise.all([
-    prisma.contentPiece.findMany({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+    agencyScoped(prisma.contentPiece).findMany({
+      where: { hotelClientId: hotel.id },
       select: { id: true, title: true },
     }),
-    prisma.trackingEvent.findMany({
+    agencyScoped(prisma.trackingEvent).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         createdAt: { gte: range.since, lte: range.until },
       },
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     };
   });
 
-  await prisma.report.create({
+  await agencyScoped(prisma.report).create({
     data: {
       agencyId: member.agencyId,
       hotelClientId: hotel.id,

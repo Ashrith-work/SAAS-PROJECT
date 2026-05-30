@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +18,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const format = (url.searchParams.get("format") ?? "xlsx").toLowerCase();
 
-  const hotels = await prisma.hotelClient.findMany({
-    where: { agencyId: member.agencyId },
+  const hotels = await agencyScoped(prisma.hotelClient).findMany({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

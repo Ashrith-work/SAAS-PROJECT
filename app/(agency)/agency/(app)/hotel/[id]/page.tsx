@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import {
   computeAdsSummary,
   computeContentPerformance,
@@ -89,16 +90,16 @@ export default async function HotelDashboardPage({
   const pixelMode = isPixelMode();
 
   // Multi-tenant: scope by id AND agencyId so one agency can't open another's hotel.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id },
     select: { id: true, name: true, websiteUrl: true, metaAdAccountId: true },
   });
   if (!hotel) notFound();
 
   // Latest non-revoked public share link for this hotel (may be expired — the
   // manager shows that so the agency can regenerate). Scoped to this agency.
-  const shareLinkRow = await prisma.shareLink.findFirst({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id, revokedAt: null },
+  const shareLinkRow = await agencyScoped(prisma.shareLink).findFirst({
+    where: { hotelClientId: hotel.id, revokedAt: null },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -138,8 +139,8 @@ export default async function HotelDashboardPage({
 
   // All five queries scoped to this agency + hotel + range.
   const [content, events, snapshots] = await Promise.all([
-    prisma.contentPiece.findMany({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+    agencyScoped(prisma.contentPiece).findMany({
+      where: { hotelClientId: hotel.id },
       select: {
         id: true,
         title: true,
@@ -157,9 +158,8 @@ export default async function HotelDashboardPage({
           sessionId: string;
           conversionValue: import("@prisma/client").Prisma.Decimal | null;
         }>)
-      : prisma.trackingEvent.findMany({
+      : agencyScoped(prisma.trackingEvent).findMany({
           where: {
-            agencyId: member.agencyId,
             hotelClientId: hotel.id,
             createdAt: { gte: range.since, lte: range.until },
           },
@@ -171,9 +171,8 @@ export default async function HotelDashboardPage({
             conversionValue: true,
           },
         }),
-    prisma.adSnapshot.findMany({
+    agencyScoped(prisma.adSnapshot).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         date: { gte: range.since, lte: range.until },
       },
@@ -185,9 +184,8 @@ export default async function HotelDashboardPage({
   const contentIds = content.map((c) => c.id);
   const redemptions =
     contentIds.length > 0
-      ? await prisma.couponRedemption.findMany({
+      ? await agencyScoped(prisma.couponRedemption).findMany({
           where: {
-            agencyId: member.agencyId,
             contentPieceId: { in: contentIds },
             redemptionDate: { gte: range.since, lte: range.until },
           },
@@ -201,27 +199,25 @@ export default async function HotelDashboardPage({
   // (account-level engagement isn't synced), and the top-posts table.
   const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg] =
     await Promise.all([
-      prisma.socialAccount.findFirst({
-        where: { agencyId: member.agencyId, hotelClientId: hotel.id, platform: "instagram" },
+      agencyScoped(prisma.socialAccount).findFirst({
+        where: { hotelClientId: hotel.id, platform: "instagram" },
         select: { status: true, username: true, lastSyncedAt: true },
       }),
-      prisma.socialSnapshot.findMany({
+      agencyScoped(prisma.socialSnapshot).findMany({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           date: { gte: range.since, lte: range.until },
         },
         orderBy: { date: "asc" },
         select: { date: true, followers: true, reach: true, impressions: true, profileViews: true },
       }),
-      prisma.socialSnapshot.findFirst({
-        where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { lt: range.since } },
+      agencyScoped(prisma.socialSnapshot).findFirst({
+        where: { hotelClientId: hotel.id, date: { lt: range.since } },
         orderBy: { date: "desc" },
         select: { followers: true },
       }),
-      prisma.postSnapshot.findMany({
+      agencyScoped(prisma.postSnapshot).findMany({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
           ...(postType ? { mediaType: postType } : {}),
@@ -241,9 +237,8 @@ export default async function HotelDashboardPage({
           saves: true,
         },
       }),
-      prisma.postSnapshot.aggregate({
+      agencyScoped(prisma.postSnapshot).aggregate({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
         },
@@ -256,9 +251,8 @@ export default async function HotelDashboardPage({
   //    retention). ────────────────────────────────────────────────────────
   const storyWindowStart = new Date(Date.now() - 30 * DAY_MS);
   const [recentStories, storyAgg] = await Promise.all([
-    prisma.storySnapshot.findMany({
+    agencyScoped(prisma.storySnapshot).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         postedAt: { gte: storyWindowStart },
       },
@@ -276,9 +270,8 @@ export default async function HotelDashboardPage({
         replies: true,
       },
     }),
-    prisma.storySnapshot.aggregate({
+    agencyScoped(prisma.storySnapshot).aggregate({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         postedAt: { gte: range.since, lte: range.until },
       },
@@ -294,22 +287,20 @@ export default async function HotelDashboardPage({
 
   // ── Google Analytics — total website performance + source breakdown ──
   const [gaConnection, gaSnaps, gaSources, hotelTrackVisitsAgg] = await Promise.all([
-    prisma.googleAnalyticsConnection.findFirst({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+    agencyScoped(prisma.googleAnalyticsConnection).findFirst({
+      where: { hotelClientId: hotel.id },
       select: { status: true, propertyId: true, lastSyncedAt: true },
     }),
-    prisma.gaSnapshot.findMany({
+    agencyScoped(prisma.gaSnapshot).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         date: { gte: range.since, lte: range.until },
       },
       orderBy: { date: "asc" },
     }),
-    prisma.gaSourceBreakdown.groupBy({
+    agencyScoped(prisma.gaSourceBreakdown).groupBy({
       by: ["source"],
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         date: { gte: range.since, lte: range.until },
       },
@@ -319,9 +310,8 @@ export default async function HotelDashboardPage({
     // this is the agency-attributable share for the comparison block.
     pixelMode
       ? Promise.resolve(0)
-      : prisma.trackingEvent.findMany({
+      : agencyScoped(prisma.trackingEvent).findMany({
           where: {
-            agencyId: member.agencyId,
             hotelClientId: hotel.id,
             eventType: "visit",
             createdAt: { gte: range.since, lte: range.until },

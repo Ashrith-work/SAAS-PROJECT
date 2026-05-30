@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import type { Prisma } from "@prisma/client";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { utmContentFor } from "@/lib/utm";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
 
@@ -40,7 +41,8 @@ export async function GET(request: Request) {
   const fFrom = url.searchParams.get("from") ?? "";
   const fTo = url.searchParams.get("to") ?? "";
 
-  const where: Prisma.ContentPieceWhereInput = { agencyId: member.agencyId };
+  // agencyScoped injects { agencyId }; these are the extra UI filters.
+  const where: Prisma.ContentPieceWhereInput = {};
   if (fHotel) where.hotelClientId = fHotel;
   if (isContentType(fType)) where.contentType = fType;
   if (isPlatform(fPlatform)) where.platform = fPlatform;
@@ -53,7 +55,7 @@ export async function GET(request: Request) {
     };
   }
 
-  const pieces = await prisma.contentPiece.findMany({
+  const pieces = await agencyScoped(prisma.contentPiece).findMany({
     where,
     orderBy: { createdAt: "desc" },
     select: {
@@ -76,13 +78,13 @@ export async function GET(request: Request) {
 
   if (keys.length > 0) {
     const [grouped, distinctVisits] = await Promise.all([
-      prisma.trackingEvent.groupBy({
+      agencyScoped(prisma.trackingEvent).groupBy({
         by: ["utmContent", "eventType"],
-        where: { agencyId: member.agencyId, utmContent: { in: keys } },
+        where: { utmContent: { in: keys } },
         _count: { _all: true },
       }),
-      prisma.trackingEvent.findMany({
-        where: { agencyId: member.agencyId, utmContent: { in: keys }, eventType: "visit" },
+      agencyScoped(prisma.trackingEvent).findMany({
+        where: { utmContent: { in: keys }, eventType: "visit" },
         select: { utmContent: true, sessionId: true },
         distinct: ["utmContent", "sessionId"],
       }),

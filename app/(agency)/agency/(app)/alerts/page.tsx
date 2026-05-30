@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 
 // Alert history for the agency. Read-only audit log of every alert the engine
 // raised and tried to email. Multi-tenant: scoped to the signed-in agency.
@@ -57,9 +58,8 @@ export default async function AlertsPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
-  // Multi-tenant: only this agency's alerts.
-  const alerts = await prisma.alert.findMany({
-    where: { agencyId: member.agencyId },
+  // Multi-tenant: agencyScoped injects { agencyId } automatically.
+  const alerts = await agencyScoped(prisma.alert).findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
     select: {

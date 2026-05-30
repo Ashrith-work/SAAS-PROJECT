@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import {
   resolveRange,
   computeContentPerformance,
@@ -27,8 +28,8 @@ export async function GET(request: Request) {
   const to = url.searchParams.get("to") ?? undefined;
 
   // Multi-tenant: hotel must belong to this agency.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true, name: true },
   });
   if (!hotel) return Response.json({ error: "Not found" }, { status: 404 });
@@ -36,13 +37,12 @@ export async function GET(request: Request) {
   const range = resolveRange({ from, to });
 
   const [content, events, snapshots] = await Promise.all([
-    prisma.contentPiece.findMany({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+    agencyScoped(prisma.contentPiece).findMany({
+      where: { hotelClientId: hotel.id },
       select: { id: true, title: true, contentType: true, platform: true, couponCode: true, influencerName: true },
     }),
-    prisma.trackingEvent.findMany({
+    agencyScoped(prisma.trackingEvent).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         createdAt: { gte: range.since, lte: range.until },
       },
@@ -60,8 +60,8 @@ export async function GET(request: Request) {
         pageUrl: true,
       },
     }),
-    prisma.adSnapshot.findMany({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { gte: range.since, lte: range.until } },
+    agencyScoped(prisma.adSnapshot).findMany({
+      where: { hotelClientId: hotel.id, date: { gte: range.since, lte: range.until } },
       orderBy: { date: "asc" },
       select: { date: true, spend: true, conversions: true, roas: true },
     }),
@@ -70,9 +70,8 @@ export async function GET(request: Request) {
   const contentIds = content.map((c) => c.id);
   const redemptionRows =
     contentIds.length > 0
-      ? await prisma.couponRedemption.findMany({
+      ? await agencyScoped(prisma.couponRedemption).findMany({
           where: {
-            agencyId: member.agencyId,
             contentPieceId: { in: contentIds },
             redemptionDate: { gte: range.since, lte: range.until },
           },
@@ -183,7 +182,7 @@ export async function GET(request: Request) {
   const buffer: Buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
   // Record the report (same as the PDF flow does via a server action).
-  await prisma.report.create({
+  await agencyScoped(prisma.report).create({
     data: {
       agencyId: member.agencyId,
       hotelClientId: hotel.id,

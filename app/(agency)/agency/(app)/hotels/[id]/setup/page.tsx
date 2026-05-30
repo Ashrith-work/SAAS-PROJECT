@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { InstagramConnect } from "./InstagramConnect";
@@ -23,8 +24,8 @@ export default async function HotelSetupPage({
 
   // Multi-tenant: scope the lookup by both id AND agencyId so one agency can
   // never open another agency's hotel.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id },
   });
   if (!hotel) notFound();
 
@@ -36,16 +37,16 @@ export default async function HotelSetupPage({
   const pixelMode = isPixelMode();
 
   // ── Google Analytics connection + latest snapshot ────────────────────────
-  const ga = await prisma.googleAnalyticsConnection.findFirst({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+  const ga = await agencyScoped(prisma.googleAnalyticsConnection).findFirst({
+    where: { hotelClientId: hotel.id },
     select: { status: true, propertyId: true, lastSyncedAt: true },
   });
   const gaConnected = ga?.status === "connected";
   const gaDisconnected = ga?.status === "disconnected";
 
   // ── Instagram (organic social) connection + latest stored insights ──
-  const social = await prisma.socialAccount.findFirst({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id, platform: "instagram" },
+  const social = await agencyScoped(prisma.socialAccount).findFirst({
+    where: { hotelClientId: hotel.id, platform: "instagram" },
     select: {
       status: true,
       username: true,
@@ -58,17 +59,17 @@ export default async function HotelSetupPage({
   const since30 = new Date(new Date().getTime() - 30 * DAY_MS);
   const [latestSnap, reachAgg, recentPosts] = igConnected
     ? await Promise.all([
-        prisma.socialSnapshot.findFirst({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+        agencyScoped(prisma.socialSnapshot).findFirst({
+          where: { hotelClientId: hotel.id },
           orderBy: { date: "desc" },
           select: { followers: true, date: true },
         }),
-        prisma.socialSnapshot.aggregate({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { gte: since30 } },
+        agencyScoped(prisma.socialSnapshot).aggregate({
+          where: { hotelClientId: hotel.id, date: { gte: since30 } },
           _sum: { reach: true, impressions: true, profileViews: true },
         }),
-        prisma.postSnapshot.findMany({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+        agencyScoped(prisma.postSnapshot).findMany({
+          where: { hotelClientId: hotel.id },
           orderBy: { postedAt: "desc" },
           take: 8,
           select: {

@@ -2,6 +2,7 @@
 
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 
 /**
  * Records a Report metadata row after a PDF is generated client-side. The Excel
@@ -16,13 +17,13 @@ export async function recordReport(
   const member = await getCurrentMember();
   if (!member) return { ok: false };
 
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true },
   });
   if (!hotel) return { ok: false };
 
-  await prisma.report.create({
+  await agencyScoped(prisma.report).create({
     data: {
       agencyId: member.agencyId,
       hotelClientId: hotel.id,

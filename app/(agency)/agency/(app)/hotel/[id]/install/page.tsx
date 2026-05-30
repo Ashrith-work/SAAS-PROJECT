@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import {
@@ -110,8 +111,8 @@ export default async function HotelInstallPage({
 
   // Multi-tenant: scope by both id AND agencyId so one agency can never open
   // another agency's hotel.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id },
     select: { id: true, name: true, websiteUrl: true, siteId: true, snippetStatus: true, sitePlatform: true },
   });
   if (!hotel) notFound();
