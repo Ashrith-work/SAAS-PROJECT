@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +22,7 @@ export async function GET(request: Request) {
   const since = new Date(Date.now() - THIRTY_DAYS_MS);
 
   const [hotels, grouped, spendAgg, agency] = await Promise.all([
-    prisma.hotelClient.findMany({
-      where: { agencyId: member.agencyId },
+    agencyScoped(prisma.hotelClient).findMany({
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -32,17 +32,18 @@ export async function GET(request: Request) {
         lastSyncedAt: true,
       },
     }),
-    prisma.trackingEvent.groupBy({
+    agencyScoped(prisma.trackingEvent).groupBy({
       by: ["hotelClientId", "eventType"],
-      where: { agencyId: member.agencyId, createdAt: { gte: since } },
+      where: { createdAt: { gte: since } },
       _count: { _all: true },
       _sum: { conversionValue: true },
     }),
-    prisma.adSnapshot.aggregate({
-      where: { agencyId: member.agencyId, date: { gte: since } },
+    agencyScoped(prisma.adSnapshot).aggregate({
+      where: { date: { gte: since } },
       _sum: { spend: true },
     }),
-    prisma.agency.findUnique({ where: { id: member.agencyId }, select: { name: true } }),
+    // Agency is the tenant root — findFirst is scoped to the caller's own id.
+    agencyScoped(prisma.agency).findFirst({ select: { name: true } }),
   ]);
 
   type Metric = { visits: number; bookings: number; revenue: number };

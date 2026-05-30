@@ -2,15 +2,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { ContentForm } from "./ContentForm";
 
 export default async function NewContentPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
-  // Multi-tenant: only this agency's hotels can be picked.
-  const hotels = await prisma.hotelClient.findMany({
-    where: { agencyId: member.agencyId },
+  // Multi-tenant: agencyScoped injects { agencyId } automatically.
+  const hotels = await agencyScoped(prisma.hotelClient).findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });

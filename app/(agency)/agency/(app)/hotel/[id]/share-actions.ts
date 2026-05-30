@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { hashSharePassword, shareExpiry } from "@/lib/share";
 
 export type ShareState = { error: string | null; ok: boolean };
@@ -23,19 +24,19 @@ export async function createShareLink(
   const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
   const password = (formData.get("password") as string | null) ?? "";
 
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true },
   });
   if (!hotel) return { error: "That hotel wasn't found for your agency.", ok: false };
 
   // Revoke any currently-active link so the old URL stops working.
-  await prisma.shareLink.updateMany({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id, revokedAt: null },
+  await agencyScoped(prisma.shareLink).updateMany({
+    where: { hotelClientId: hotel.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 
-  await prisma.shareLink.create({
+  await agencyScoped(prisma.shareLink).create({
     data: {
       agencyId: member.agencyId,
       hotelClientId: hotel.id,
@@ -60,8 +61,8 @@ export async function revokeShareLink(formData: FormData): Promise<void> {
   const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
   if (!linkId) return;
 
-  await prisma.shareLink.updateMany({
-    where: { id: linkId, agencyId: member.agencyId, revokedAt: null },
+  await agencyScoped(prisma.shareLink).updateMany({
+    where: { id: linkId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 

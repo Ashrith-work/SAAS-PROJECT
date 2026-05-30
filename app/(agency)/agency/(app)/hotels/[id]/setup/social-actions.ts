@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptToken, decryptToken } from "@/lib/encryption";
+import { agencyScoped } from "@/lib/tenant";
+import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
+import { getTokenForApiCall } from "@/lib/token-access";
+import type { SecretToken } from "@/lib/encryption";
 import {
   connectInstagramAccount,
   getTokenExpiry,
@@ -31,8 +34,8 @@ const IGAA_REJECTION =
 async function ownedHotel(hotelId: string) {
   const member = await getCurrentMember();
   if (!member) return null;
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true },
   });
   return hotel ? { agencyId: member.agencyId, hotelId: hotel.id } : null;
@@ -120,7 +123,16 @@ export async function linkInstagramAccount(
 
   const tokenExpiresAt = await getTokenExpiry(token);
 
-  await prisma.socialAccount.upsert({
+  // Encrypt once (audited "created"), reuse the ciphertext for create + update.
+  const encryptedToken = await encryptWithAudit(token, {
+    agencyId: ctx.agencyId,
+    hotelClientId: ctx.hotelId,
+    tokenType: "instagram",
+    source: "action:linkInstagramAccount",
+  });
+
+  await agencyScoped(prisma.socialAccount).upsert({
+    // Compound unique key, ownership-verified above — tenant-safe for upsert.
     where: { hotelClientId_platform: { hotelClientId: ctx.hotelId, platform: "instagram" } },
     create: {
       agencyId: ctx.agencyId,
@@ -128,14 +140,14 @@ export async function linkInstagramAccount(
       platform: "instagram",
       igUserId: chosen.igUserId,
       username: chosen.username,
-      encryptedToken: encryptToken(token),
+      encryptedToken,
       tokenExpiresAt,
       status: "connected",
     },
     update: {
       igUserId: chosen.igUserId,
       username: chosen.username,
-      encryptedToken: encryptToken(token),
+      encryptedToken,
       tokenExpiresAt,
       status: "connected",
     },
@@ -152,8 +164,15 @@ export async function disconnectSocialAccount(formData: FormData): Promise<void>
   const ctx = await ownedHotel(hotelId);
   if (!ctx) return;
 
-  await prisma.socialAccount.deleteMany({
-    where: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, platform: "instagram" },
+  await agencyScoped(prisma.socialAccount).deleteMany({
+    where: { hotelClientId: ctx.hotelId, platform: "instagram" },
+  });
+  await logTokenAudit({
+    agencyId: ctx.agencyId,
+    hotelClientId: ctx.hotelId,
+    tokenType: "instagram",
+    action: "deleted",
+    source: "action:disconnectSocialAccount",
   });
   revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
 }
@@ -170,15 +189,10 @@ export async function syncSocialInsights(
   const ctx = await ownedHotel(hotelId);
   if (!ctx) return { error: "That hotel wasn't found for your agency.", ok: false, message: null };
 
-  const account = await prisma.socialAccount.findFirst({
-    where: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, platform: "instagram" },
-    select: {
-      id: true,
-      agencyId: true,
-      hotelClientId: true,
-      igUserId: true,
-      encryptedToken: true,
-    },
+  const account = await agencyScoped(prisma.socialAccount).findFirst({
+    where: { hotelClientId: ctx.hotelId, platform: "instagram" },
+    // No ciphertext — syncSocialAccount resolves it via getTokenForApiCall.
+    select: { id: true, agencyId: true, hotelClientId: true, igUserId: true },
   });
   if (!account) {
     return { error: "Connect an Instagram account first.", ok: false, message: null };
@@ -222,9 +236,9 @@ export async function testInstagramConnectionAction(
     };
   }
 
-  const account = await prisma.socialAccount.findFirst({
-    where: { agencyId: ctx.agencyId, hotelClientId: ctx.hotelId, platform: "instagram" },
-    select: { igUserId: true, encryptedToken: true },
+  const account = await agencyScoped(prisma.socialAccount).findFirst({
+    where: { hotelClientId: ctx.hotelId, platform: "instagram" },
+    select: { id: true, igUserId: true },
   });
   if (!account) {
     return {
@@ -235,9 +249,13 @@ export async function testInstagramConnectionAction(
     };
   }
 
-  let token: string;
+  let token: SecretToken;
   try {
-    token = decryptToken(account.encryptedToken);
+    token = await getTokenForApiCall("instagram", account.id, {
+      agencyId: ctx.agencyId,
+      hotelClientId: ctx.hotelId,
+      source: "action:testInstagramConnection",
+    });
   } catch {
     return {
       error: "Stored token could not be decrypted. Please reconnect.",
@@ -248,7 +266,7 @@ export async function testInstagramConnectionAction(
   }
 
   try {
-    const probe = await testInstagramConnection(token, account.igUserId);
+    const probe = await testInstagramConnection(token.reveal(), account.igUserId);
     return {
       error: null,
       ok: true,

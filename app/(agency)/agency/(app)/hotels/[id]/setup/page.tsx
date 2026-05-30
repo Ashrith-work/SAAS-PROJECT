@@ -2,10 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { SnippetStatusBadge } from "@/components/ui/SnippetStatusBadge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { InstagramConnect } from "./InstagramConnect";
 import { InstagramActions } from "./InstagramActions";
+import { GoogleAnalyticsConnect } from "./GoogleAnalyticsConnect";
+import { GoogleAnalyticsActions } from "./GoogleAnalyticsActions";
 import { isPixelMode } from "@/lib/tracking-mode";
 
 const DAY_MS = 86_400_000;
@@ -21,8 +24,8 @@ export default async function HotelSetupPage({
 
   // Multi-tenant: scope the lookup by both id AND agencyId so one agency can
   // never open another agency's hotel.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id },
   });
   if (!hotel) notFound();
 
@@ -33,9 +36,17 @@ export default async function HotelSetupPage({
   const snippet = `<script src="${appUrl}/t.js?id=${hotel.siteId}" async></script>`;
   const pixelMode = isPixelMode();
 
+  // ── Google Analytics connection + latest snapshot ────────────────────────
+  const ga = await agencyScoped(prisma.googleAnalyticsConnection).findFirst({
+    where: { hotelClientId: hotel.id },
+    select: { status: true, propertyId: true, lastSyncedAt: true },
+  });
+  const gaConnected = ga?.status === "connected";
+  const gaDisconnected = ga?.status === "disconnected";
+
   // ── Instagram (organic social) connection + latest stored insights ──
-  const social = await prisma.socialAccount.findFirst({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id, platform: "instagram" },
+  const social = await agencyScoped(prisma.socialAccount).findFirst({
+    where: { hotelClientId: hotel.id, platform: "instagram" },
     select: {
       status: true,
       username: true,
@@ -48,17 +59,17 @@ export default async function HotelSetupPage({
   const since30 = new Date(new Date().getTime() - 30 * DAY_MS);
   const [latestSnap, reachAgg, recentPosts] = igConnected
     ? await Promise.all([
-        prisma.socialSnapshot.findFirst({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+        agencyScoped(prisma.socialSnapshot).findFirst({
+          where: { hotelClientId: hotel.id },
           orderBy: { date: "desc" },
           select: { followers: true, date: true },
         }),
-        prisma.socialSnapshot.aggregate({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { gte: since30 } },
+        agencyScoped(prisma.socialSnapshot).aggregate({
+          where: { hotelClientId: hotel.id, date: { gte: since30 } },
           _sum: { reach: true, impressions: true, profileViews: true },
         }),
-        prisma.postSnapshot.findMany({
-          where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+        agencyScoped(prisma.postSnapshot).findMany({
+          where: { hotelClientId: hotel.id },
           orderBy: { postedAt: "desc" },
           take: 8,
           select: {
@@ -144,6 +155,17 @@ export default async function HotelSetupPage({
             </div>
             <p className="mt-2 text-xs text-zinc-500">
               Site ID: <code>{hotel.siteId}</code>
+            </p>
+            <p className="mt-3 text-sm">
+              <Link
+                href={`/agency/hotel/${hotel.id}/install`}
+                className="font-medium underline"
+              >
+                Open the install guide &amp; test the connection →
+              </Link>{" "}
+              <span className="text-zinc-500">
+                — step-by-step for WordPress, Shopify, or any site.
+              </span>
             </p>
           </section>
 
@@ -283,6 +305,61 @@ export default async function HotelSetupPage({
             </div>
           ) : (
             <InstagramConnect hotelId={hotel.id} />
+          )}
+        </div>
+      </section>
+
+      {/* ── Google Analytics 4 ──────────────────────────────────────────── */}
+      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold">Google Analytics 4</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Total website performance — every visit (not just UTM-tagged
+              ones) and a source-by-source traffic mix.
+            </p>
+          </div>
+          {gaConnected ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              Connected
+            </span>
+          ) : gaDisconnected ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Needs reconnect
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+              Not connected
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4">
+          {gaConnected ? (
+            <div className="space-y-4">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Property <code>{ga?.propertyId}</code>
+                {ga?.lastSyncedAt
+                  ? ` · last synced ${new Date(ga.lastSyncedAt).toLocaleString()}`
+                  : " · not synced yet — run a sync to pull metrics"}
+              </p>
+              <GoogleAnalyticsActions hotelId={hotel.id} />
+            </div>
+          ) : gaDisconnected ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+                The service account lost access to property{" "}
+                <code>{ga?.propertyId}</code>. Re-share the property with the
+                service account (Viewer role) in GA Admin, or upload a fresh
+                key below.
+              </div>
+              <GoogleAnalyticsConnect hotelId={hotel.id} />
+            </div>
+          ) : (
+            <GoogleAnalyticsConnect hotelId={hotel.id} />
           )}
         </div>
       </section>

@@ -26,6 +26,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/alerts/run(.*)",
   "/api/social/sync(.*)",
   "/api/social/sync-stories(.*)",
+  "/api/ga/sync(.*)",
   // Stripe posts webhooks with no Clerk session; the route verifies the Stripe
   // signature instead.
   "/api/webhooks/stripe(.*)",

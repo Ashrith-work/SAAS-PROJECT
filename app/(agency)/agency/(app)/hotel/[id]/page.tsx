@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import {
   computeAdsSummary,
   computeContentPerformance,
@@ -26,6 +27,7 @@ import { PostTypeFilter } from "./PostTypeFilter";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
 import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
+import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
 
@@ -88,16 +90,16 @@ export default async function HotelDashboardPage({
   const pixelMode = isPixelMode();
 
   // Multi-tenant: scope by id AND agencyId so one agency can't open another's hotel.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id },
     select: { id: true, name: true, websiteUrl: true, metaAdAccountId: true },
   });
   if (!hotel) notFound();
 
   // Latest non-revoked public share link for this hotel (may be expired — the
   // manager shows that so the agency can regenerate). Scoped to this agency.
-  const shareLinkRow = await prisma.shareLink.findFirst({
-    where: { agencyId: member.agencyId, hotelClientId: hotel.id, revokedAt: null },
+  const shareLinkRow = await agencyScoped(prisma.shareLink).findFirst({
+    where: { hotelClientId: hotel.id, revokedAt: null },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -137,8 +139,8 @@ export default async function HotelDashboardPage({
 
   // All five queries scoped to this agency + hotel + range.
   const [content, events, snapshots] = await Promise.all([
-    prisma.contentPiece.findMany({
-      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+    agencyScoped(prisma.contentPiece).findMany({
+      where: { hotelClientId: hotel.id },
       select: {
         id: true,
         title: true,
@@ -156,9 +158,8 @@ export default async function HotelDashboardPage({
           sessionId: string;
           conversionValue: import("@prisma/client").Prisma.Decimal | null;
         }>)
-      : prisma.trackingEvent.findMany({
+      : agencyScoped(prisma.trackingEvent).findMany({
           where: {
-            agencyId: member.agencyId,
             hotelClientId: hotel.id,
             createdAt: { gte: range.since, lte: range.until },
           },
@@ -170,9 +171,8 @@ export default async function HotelDashboardPage({
             conversionValue: true,
           },
         }),
-    prisma.adSnapshot.findMany({
+    agencyScoped(prisma.adSnapshot).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         date: { gte: range.since, lte: range.until },
       },
@@ -184,9 +184,8 @@ export default async function HotelDashboardPage({
   const contentIds = content.map((c) => c.id);
   const redemptions =
     contentIds.length > 0
-      ? await prisma.couponRedemption.findMany({
+      ? await agencyScoped(prisma.couponRedemption).findMany({
           where: {
-            agencyId: member.agencyId,
             contentPieceId: { in: contentIds },
             redemptionDate: { gte: range.since, lte: range.until },
           },
@@ -200,27 +199,25 @@ export default async function HotelDashboardPage({
   // (account-level engagement isn't synced), and the top-posts table.
   const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg] =
     await Promise.all([
-      prisma.socialAccount.findFirst({
-        where: { agencyId: member.agencyId, hotelClientId: hotel.id, platform: "instagram" },
+      agencyScoped(prisma.socialAccount).findFirst({
+        where: { hotelClientId: hotel.id, platform: "instagram" },
         select: { status: true, username: true, lastSyncedAt: true },
       }),
-      prisma.socialSnapshot.findMany({
+      agencyScoped(prisma.socialSnapshot).findMany({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           date: { gte: range.since, lte: range.until },
         },
         orderBy: { date: "asc" },
         select: { date: true, followers: true, reach: true, impressions: true, profileViews: true },
       }),
-      prisma.socialSnapshot.findFirst({
-        where: { agencyId: member.agencyId, hotelClientId: hotel.id, date: { lt: range.since } },
+      agencyScoped(prisma.socialSnapshot).findFirst({
+        where: { hotelClientId: hotel.id, date: { lt: range.since } },
         orderBy: { date: "desc" },
         select: { followers: true },
       }),
-      prisma.postSnapshot.findMany({
+      agencyScoped(prisma.postSnapshot).findMany({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
           ...(postType ? { mediaType: postType } : {}),
@@ -240,9 +237,8 @@ export default async function HotelDashboardPage({
           saves: true,
         },
       }),
-      prisma.postSnapshot.aggregate({
+      agencyScoped(prisma.postSnapshot).aggregate({
         where: {
-          agencyId: member.agencyId,
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
         },
@@ -255,9 +251,8 @@ export default async function HotelDashboardPage({
   //    retention). ────────────────────────────────────────────────────────
   const storyWindowStart = new Date(Date.now() - 30 * DAY_MS);
   const [recentStories, storyAgg] = await Promise.all([
-    prisma.storySnapshot.findMany({
+    agencyScoped(prisma.storySnapshot).findMany({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         postedAt: { gte: storyWindowStart },
       },
@@ -275,9 +270,8 @@ export default async function HotelDashboardPage({
         replies: true,
       },
     }),
-    prisma.storySnapshot.aggregate({
+    agencyScoped(prisma.storySnapshot).aggregate({
       where: {
-        agencyId: member.agencyId,
         hotelClientId: hotel.id,
         postedAt: { gte: range.since, lte: range.until },
       },
@@ -290,6 +284,82 @@ export default async function HotelDashboardPage({
     storyImpressionsRange > 0
       ? (storyImpressionsRange - storyExitsRange) / storyImpressionsRange
       : null;
+
+  // ── Google Analytics — total website performance + source breakdown ──
+  const [gaConnection, gaSnaps, gaSources, hotelTrackVisitsAgg] = await Promise.all([
+    agencyScoped(prisma.googleAnalyticsConnection).findFirst({
+      where: { hotelClientId: hotel.id },
+      select: { status: true, propertyId: true, lastSyncedAt: true },
+    }),
+    agencyScoped(prisma.gaSnapshot).findMany({
+      where: {
+        hotelClientId: hotel.id,
+        date: { gte: range.since, lte: range.until },
+      },
+      orderBy: { date: "asc" },
+    }),
+    agencyScoped(prisma.gaSourceBreakdown).groupBy({
+      by: ["source"],
+      where: {
+        hotelClientId: hotel.id,
+        date: { gte: range.since, lte: range.until },
+      },
+      _sum: { sessions: true, conversions: true },
+    }),
+    // HotelTrack snippet "visit" events with a UTM tag in the same range —
+    // this is the agency-attributable share for the comparison block.
+    pixelMode
+      ? Promise.resolve(0)
+      : agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "visit",
+            createdAt: { gte: range.since, lte: range.until },
+            OR: [
+              { utmContent: { not: null } },
+              { utmCampaign: { not: null } },
+            ],
+          },
+          select: { sessionId: true },
+          distinct: ["sessionId"],
+        }).then((rows) => rows.length),
+  ]);
+
+  const gaConnected = gaConnection?.status === "connected";
+  type GaTotals = {
+    totalUsers: number;
+    newUsers: number;
+    sessions: number;
+    pageviews: number;
+    conversions: number;
+    bounceSum: number;
+    durationSum: number;
+  };
+  const gaTotals = gaSnaps.reduce<GaTotals>(
+    (acc, s) => ({
+      totalUsers: acc.totalUsers + s.totalUsers,
+      newUsers: acc.newUsers + s.newUsers,
+      sessions: acc.sessions + s.sessions,
+      pageviews: acc.pageviews + s.pageviews,
+      conversions: acc.conversions + s.conversions,
+      bounceSum: acc.bounceSum + s.bounceRate * s.sessions,
+      durationSum: acc.durationSum + s.avgSessionDuration * s.sessions,
+    }),
+    { totalUsers: 0, newUsers: 0, sessions: 0, pageviews: 0, conversions: 0, bounceSum: 0, durationSum: 0 },
+  );
+  const gaBounceRate = gaTotals.sessions > 0 ? gaTotals.bounceSum / gaTotals.sessions : 0;
+  const gaAvgSessionDuration =
+    gaTotals.sessions > 0 ? gaTotals.durationSum / gaTotals.sessions : 0;
+  const gaSourceSlices: SourceSlice[] = gaSources.map((r: { source: string; _sum: { sessions: number | null } }) => ({
+    source: r.source,
+    sessions: r._sum.sessions ?? 0,
+  }));
+  const hotelTrackTaggedVisits =
+    typeof hotelTrackVisitsAgg === "number" ? hotelTrackVisitsAgg : 0;
+  const contentSharePct =
+    gaTotals.sessions > 0 ? hotelTrackTaggedVisits / gaTotals.sessions : null;
+  const gaLastUpdated = gaConnection?.lastSyncedAt ?? null;
+  const hasGaData = gaSnaps.length > 0 || gaSources.length > 0;
 
   const hasSocialData =
     socialSnaps.length > 0 || topPosts.length > 0 || recentStories.length > 0;
@@ -414,6 +484,26 @@ export default async function HotelDashboardPage({
         replies: s.replies,
       })),
     },
+    ga: {
+      connected: gaConnected,
+      propertyId: gaConnection?.propertyId ?? null,
+      totalUsers: gaTotals.totalUsers,
+      newUsers: gaTotals.newUsers,
+      sessions: gaTotals.sessions,
+      bounceRate: gaBounceRate,
+      avgSessionDuration: gaAvgSessionDuration,
+      conversions: gaTotals.conversions,
+      contentSessions: hotelTrackTaggedVisits,
+      contentSharePct,
+      sources: gaSourceSlices
+        .filter((s) => s.sessions > 0)
+        .sort((a, b) => b.sessions - a.sessions)
+        .map((s) => ({
+          source: s.source,
+          sessions: s.sessions,
+          pct: gaTotals.sessions > 0 ? s.sessions / gaTotals.sessions : 0,
+        })),
+    },
   };
 
   return (
@@ -437,6 +527,12 @@ export default async function HotelDashboardPage({
               className="text-sm text-zinc-500 hover:underline"
             >
               Snippet setup →
+            </Link>
+            <Link
+              href={`/agency/hotel/${hotel.id}/install`}
+              className="text-sm text-zinc-500 hover:underline"
+            >
+              Install &amp; test →
             </Link>
             <ReportMenu
               hotelId={hotel.id}
@@ -837,6 +933,90 @@ export default async function HotelDashboardPage({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Section 6 — Total Website Performance (Google Analytics 4) */}
+      <SectionCard
+        title="Total website performance (from Google Analytics)"
+        subtitle={
+          gaConnection?.propertyId
+            ? `GA4 property ${gaConnection.propertyId}`
+            : "Pulls every visit, not just the UTM-tagged ones — connect GA in Setup."
+        }
+      >
+        {!gaConnected ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-zinc-500">
+              No Google Analytics data yet.
+            </p>
+            <Link
+              href={`/agency/hotels/${hotel.id}/setup`}
+              className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
+            >
+              Connect this hotel&apos;s GA4 in Setup →
+            </Link>
+          </div>
+        ) : !hasGaData ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-zinc-500">
+              GA connected — run a sync from Setup to pull metrics for this date
+              range.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5 p-4">
+            <p className="text-xs text-zinc-500">
+              {gaLastUpdated
+                ? `Last updated ${new Date(gaLastUpdated).toLocaleString()} · `
+                : ""}
+              Refreshes daily via /api/ga/sync.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <KpiCard label="Total users" value={formatNumber(gaTotals.totalUsers)} />
+              <KpiCard label="Sessions" value={formatNumber(gaTotals.sessions)} />
+              <KpiCard label="New users" value={formatNumber(gaTotals.newUsers)} />
+              <KpiCard
+                label="Bounce rate"
+                value={formatPercent(gaBounceRate)}
+                hint="Weighted by sessions"
+              />
+              <KpiCard
+                label="Avg session"
+                value={`${Math.round(gaAvgSessionDuration)}s`}
+                hint="Duration"
+              />
+              <KpiCard
+                label="Conversions"
+                value={formatNumber(gaTotals.conversions)}
+              />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Traffic by source
+              </p>
+              <SourcePieChart data={gaSourceSlices} />
+            </div>
+
+            {!pixelMode && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-200">
+                <p className="font-medium">
+                  Of {formatNumber(gaTotals.sessions)} total website visits,{" "}
+                  {formatNumber(hotelTrackTaggedVisits)} came from our content
+                  {contentSharePct != null && (
+                    <> ({formatPercent(contentSharePct)})</>
+                  )}
+                  .
+                </p>
+                <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
+                  Comparing HotelTrack&apos;s UTM-tagged snippet visits against
+                  GA&apos;s total sessions for this date range.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </SectionCard>

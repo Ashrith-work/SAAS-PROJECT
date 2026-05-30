@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptToken } from "@/lib/encryption";
+import { agencyScoped } from "@/lib/tenant";
+import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
@@ -42,23 +43,26 @@ export async function saveMetaToken(
     };
   }
 
-  const encryptedToken = encryptToken(raw);
+  const encryptedToken = await encryptWithAudit(raw, {
+    agencyId: member.agencyId,
+    tokenType: "meta_ads",
+    source: "action:saveMetaToken",
+  });
   const tokenExpiresAt = validation.expiresAt ?? NEVER_EXPIRES;
 
   // Scoped to this agency (multi-tenant). agencyId isn't unique on MetaToken, so
   // find-then-update keeps exactly one connection row per agency.
-  const existing = await prisma.metaToken.findFirst({
-    where: { agencyId: member.agencyId },
+  const existing = await agencyScoped(prisma.metaToken).findFirst({
     select: { id: true },
   });
 
   if (existing) {
-    await prisma.metaToken.update({
+    await agencyScoped(prisma.metaToken).update({
       where: { id: existing.id },
       data: { encryptedToken, tokenExpiresAt, status: "connected" },
     });
   } else {
-    await prisma.metaToken.create({
+    await agencyScoped(prisma.metaToken).create({
       data: {
         agencyId: member.agencyId,
         encryptedToken,
@@ -80,7 +84,13 @@ export async function disconnectMetaToken(): Promise<void> {
   const member = await getCurrentMember();
   if (!member) return;
 
-  await prisma.metaToken.deleteMany({ where: { agencyId: member.agencyId } });
+  await agencyScoped(prisma.metaToken).deleteMany();
+  await logTokenAudit({
+    agencyId: member.agencyId,
+    tokenType: "meta_ads",
+    action: "deleted",
+    source: "action:disconnectMetaToken",
+  });
   revalidatePath("/agency/settings");
 }
 
@@ -104,13 +114,13 @@ export async function mapAdAccount(
   if (!hotelId) return { error: "Missing hotel.", ok: false };
 
   // Multi-tenant guard: never trust a client-supplied hotel id.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
     select: { id: true },
   });
   if (!hotel) return { error: "That hotel client wasn't found for your agency.", ok: false };
 
-  await prisma.hotelClient.update({
+  await agencyScoped(prisma.hotelClient).update({
     where: { id: hotel.id },
     data: { metaAdAccountId: adAccountId || null },
   });

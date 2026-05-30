@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScopedFor } from "@/lib/tenant";
 import { getStripe } from "@/lib/stripe";
 import { PLANS, type PlanKey } from "@/lib/plans";
 
@@ -27,7 +28,9 @@ async function ensureCustomer(member: Member): Promise<string> {
     name: member.agency.name,
     metadata: { agencyId: member.agencyId },
   });
-  await prisma.agency.update({
+  // Agency is the tenant root (scoped by id). agencyScopedFor also pins the
+  // where to this member's own agency.
+  await agencyScopedFor(member.agencyId, prisma.agency).update({
     where: { id: member.agencyId },
     data: { stripeCustomerId: customer.id },
   });

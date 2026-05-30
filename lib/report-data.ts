@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { agencyScopedFor } from "@/lib/tenant-scope";
 import {
   computeAdsSummary,
   computeContentPerformance,
@@ -40,9 +41,13 @@ export async function loadHotelReport(args: {
 }): Promise<HotelReport> {
   const { agencyId, hotelId, since, until } = args;
 
+  // agencyScopedFor injects { agencyId } into every where below. This function
+  // is also called from the public /share page (which resolves agencyId from the
+  // share token, NOT a session), so it takes agencyId as a param rather than
+  // reading the Clerk context.
   const [content, events, snapshots] = await Promise.all([
-    prisma.contentPiece.findMany({
-      where: { agencyId, hotelClientId: hotelId },
+    agencyScopedFor(agencyId, prisma.contentPiece).findMany({
+      where: { hotelClientId: hotelId },
       select: {
         id: true,
         title: true,
@@ -52,8 +57,8 @@ export async function loadHotelReport(args: {
         influencerName: true,
       },
     }),
-    prisma.trackingEvent.findMany({
-      where: { agencyId, hotelClientId: hotelId, createdAt: { gte: since, lte: until } },
+    agencyScopedFor(agencyId, prisma.trackingEvent).findMany({
+      where: { hotelClientId: hotelId, createdAt: { gte: since, lte: until } },
       select: {
         eventType: true,
         utmContent: true,
@@ -62,8 +67,8 @@ export async function loadHotelReport(args: {
         conversionValue: true,
       },
     }),
-    prisma.adSnapshot.findMany({
-      where: { agencyId, hotelClientId: hotelId, date: { gte: since, lte: until } },
+    agencyScopedFor(agencyId, prisma.adSnapshot).findMany({
+      where: { hotelClientId: hotelId, date: { gte: since, lte: until } },
       orderBy: { date: "asc" },
       select: { date: true, spend: true, conversions: true, roas: true },
     }),
@@ -72,9 +77,8 @@ export async function loadHotelReport(args: {
   const contentIds = content.map((c) => c.id);
   const redemptions =
     contentIds.length > 0
-      ? await prisma.couponRedemption.findMany({
+      ? await agencyScopedFor(agencyId, prisma.couponRedemption).findMany({
           where: {
-            agencyId,
             contentPieceId: { in: contentIds },
             redemptionDate: { gte: since, lte: until },
           },

@@ -75,6 +75,19 @@ export type ReportData = {
       replies: number;
     }[];
   };
+  ga: {
+    connected: boolean;
+    propertyId: string | null;
+    totalUsers: number;
+    newUsers: number;
+    sessions: number;
+    bounceRate: number;
+    avgSessionDuration: number;
+    conversions: number;
+    contentSessions: number;
+    contentSharePct: number | null;
+    sources: { source: string; sessions: number; pct: number }[];
+  };
 };
 
 const BRAND = "#7c3aed";
@@ -472,6 +485,87 @@ export function ReportDocument({ data }: { data: ReportData }) {
             </>
           )}
         </section>
+
+        {data.ga.connected && data.ga.sessions > 0 && (
+          <section style={{ marginTop: 32 }}>
+            <SectionTitle>
+              Total website performance · Google Analytics
+              {data.ga.propertyId ? ` · ${data.ga.propertyId}` : ""}
+            </SectionTitle>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <KpiTile label="Total users" value={formatNumber(data.ga.totalUsers)} />
+              <KpiTile label="Sessions" value={formatNumber(data.ga.sessions)} />
+              <KpiTile label="New users" value={formatNumber(data.ga.newUsers)} />
+              <KpiTile label="Bounce rate" value={formatPercent(data.ga.bounceRate)} />
+              <KpiTile
+                label="Avg session"
+                value={`${Math.round(data.ga.avgSessionDuration)}s`}
+              />
+              <KpiTile label="Conversions" value={formatNumber(data.ga.conversions)} />
+            </div>
+
+            {data.ga.contentSharePct != null && (
+              <div
+                style={{
+                  border: `1px solid ${BRAND}`,
+                  background: "#f5f3ff",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  marginBottom: 18,
+                  fontSize: 13,
+                  color: INK,
+                }}
+              >
+                <strong>
+                  Of {formatNumber(data.ga.sessions)} total visits,{" "}
+                  {formatNumber(data.ga.contentSessions)} came from our content (
+                  {formatPercent(data.ga.contentSharePct)}).
+                </strong>
+                <div style={{ fontSize: 11, color: MUTE, marginTop: 4 }}>
+                  HotelTrack-tagged snippet visits ÷ GA total sessions for this
+                  date range.
+                </div>
+              </div>
+            )}
+
+            {data.ga.sources.length > 0 && (
+              <>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: MUTE,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    margin: "4px 0 8px",
+                  }}
+                >
+                  Traffic by source
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={th("left")}>Source</th>
+                      <th style={th("right")}>Sessions</th>
+                      <th style={th("right")}>Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.ga.sources.map((row, i) => (
+                      <tr key={i}>
+                        <td style={{ ...td("left"), textTransform: "capitalize" }}>
+                          {row.source.replace(/_/g, " ")}
+                        </td>
+                        <td style={td("right")}>{formatNumber(row.sessions)}</td>
+                        <td style={td("right")}>{formatPercent(row.pct)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </section>
+        )}
 
         <div style={{ marginTop: 40, paddingTop: 16, borderTop: `1px solid ${LINE}`, fontSize: 11, color: MUTE, textAlign: "center" }}>
           {data.agencyName} · Powered by HotelTrack · {data.generatedAt}

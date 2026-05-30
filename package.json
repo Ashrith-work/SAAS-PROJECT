@@ -11,6 +11,7 @@
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
     "test:encryption": "tsx scripts/test-encryption.ts",
+    "rotate:keys": "tsx scripts/rotate-encryption-keys.ts",
     "seed:test-hotel": "tsx scripts/seed-test-hotel.ts",
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
     "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",
@@ -21,10 +22,14 @@
     "attach:member": "tsx scripts/attach-member.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:isolation": "vitest run tests/isolation.test.ts tests/agency-isolation.test.ts",
+    "test:tenant": "tsx scripts/smoke-tenant.ts",
+    "test:rls": "tsx scripts/smoke-rls.ts",
     "tunnel": "ngrok http 3001"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.1",
+    "@google-analytics/data": "^6.1.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "html2canvas": "^1.4.1",

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { decryptToken } from "@/lib/encryption";
+import { getTokenForApiCall } from "@/lib/token-access";
+import type { SecretToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
 import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
 import { runSocialSync, type SocialSyncResult } from "@/lib/social-sync";
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
   const tokens = await prisma.metaToken.findMany({
     where: { status: "connected" },
-    select: { id: true, agencyId: true, encryptedToken: true },
+    select: { id: true, agencyId: true },
   });
 
   let agenciesProcessed = 0;
@@ -72,9 +73,12 @@ export async function GET(request: Request) {
     });
     if (hotels.length === 0) continue;
 
-    let accessToken: string;
+    let accessToken: SecretToken;
     try {
-      accessToken = decryptToken(token.encryptedToken);
+      accessToken = await getTokenForApiCall("meta_ads", token.id, {
+        agencyId: token.agencyId,
+        source: "api:/api/meta/sync",
+      });
     } catch {
       errors.push({ agencyId: token.agencyId, error: "Could not decrypt token." });
       continue;
@@ -83,7 +87,7 @@ export async function GET(request: Request) {
     for (const hotel of hotels) {
       const accountId = hotel.metaAdAccountId!;
       try {
-        const rows = await getDailyInsights(accessToken, accountId, range);
+        const rows = await getDailyInsights(accessToken.reveal(), accountId, range);
 
         for (const row of rows) {
           if (!row.date) continue;

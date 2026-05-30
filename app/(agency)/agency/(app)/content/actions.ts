@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped, agencyScopedFor } from "@/lib/tenant";
 import { buildUtmLink, normalizeUrl } from "@/lib/utm";
 
 // Allowed values mirror the Prisma enums (ContentType / Platform). Kept as
@@ -56,8 +57,8 @@ export async function createContentPiece(
 
   // Multi-tenant guard: never trust the submitted hotelClientId. Confirm the
   // hotel belongs to THIS agency before attaching content to it.
-  const hotel = await prisma.hotelClient.findFirst({
-    where: { id: hotelClientId, agencyId: member.agencyId },
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelClientId },
     select: { id: true },
   });
   if (!hotel) return fail("That hotel client wasn't found for your agency.");
@@ -66,7 +67,9 @@ export async function createContentPiece(
   // can build the link. Create the row, build the link from its id, then write
   // the link back — wrapped in a transaction so a row never lingers without one.
   const piece = await prisma.$transaction(async (tx) => {
-    const created = await tx.contentPiece.create({
+    // agencyScopedFor stamps/filters agencyId on the transaction's delegate.
+    const txContent = agencyScopedFor(member.agencyId, tx.contentPiece);
+    const created = await txContent.create({
       data: {
         agencyId: member.agencyId,
         hotelClientId: hotel.id,
@@ -90,7 +93,7 @@ export async function createContentPiece(
       agencyId: member.agencyId,
     });
 
-    await tx.contentPiece.update({
+    await txContent.update({
       where: { id: created.id },
       data: { utmLink },
     });

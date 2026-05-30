@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
 import { utmContentFor } from "@/lib/utm";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { ExportMenu } from "@/components/ui/ExportMenu";
@@ -60,8 +61,8 @@ export default async function ContentLibraryPage({
   const fFrom = one(sp.from);
   const fTo = one(sp.to);
 
-  // Multi-tenant: every filter is layered on top of the agencyId scope.
-  const where: Prisma.ContentPieceWhereInput = { agencyId: member.agencyId };
+  // Multi-tenant: agencyScoped injects { agencyId }; these are the UI filters.
+  const where: Prisma.ContentPieceWhereInput = {};
   if (fHotel) where.hotelClientId = fHotel;
   if (isContentType(fType)) where.contentType = fType;
   if (isPlatform(fPlatform)) where.platform = fPlatform;
@@ -75,12 +76,11 @@ export default async function ContentLibraryPage({
   }
 
   const [hotels, pieces] = await Promise.all([
-    prisma.hotelClient.findMany({
-      where: { agencyId: member.agencyId },
+    agencyScoped(prisma.hotelClient).findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
-    prisma.contentPiece.findMany({
+    agencyScoped(prisma.contentPiece).findMany({
       where,
       orderBy: { createdAt: "desc" },
       select: {
@@ -111,13 +111,13 @@ export default async function ContentLibraryPage({
 
   if (keys.length > 0 && !pixelMode) {
     const [grouped, distinctVisits] = await Promise.all([
-      prisma.trackingEvent.groupBy({
+      agencyScoped(prisma.trackingEvent).groupBy({
         by: ["utmContent", "eventType"],
-        where: { agencyId: member.agencyId, utmContent: { in: keys } },
+        where: { utmContent: { in: keys } },
         _count: { _all: true },
       }),
-      prisma.trackingEvent.findMany({
-        where: { agencyId: member.agencyId, utmContent: { in: keys }, eventType: "visit" },
+      agencyScoped(prisma.trackingEvent).findMany({
+        where: { utmContent: { in: keys }, eventType: "visit" },
         select: { utmContent: true, sessionId: true },
         distinct: ["utmContent", "sessionId"],
       }),

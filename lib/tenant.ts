@@ -1,0 +1,113 @@
+import "server-only";
+
+import { cache } from "react";
+import { getCurrentMember, getPlatformRole } from "@/lib/auth";
+import { agencyScopedFor } from "@/lib/tenant-scope";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYER 1 — Centralised agency-scoped query helpers (see MULTITENANCY.md).
+//
+// HotelTrack is multi-tenant: the tenant is `Agency`, and every multi-tenant
+// table carries an `agencyId` column. Historically every query hand-wrote
+// `where: { agencyId: member.agencyId, ... }`. That works but relies on a human
+// remembering the filter on EVERY query — one omission is a cross-tenant leak.
+//
+// These helpers move that filter into one place:
+//   • getAgencyContext()      — resolve the signed-in agency context (throws)
+//   • requireAgencyId()       — the agencyId, rejecting super-admin callers
+//   • requireSuperAdmin()     — guard for the separate, cross-agency admin surface
+//   • agencyScoped(model)     — a Prisma delegate that auto-injects the filter
+//   • agencyScopedFor(id, m)  — same, with an explicit agencyId (no session)
+//
+// The pure injection logic lives in lib/tenant-scope.ts (no "server-only") so
+// the isolation tests can import it under Node. App code imports from here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export { agencyScopedFor, MULTI_TENANT_MODELS } from "@/lib/tenant-scope";
+
+export class TenantAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TenantAuthError";
+  }
+}
+
+export type AgencyContext = {
+  agencyId: string;
+  memberId: string;
+  role: "admin" | "analyst";
+};
+
+/**
+ * Resolves the current request's agency context from the Clerk session.
+ * Throws TenantAuthError if the user is not signed in or has no AgencyMember.
+ * `cache`d so repeated calls within one request render share the lookup.
+ */
+export const getAgencyContext = cache(async (): Promise<AgencyContext> => {
+  const member = await getCurrentMember();
+  if (!member) {
+    throw new TenantAuthError(
+      "No agency context: the user is not signed in or has no agency membership.",
+    );
+  }
+  return { agencyId: member.agencyId, memberId: member.id, role: member.role };
+});
+
+/**
+ * Returns the current agency's id, EXPLICITLY rejecting super-admin callers.
+ * Super admins have no single-agency context — they operate platform-wide and
+ * must use `requireSuperAdmin()` + un-scoped queries instead.
+ */
+export async function requireAgencyId(): Promise<string> {
+  const platformRole = await getPlatformRole();
+  if (platformRole === "super_admin") {
+    throw new TenantAuthError(
+      "Super admins have no single-agency context. Use requireSuperAdmin() and " +
+        "the dedicated platform-admin queries for cross-agency access.",
+    );
+  }
+  const { agencyId } = await getAgencyContext();
+  return agencyId;
+}
+
+/**
+ * Guard for the separate super-admin surface. Throws unless the Clerk platform
+ * role is `super_admin`. Super-admin code intentionally runs UN-scoped queries
+ * (cross-agency by design) — it must never use agencyScoped().
+ */
+export async function requireSuperAdmin(): Promise<void> {
+  const role = await getPlatformRole();
+  if (role !== "super_admin") {
+    throw new TenantAuthError("Super-admin privileges are required for this action.");
+  }
+}
+
+/**
+ * The ergonomic form: resolves the agency context from the Clerk session on
+ * each call, so it reads as `await agencyScoped(prisma.hotelClient).findMany(…)`.
+ * Rejects super-admin callers (via requireAgencyId). Use this in authenticated
+ * server components, server actions, and route handlers.
+ *
+ * Do NOT use this in code that may run without a session (the public /share
+ * pages, the tracking endpoints, cron jobs) — there, pass the agencyId you
+ * resolved from the token/siteId into `agencyScopedFor()` instead.
+ */
+export function agencyScoped<D>(model: D): D {
+  const target = model as Record<string, unknown>;
+
+  return new Proxy(target, {
+    get(t, prop: string) {
+      const orig = t[prop];
+      if (typeof orig !== "function") return orig;
+
+      return async (args: unknown = {}) => {
+        const agencyId = await requireAgencyId();
+        const scoped = agencyScopedFor(agencyId, t) as Record<
+          string,
+          (a?: unknown) => unknown
+        >;
+        return scoped[prop](args);
+      };
+    },
+  }) as D;
+}

@@ -24,6 +24,14 @@ export default async function AdminLayout({
             <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white dark:bg-white dark:text-black">
               Admin
             </span>
+            <nav className="ml-2 flex items-center gap-3 text-sm text-zinc-500">
+              <Link href="/admin" className="hover:text-black dark:hover:text-white">
+                Overview
+              </Link>
+              <Link href="/admin/audit" className="hover:text-black dark:hover:text-white">
+                Audit log
+              </Link>
+            </nav>
           </div>
           <UserButton />
         </div>

@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { decryptToken } from "@/lib/encryption";
+import { getTokenForApiCall } from "@/lib/token-access";
+import type { SecretToken } from "@/lib/encryption";
 import {
   getAccountInsights,
   getMediaInsights,
@@ -57,7 +58,6 @@ type SyncableAccount = {
   agencyId: string;
   hotelClientId: string;
   igUserId: string;
-  encryptedToken: string;
 };
 
 /**
@@ -73,9 +73,13 @@ export async function syncSocialAccount(
   const perRequestDelayMs = tuning.perRequestDelayMs ?? 350;
   const mode = tuning.mode ?? "full";
 
-  let token: string;
+  let token: SecretToken;
   try {
-    token = decryptToken(account.encryptedToken);
+    token = await getTokenForApiCall("instagram", account.id, {
+      agencyId: account.agencyId,
+      hotelClientId: account.hotelClientId,
+      source: "sync:social",
+    });
   } catch {
     return { ok: false, error: "Stored token could not be decrypted." };
   }
@@ -90,7 +94,7 @@ export async function syncSocialAccount(
 
     // ── Account + posts (skipped in stories-only mode) ────────────────────
     if (mode !== "stories") {
-      const insights = await getAccountInsights(token, account.igUserId, { since, until });
+      const insights = await getAccountInsights(token.reveal(), account.igUserId, { since, until });
       for (const day of insights.daily) {
         const date = new Date(`${day.date}T00:00:00.000Z`);
         const data = {
@@ -109,7 +113,7 @@ export async function syncSocialAccount(
       followers = insights.followers;
 
       const posts = await getMediaInsights(
-        token,
+        token.reveal(),
         account.igUserId,
         postsPerAccount,
         perRequestDelayMs,
@@ -146,7 +150,7 @@ export async function syncSocialAccount(
     // Stories expire after 24h, so we capture every story still visible on
     // each run and keep the StorySnapshot row forever for historical reports.
     if (mode !== "no-stories") {
-      const stories = await getStoryInsights(token, account.igUserId, perRequestDelayMs);
+      const stories = await getStoryInsights(token.reveal(), account.igUserId, perRequestDelayMs);
       for (const s of stories) {
         const data = {
           agencyId: account.agencyId,
@@ -218,7 +222,6 @@ export async function runSocialSync(
       agencyId: true,
       hotelClientId: true,
       igUserId: true,
-      encryptedToken: true,
     },
   });
 
