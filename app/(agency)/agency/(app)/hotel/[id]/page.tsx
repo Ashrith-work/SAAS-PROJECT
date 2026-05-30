@@ -26,6 +26,7 @@ import { PostTypeFilter } from "./PostTypeFilter";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
 import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
+import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
 
@@ -291,6 +292,85 @@ export default async function HotelDashboardPage({
       ? (storyImpressionsRange - storyExitsRange) / storyImpressionsRange
       : null;
 
+  // ── Google Analytics — total website performance + source breakdown ──
+  const [gaConnection, gaSnaps, gaSources, hotelTrackVisitsAgg] = await Promise.all([
+    prisma.googleAnalyticsConnection.findFirst({
+      where: { agencyId: member.agencyId, hotelClientId: hotel.id },
+      select: { status: true, propertyId: true, lastSyncedAt: true },
+    }),
+    prisma.gaSnapshot.findMany({
+      where: {
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        date: { gte: range.since, lte: range.until },
+      },
+      orderBy: { date: "asc" },
+    }),
+    prisma.gaSourceBreakdown.groupBy({
+      by: ["source"],
+      where: {
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        date: { gte: range.since, lte: range.until },
+      },
+      _sum: { sessions: true, conversions: true },
+    }),
+    // HotelTrack snippet "visit" events with a UTM tag in the same range —
+    // this is the agency-attributable share for the comparison block.
+    pixelMode
+      ? Promise.resolve(0)
+      : prisma.trackingEvent.findMany({
+          where: {
+            agencyId: member.agencyId,
+            hotelClientId: hotel.id,
+            eventType: "visit",
+            createdAt: { gte: range.since, lte: range.until },
+            OR: [
+              { utmContent: { not: null } },
+              { utmCampaign: { not: null } },
+            ],
+          },
+          select: { sessionId: true },
+          distinct: ["sessionId"],
+        }).then((rows) => rows.length),
+  ]);
+
+  const gaConnected = gaConnection?.status === "connected";
+  type GaTotals = {
+    totalUsers: number;
+    newUsers: number;
+    sessions: number;
+    pageviews: number;
+    conversions: number;
+    bounceSum: number;
+    durationSum: number;
+  };
+  const gaTotals = gaSnaps.reduce<GaTotals>(
+    (acc, s) => ({
+      totalUsers: acc.totalUsers + s.totalUsers,
+      newUsers: acc.newUsers + s.newUsers,
+      sessions: acc.sessions + s.sessions,
+      pageviews: acc.pageviews + s.pageviews,
+      conversions: acc.conversions + s.conversions,
+      bounceSum: acc.bounceSum + s.bounceRate * s.sessions,
+      durationSum: acc.durationSum + s.avgSessionDuration * s.sessions,
+    }),
+    { totalUsers: 0, newUsers: 0, sessions: 0, pageviews: 0, conversions: 0, bounceSum: 0, durationSum: 0 },
+  );
+  const gaBounceRate = gaTotals.sessions > 0 ? gaTotals.bounceSum / gaTotals.sessions : 0;
+  const gaAvgSessionDuration =
+    gaTotals.sessions > 0 ? gaTotals.durationSum / gaTotals.sessions : 0;
+  const gaSourceSlices: SourceSlice[] = gaSources.map((r: { source: string; _sum: { sessions: number | null } }) => ({
+    source: r.source,
+    sessions: r._sum.sessions ?? 0,
+  }));
+  const hotelTrackTaggedVisits =
+    typeof hotelTrackVisitsAgg === "number" ? hotelTrackVisitsAgg : 0;
+  const contentSharePct =
+    gaTotals.sessions > 0 ? hotelTrackTaggedVisits / gaTotals.sessions : null;
+  const gaLastUpdated = gaConnection?.lastSyncedAt ?? null;
+  const hasGaData = gaSnaps.length > 0 || gaSources.length > 0;
+
   const hasSocialData =
     socialSnaps.length > 0 || topPosts.length > 0 || recentStories.length > 0;
   const followerSeries = socialSnaps.map((s) => ({
@@ -414,6 +494,26 @@ export default async function HotelDashboardPage({
         replies: s.replies,
       })),
     },
+    ga: {
+      connected: gaConnected,
+      propertyId: gaConnection?.propertyId ?? null,
+      totalUsers: gaTotals.totalUsers,
+      newUsers: gaTotals.newUsers,
+      sessions: gaTotals.sessions,
+      bounceRate: gaBounceRate,
+      avgSessionDuration: gaAvgSessionDuration,
+      conversions: gaTotals.conversions,
+      contentSessions: hotelTrackTaggedVisits,
+      contentSharePct,
+      sources: gaSourceSlices
+        .filter((s) => s.sessions > 0)
+        .sort((a, b) => b.sessions - a.sessions)
+        .map((s) => ({
+          source: s.source,
+          sessions: s.sessions,
+          pct: gaTotals.sessions > 0 ? s.sessions / gaTotals.sessions : 0,
+        })),
+    },
   };
 
   return (
@@ -437,6 +537,12 @@ export default async function HotelDashboardPage({
               className="text-sm text-zinc-500 hover:underline"
             >
               Snippet setup →
+            </Link>
+            <Link
+              href={`/agency/hotel/${hotel.id}/install`}
+              className="text-sm text-zinc-500 hover:underline"
+            >
+              Install &amp; test →
             </Link>
             <ReportMenu
               hotelId={hotel.id}
@@ -837,6 +943,90 @@ export default async function HotelDashboardPage({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Section 6 — Total Website Performance (Google Analytics 4) */}
+      <SectionCard
+        title="Total website performance (from Google Analytics)"
+        subtitle={
+          gaConnection?.propertyId
+            ? `GA4 property ${gaConnection.propertyId}`
+            : "Pulls every visit, not just the UTM-tagged ones — connect GA in Setup."
+        }
+      >
+        {!gaConnected ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-zinc-500">
+              No Google Analytics data yet.
+            </p>
+            <Link
+              href={`/agency/hotels/${hotel.id}/setup`}
+              className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
+            >
+              Connect this hotel&apos;s GA4 in Setup →
+            </Link>
+          </div>
+        ) : !hasGaData ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-zinc-500">
+              GA connected — run a sync from Setup to pull metrics for this date
+              range.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5 p-4">
+            <p className="text-xs text-zinc-500">
+              {gaLastUpdated
+                ? `Last updated ${new Date(gaLastUpdated).toLocaleString()} · `
+                : ""}
+              Refreshes daily via /api/ga/sync.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <KpiCard label="Total users" value={formatNumber(gaTotals.totalUsers)} />
+              <KpiCard label="Sessions" value={formatNumber(gaTotals.sessions)} />
+              <KpiCard label="New users" value={formatNumber(gaTotals.newUsers)} />
+              <KpiCard
+                label="Bounce rate"
+                value={formatPercent(gaBounceRate)}
+                hint="Weighted by sessions"
+              />
+              <KpiCard
+                label="Avg session"
+                value={`${Math.round(gaAvgSessionDuration)}s`}
+                hint="Duration"
+              />
+              <KpiCard
+                label="Conversions"
+                value={formatNumber(gaTotals.conversions)}
+              />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Traffic by source
+              </p>
+              <SourcePieChart data={gaSourceSlices} />
+            </div>
+
+            {!pixelMode && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-200">
+                <p className="font-medium">
+                  Of {formatNumber(gaTotals.sessions)} total website visits,{" "}
+                  {formatNumber(hotelTrackTaggedVisits)} came from our content
+                  {contentSharePct != null && (
+                    <> ({formatPercent(contentSharePct)})</>
+                  )}
+                  .
+                </p>
+                <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
+                  Comparing HotelTrack&apos;s UTM-tagged snippet visits against
+                  GA&apos;s total sessions for this date range.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </SectionCard>

@@ -92,6 +92,9 @@ model Agency {
   socialSnapshots   SocialSnapshot[]
   postSnapshots     PostSnapshot[]
   storySnapshots    StorySnapshot[]
+  gaConnections     GoogleAnalyticsConnection[]
+  gaSnapshots       GaSnapshot[]
+  gaSourceBreakdowns GaSourceBreakdown[]
 }
 
 model AgencyMember {
@@ -113,6 +116,10 @@ model HotelClient {
   agencyId           String
   name               String
   websiteUrl         String
+  // Which platform the hotel's website runs on, used to show the right install
+  // guide (WordPress / Shopify / Other). String + @default so the set of
+  // supported platforms can grow without an enum migration.
+  sitePlatform       String           @default("other")
   contactName        String
   contactEmail       String
   siteId             String           @unique @default(cuid()) // public id embedded in the tracking snippet
@@ -141,6 +148,9 @@ model HotelClient {
   socialSnapshots SocialSnapshot[]
   postSnapshots   PostSnapshot[]
   storySnapshots  StorySnapshot[]
+  gaConnections   GoogleAnalyticsConnection[]
+  gaSnapshots     GaSnapshot[]
+  gaSourceBreakdowns GaSourceBreakdown[]
 
   @@index([agencyId])
 }
@@ -427,4 +437,79 @@ model StorySnapshot {
   @@index([agencyId])
   @@index([hotelClientId])
   @@index([postedAt]) // for the "last 30 days" dashboard filter
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Google Analytics 4 — the third data source per hotel (alongside Meta Ads and
+// Instagram). The hotel already runs GA4 on its website; we ingest those daily
+// rollups to put TOTAL website performance next to HotelTrack's snippet-based
+// attribution.
+//
+// Credentials are a Google Cloud service-account JSON, encrypted with the same
+// AES-256-GCM utility as Meta tokens (see lib/encryption.ts). The service
+// account must be added as a Viewer on the GA4 property in the GA Admin UI.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model GoogleAnalyticsConnection {
+  id                   String    @id @default(cuid())
+  agencyId             String
+  hotelClientId        String
+  propertyId           String // GA4 numeric property id, e.g. "123456789"
+  encryptedCredentials String    @db.Text // AES-256-GCM ciphertext of the full service-account JSON
+  status               String    @default("disconnected")
+  lastSyncedAt         DateTime?
+  createdAt            DateTime  @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId]) // one GA connection per hotel
+  @@index([agencyId])
+}
+
+model GaSnapshot {
+  id                  String   @id @default(cuid())
+  agencyId            String
+  hotelClientId       String
+  date                DateTime @db.Date
+  totalUsers          Int      @default(0)
+  newUsers            Int      @default(0)
+  sessions            Int      @default(0)
+  // GA4 returns bounceRate + conversionRate as 0..1 floats. avgSessionDuration
+  // is seconds. We keep them as float for easy aggregation across days.
+  bounceRate          Float    @default(0)
+  avgSessionDuration  Float    @default(0)
+  pageviews           Int      @default(0)
+  conversions         Int      @default(0)
+  conversionRate      Float    @default(0)
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date]) // one snapshot per hotel per day
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model GaSourceBreakdown {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  date          DateTime @db.Date
+  // Normalised source key: "instagram" | "facebook" | "google_organic" |
+  // "google_paid" | "direct" | "email" | "referral" | "other".
+  source        String
+  medium        String? // raw GA medium (organic, cpc, social, referral, …)
+  sessions      Int      @default(0)
+  conversions   Int      @default(0)
+  // Revenue when GA4 reports it (event_value / purchase events). Stored as a
+  // Decimal so currency precision survives aggregation, same as AdSnapshot.spend.
+  revenue       Decimal  @default(0) @db.Decimal(12, 2)
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date, source]) // one row per hotel per day per source
+  @@index([agencyId])
+  @@index([hotelClientId])
 }

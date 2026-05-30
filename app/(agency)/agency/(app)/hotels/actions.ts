@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getPlan, hotelLimit } from "@/lib/plans";
+import { normalizeSitePlatform } from "@/lib/site-platform";
 
 type State = { error: string | null };
 
@@ -33,6 +34,7 @@ export async function createHotel(
   const get = (k: string) => ((formData.get(k) as string | null) ?? "").trim();
   const name = get("name");
   const websiteUrl = get("websiteUrl");
+  const sitePlatform = normalizeSitePlatform(get("sitePlatform"));
   const contactName = get("contactName");
   const contactEmail = get("contactEmail");
   const method = get("conversionMethod");
@@ -60,6 +62,7 @@ export async function createHotel(
       agencyId: member.agencyId,
       name,
       websiteUrl,
+      sitePlatform,
       contactName,
       contactEmail,
       conversionMethod: method as Method,

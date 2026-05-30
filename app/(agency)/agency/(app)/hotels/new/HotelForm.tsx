@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createHotel } from "../actions";
+import { SITE_PLATFORMS, SITE_PLATFORM_LABELS } from "@/lib/site-platform";
 
 type Method = "url_change" | "same_page" | "both";
 const initialState: { error: string | null } = { error: null };
@@ -61,6 +62,23 @@ export function HotelForm() {
     <form action={action} className="space-y-5">
       <Field label="Hotel name" name="name" placeholder="Seaside Resort" />
       <Field label="Website URL" name="websiteUrl" type="url" placeholder="https://seasideresort.com" />
+
+      <div className="space-y-1.5">
+        <label htmlFor="sitePlatform" className="text-sm font-medium">
+          Website platform
+        </label>
+        <select id="sitePlatform" name="sitePlatform" defaultValue="wordpress" className={inputCls}>
+          {SITE_PLATFORMS.map((p) => (
+            <option key={p} value={p}>
+              {SITE_PLATFORM_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-zinc-500">
+          We&apos;ll show the matching step-by-step snippet install guide.
+        </p>
+      </div>
+
       <Field label="Contact name" name="contactName" placeholder="Jane Doe" />
       <Field label="Contact email" name="contactEmail" type="email" placeholder="jane@seasideresort.com" />
 
