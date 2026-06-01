@@ -79,10 +79,17 @@ model Agency {
   id                 String   @id @default(cuid())
   name               String
   email              String
-  stripeCustomerId   String?  @unique // set after the Stripe customer is created
-  subscriptionStatus String   @default("inactive")
-  plan               String   @default("starter")
-  // Set by a super admin to suspend the agency, independent of Stripe billing.
+  // Billing is Razorpay (INR). The customer id is populated by Razorpay after the
+  // first authorisation payment; the subscription id is the sub_… we open Checkout
+  // against. subscriptionExpiresAt mirrors the current billing cycle's end.
+  razorpayCustomerId     String?  @unique
+  razorpaySubscriptionId String?  @unique
+  // Lifecycle: inactive (pre-subscription) | created | active | paused |
+  // cancelled | completed | expired. Only `active` unlocks the dashboard.
+  subscriptionStatus    String    @default("inactive")
+  plan                  String    @default("starter") // starter | growth | agency
+  subscriptionExpiresAt DateTime?
+  // Set by a super admin to suspend the agency, independent of Razorpay billing.
   // When set, access to the agency dashboard is blocked (see the agency layout).
   suspendedAt        DateTime?
   createdAt          DateTime @default(now())

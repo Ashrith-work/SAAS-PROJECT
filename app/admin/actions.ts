@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
  * role server-side (never trusts that the proxy ran). This is the admin panel's
  * only write; everything else there is read-only.
  *
- * Suspension is independent of Stripe billing: it sets/clears Agency.suspendedAt,
+ * Suspension is independent of Razorpay billing: it sets/clears Agency.suspendedAt,
  * which the agency layout checks to block dashboard access.
  */
 export async function setAgencySuspended(formData: FormData): Promise<void> {

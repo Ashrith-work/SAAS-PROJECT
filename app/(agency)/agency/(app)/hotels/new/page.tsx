@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { getPlan, hotelLimit } from "@/lib/plans";
 import { HotelForm } from "./HotelForm";
+import { UpgradeModal } from "../../_components/UpgradeModal";
 
 export default async function NewHotelPage() {
   const member = await getCurrentMember();
@@ -26,21 +27,28 @@ export default async function NewHotelPage() {
       </h1>
 
       {atLimit ? (
-        <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-6 dark:border-amber-800/60 dark:bg-amber-900/20">
-          <h2 className="font-medium text-amber-900 dark:text-amber-200">
-            You&apos;ve reached your plan limit
-          </h2>
-          <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
-            Your {getPlan(member.agency.plan).name} plan includes up to {limit}{" "}
-            hotel clients ({count}/{limit} used). Upgrade to add more.
-          </p>
-          <Link
-            href="/agency/billing"
-            className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            View plans →
-          </Link>
-        </div>
+        <>
+          <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-6 dark:border-amber-800/60 dark:bg-amber-900/20">
+            <h2 className="font-medium text-amber-900 dark:text-amber-200">
+              You&apos;ve reached your plan limit
+            </h2>
+            <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+              Your {getPlan(member.agency.plan).name} plan includes up to {limit}{" "}
+              hotel clients ({count}/{limit} used). Upgrade to add more.
+            </p>
+            <Link
+              href="/agency/billing"
+              className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            >
+              View plans →
+            </Link>
+          </div>
+          <UpgradeModal
+            title={`Upgrade to add more hotels`}
+            message={`Your ${getPlan(member.agency.plan).name} plan includes up to ${limit} hotel clients (${count}/${limit} used). Upgrade to a higher plan to add more.`}
+            backHref="/agency/hotels"
+          />
+        </>
       ) : (
         <>
           <p className="mt-1 mb-6 text-sm text-zinc-500">

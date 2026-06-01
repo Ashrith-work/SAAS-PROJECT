@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPlan, hotelLimit } from "@/lib/plans";
+import { getPlan, hotelLimit, nextPlan } from "@/lib/plans";
 import { agencyScoped } from "@/lib/tenant";
 import { normalizeSitePlatform } from "@/lib/site-platform";
 
@@ -24,8 +24,10 @@ export async function createHotel(
   if (Number.isFinite(limit)) {
     const count = await agencyScoped(prisma.hotelClient).count();
     if (count >= limit) {
+      const up = nextPlan(member.agency.plan);
+      const suggestion = up ? `Upgrade to ${up.name}` : "Upgrade your plan";
       return {
-        error: `Your ${getPlan(member.agency.plan).name} plan includes up to ${limit} hotel clients. Upgrade on the Billing page to add more.`,
+        error: `Your ${getPlan(member.agency.plan).name} plan includes up to ${limit} hotel clients. ${suggestion} on the Billing page to add more.`,
       };
     }
   }

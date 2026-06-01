@@ -16,7 +16,7 @@
     "seed:dashboard-demo": "tsx scripts/seed-dashboard-demo.ts",
     "seed:alerts-demo": "tsx scripts/seed-alerts-demo.ts",
     "seed:social-demo": "tsx scripts/seed-social-demo.ts",
-    "setup:stripe": "tsx scripts/setup-stripe.ts",
+    "setup:razorpay": "tsx scripts/setup-razorpay.ts",
     "dev:activate": "tsx scripts/dev-activate-subscription.ts",
     "set:super-admin": "tsx scripts/set-super-admin.ts",
     "attach:member": "tsx scripts/attach-member.ts",
@@ -36,11 +36,11 @@
     "jspdf": "^4.2.1",
     "next": "16.2.6",
     "pg": "^8.21.0",
+    "razorpay": "^2.9.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
     "resend": "^6.12.4",
-    "stripe": "^22.1.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

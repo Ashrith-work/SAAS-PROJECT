@@ -2,8 +2,22 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { getCurrentMember } from "@/lib/auth";
-import { PLAN_ORDER, PLANS, getPlan, isActiveStatus } from "@/lib/plans";
-import { subscribeToPlan, openBillingPortal } from "./actions";
+import { PLAN_ORDER, PLANS, getPlan, isActiveStatus, formatInr } from "@/lib/razorpay-plans";
+import { listInvoices, type InvoiceView } from "@/lib/razorpay-invoices";
+import { BillingPanel } from "./BillingPanel";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RAZORPAY TEST MODE — test payment instruments (no real money is charged).
+// Only works while your keys are rzp_test_… .
+//
+//   Card (success):   4111 1111 1111 1111   any future expiry · any CVV · any name
+//                     → on the OTP/auth screen, choose "Success"
+//   Card (failure):   5104 0600 0000 0008   → choose "Failure" to test payment.failed
+//   UPI  (success):   success@razorpay
+//   UPI  (failure):   failure@razorpay
+//
+// Full list: https://razorpay.com/docs/payments/payments/test-card-details/
+// ─────────────────────────────────────────────────────────────────────────────
 
 type SP = { [key: string]: string | string[] | undefined };
 
@@ -12,27 +26,22 @@ function Banner({ sp, active }: { sp: SP; active: boolean }) {
   if (one(sp.success)) {
     return (
       <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300">
-        Subscription updated. It can take a few seconds to activate — refresh if
-        your plan isn&apos;t shown yet.
+        Subscription updated. It can take a few seconds to activate — refresh if your
+        plan isn&apos;t shown yet.
       </div>
     );
   }
   if (one(sp.canceled)) {
     return (
       <div className="rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-        Checkout canceled — no changes were made.
+        Your subscription will cancel at the end of the current billing period.
       </div>
     );
   }
-  const err = one(sp.error);
-  if (err) {
-    const msg =
-      err === "config"
-        ? "Plans aren't configured yet. Run `npm run setup:stripe` and set the price IDs in .env."
-        : "Something went wrong starting that. Please try again.";
+  if (one(sp.error)) {
     return (
       <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
-        {msg}
+        Something went wrong. Please try again.
       </div>
     );
   }
@@ -47,18 +56,77 @@ function Banner({ sp, active }: { sp: SP; active: boolean }) {
   return null;
 }
 
-export default async function BillingPage({
-  searchParams,
-}: {
-  searchParams: Promise<SP>;
-}) {
+function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
+  if (invoices.length === 0) return null;
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <h3 className="font-medium">Invoice history</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+            <tr>
+              <th className="px-4 py-3 font-medium">Invoice</th>
+              <th className="px-4 py-3 font-medium">Date</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 text-right font-medium">Amount</th>
+              <th className="px-4 py-3 text-right font-medium" />
+            </tr>
+          </thead>
+          <tbody>
+            {invoices.map((inv) => (
+              <tr key={inv.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                <td className="px-4 py-3 font-mono text-xs">{inv.number ?? inv.id}</td>
+                <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                  {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("en-IN") : "—"}
+                </td>
+                <td className="px-4 py-3 capitalize text-zinc-600 dark:text-zinc-400">{inv.status}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{formatInr(inv.amountPaise)}</td>
+                <td className="px-4 py-3 text-right">
+                  {inv.shortUrl && (
+                    <a
+                      href={inv.shortUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-zinc-500 hover:underline"
+                    >
+                      View →
+                    </a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default async function BillingPage({ searchParams }: { searchParams: Promise<SP> }) {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
   const sp = await searchParams;
-  const active = isActiveStatus(member.agency.subscriptionStatus);
-  const currentKey = active ? member.agency.plan : null;
+  const status = member.agency.subscriptionStatus;
+  const active = isActiveStatus(status);
+  const paused = status === "paused";
   const currentPlan = getPlan(member.agency.plan);
+
+  const invoices = member.agency.razorpaySubscriptionId
+    ? await listInvoices(member.agency.razorpaySubscriptionId)
+    : [];
+
+  const plans = PLAN_ORDER.map((key) => {
+    const plan = PLANS[key];
+    return {
+      key,
+      name: plan.name,
+      priceLabel: formatInr(plan.pricePaise),
+      features: plan.features,
+    };
+  });
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -69,10 +137,7 @@ export default async function BillingPage({
         </div>
         <div className="flex items-center gap-3">
           {active && (
-            <Link
-              href="/agency/dashboard"
-              className="text-sm text-zinc-500 hover:underline"
-            >
+            <Link href="/agency/dashboard" className="text-sm text-zinc-500 hover:underline">
               ← Dashboard
             </Link>
           )}
@@ -86,97 +151,38 @@ export default async function BillingPage({
         <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <p className="text-sm text-zinc-500">Current plan</p>
           <p className="mt-0.5 text-lg font-medium">
-            {active ? currentPlan.name : "No active subscription"}
-            <span className="ml-2 align-middle text-xs font-normal text-zinc-500">
-              ({member.agency.subscriptionStatus})
-            </span>
+            {active || paused ? currentPlan.name : "No active subscription"}
+            <span className="ml-2 align-middle text-xs font-normal text-zinc-500">({status})</span>
           </p>
-          {active && (
-            <form action={openBillingPortal} className="mt-3">
-              <button
-                type="submit"
-                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                Manage subscription — change plan, update card, or cancel
-              </button>
-            </form>
+          {member.agency.subscriptionExpiresAt && (active || paused) && (
+            <p className="mt-1 text-xs text-zinc-500">
+              Current period ends{" "}
+              {new Date(member.agency.subscriptionExpiresAt).toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {PLAN_ORDER.map((key) => {
-            const plan = PLANS[key];
-            const isCurrent = currentKey === key;
-            return (
-              <div
-                key={key}
-                className={`flex flex-col rounded-xl border p-5 ${
-                  isCurrent
-                    ? "border-black dark:border-white"
-                    : "border-zinc-200 dark:border-zinc-800"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold">{plan.name}</h2>
-                  {isCurrent && (
-                    <span className="rounded-full bg-black px-2 py-0.5 text-xs font-medium text-white dark:bg-white dark:text-black">
-                      Current
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-2xl font-semibold">
-                  ${plan.priceMonthly}
-                  <span className="text-sm font-normal text-zinc-500">/mo</span>
-                </p>
-                <ul className="mt-3 flex-1 space-y-1.5 text-sm text-zinc-600 dark:text-zinc-400">
-                  {plan.features.map((f) => (
-                    <li key={f}>• {f}</li>
-                  ))}
-                </ul>
+        <BillingPanel
+          plans={plans}
+          currentPlanKey={member.agency.plan}
+          active={active}
+          status={status}
+          paused={paused}
+          agencyName={member.agency.name}
+          agencyEmail={member.agency.email || member.email}
+        />
 
-                <div className="mt-4">
-                  {active ? (
-                    isCurrent ? (
-                      <button
-                        disabled
-                        className="w-full rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-500 dark:bg-zinc-800"
-                      >
-                        Your plan
-                      </button>
-                    ) : (
-                      <form action={openBillingPortal}>
-                        <button
-                          type="submit"
-                          className="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                        >
-                          Switch in portal
-                        </button>
-                      </form>
-                    )
-                  ) : (
-                    <form action={subscribeToPlan}>
-                      <input type="hidden" name="plan" value={key} />
-                      <button
-                        type="submit"
-                        disabled={!plan.priceId}
-                        className="w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      >
-                        {plan.priceId ? "Subscribe" : "Not configured"}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <InvoiceHistory invoices={invoices} />
 
         <p className="text-xs text-zinc-500">
-          Payments run in Stripe test mode. Use card{" "}
-          <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
-            4242 4242 4242 4242
-          </code>{" "}
-          with any future expiry and CVC.
+          Payments run in Razorpay test mode. Use card{" "}
+          <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">4111 1111 1111 1111</code>{" "}
+          (any future expiry &amp; CVV) and choose <strong>Success</strong> on the
+          authentication screen. No real money is charged.
         </p>
       </div>
     </main>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { UserButton } from "@clerk/nextjs";
 import { getCurrentMember } from "@/lib/auth";
 import { isActiveStatus } from "@/lib/plans";
@@ -20,9 +21,15 @@ export default async function AgencyAppLayout({
     redirect("/agency/suspended");
   }
 
-  // Gate the whole agency dashboard behind an active subscription.
+  // Gate the whole agency dashboard behind an active subscription. While
+  // inactive, the agency can still reach Billing (it lives outside this layout
+  // group) and Settings, so they can pay or manage their account — everything
+  // else bounces to Billing. The pathname is provided by proxy.ts.
   if (!isActiveStatus(member.agency.subscriptionStatus)) {
-    redirect("/agency/billing?inactive=1");
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    if (!pathname.startsWith("/agency/settings")) {
+      redirect("/agency/billing?inactive=1");
+    }
   }
 
   return (

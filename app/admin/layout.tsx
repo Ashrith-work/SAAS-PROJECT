@@ -28,6 +28,9 @@ export default async function AdminLayout({
               <Link href="/admin" className="hover:text-black dark:hover:text-white">
                 Overview
               </Link>
+              <Link href="/admin/billing" className="hover:text-black dark:hover:text-white">
+                Billing
+              </Link>
               <Link href="/admin/audit" className="hover:text-black dark:hover:text-white">
                 Audit log
               </Link>

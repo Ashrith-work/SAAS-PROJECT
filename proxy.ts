@@ -27,9 +27,11 @@ const isPublicRoute = createRouteMatcher([
   "/api/social/sync(.*)",
   "/api/social/sync-stories(.*)",
   "/api/ga/sync(.*)",
-  // Stripe posts webhooks with no Clerk session; the route verifies the Stripe
-  // signature instead.
-  "/api/webhooks/stripe(.*)",
+  // Razorpay posts webhooks with no Clerk session; the route verifies the
+  // Razorpay HMAC-SHA256 signature instead.
+  "/api/webhooks/razorpay(.*)",
+  // Renewal-reminder cron, gated by CRON_SECRET inside the route.
+  "/api/billing/renewal-reminders(.*)",
 ]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);
@@ -69,7 +71,11 @@ export default clerkMiddleware(async (auth, req) => {
         role ? home : new URL("/agency/onboarding", req.url),
       );
     }
-    return NextResponse.next();
+    // Pass the pathname through so the agency app layout can allow the billing +
+    // settings pages even when the subscription is inactive (see its gate).
+    const headers = new Headers(req.headers);
+    headers.set("x-pathname", req.nextUrl.pathname);
+    return NextResponse.next({ request: { headers } });
   }
 
   if (isAdminRoute(req)) {

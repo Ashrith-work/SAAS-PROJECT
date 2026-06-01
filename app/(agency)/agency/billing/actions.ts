@@ -1,96 +1,186 @@
 "use server";
 
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScopedFor } from "@/lib/tenant";
-import { getStripe } from "@/lib/stripe";
-import { PLANS, type PlanKey } from "@/lib/plans";
+import { getRazorpay, ensurePlanId, publicKeyId, verifyCheckoutSignature } from "@/lib/razorpay";
+import { isPlanKey, type PlanKey } from "@/lib/razorpay-plans";
+
+// Server actions for the Razorpay subscription lifecycle. These are called
+// directly from the billing client component (not <form> actions) and return
+// result objects rather than redirecting, so the client can drive the Razorpay
+// Checkout modal. Every action re-checks auth server-side and scopes writes to
+// the caller's own agency — never trusting a client-supplied id.
 
 type Member = NonNullable<Awaited<ReturnType<typeof getCurrentMember>>>;
 
-async function baseUrl(): Promise<string> {
-  const h = await headers();
-  const origin = h.get("origin");
-  if (origin) return origin;
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
+type Result<T = unknown> = ({ ok: true } & T) | { ok: false; error: string };
+
+const TOTAL_BILLING_CYCLES = 120; // monthly × 10 years ≈ ongoing until cancelled
+
+function scopedAgency(member: Member) {
+  return agencyScopedFor(member.agencyId, prisma.agency);
 }
 
-/** Returns the agency's Stripe customer id, creating + persisting one if needed. */
-async function ensureCustomer(member: Member): Promise<string> {
-  if (member.agency.stripeCustomerId) return member.agency.stripeCustomerId;
-  const stripe = getStripe();
-  const customer = await stripe.customers.create({
-    email: member.agency.email || member.email,
-    name: member.agency.name,
-    metadata: { agencyId: member.agencyId },
-  });
-  // Agency is the tenant root (scoped by id). agencyScopedFor also pins the
-  // where to this member's own agency.
-  await agencyScopedFor(member.agencyId, prisma.agency).update({
-    where: { id: member.agencyId },
-    data: { stripeCustomerId: customer.id },
-  });
-  return customer.id;
-}
-
-/** Starts a Stripe Checkout subscription for the chosen plan. */
-export async function subscribeToPlan(formData: FormData) {
+/**
+ * Creates a Razorpay subscription for the chosen plan and returns the id +
+ * public key the client needs to open Checkout. We persist the subscription id
+ * immediately so the webhook (and verify step) can resolve this agency.
+ */
+export async function createSubscription(
+  rawPlan: string,
+): Promise<Result<{ subscriptionId: string; keyId: string; planKey: PlanKey }>> {
   const member = await getCurrentMember();
-  if (!member) redirect("/sign-in");
+  if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  if (!isPlanKey(rawPlan)) return { ok: false, error: "Unknown plan." };
+  const planKey = rawPlan;
 
-  const rawPlan = String(formData.get("plan") ?? "");
-  if (!(rawPlan in PLANS)) redirect("/agency/billing?error=invalid_plan");
-  const planKey = rawPlan as PlanKey;
-  const priceId = PLANS[planKey]?.priceId;
-  if (!priceId) redirect("/agency/billing?error=config");
+  const keyId = publicKeyId();
+  if (!keyId) return { ok: false, error: "Billing isn't configured yet. Add your Razorpay keys." };
 
-  let url: string | null = null;
   try {
-    const stripe = getStripe();
-    const customerId = await ensureCustomer(member);
-    const base = await baseUrl();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${base}/agency/billing?success=1`,
-      cancel_url: `${base}/agency/billing?canceled=1`,
-      allow_promotion_codes: true,
-      // Carried onto the subscription so the webhook can resolve the agency
-      // even before the customer id is persisted.
-      metadata: { agencyId: member.agencyId, plan: planKey },
-      subscription_data: { metadata: { agencyId: member.agencyId } },
+    const planId = await ensurePlanId(planKey);
+    const rzp = getRazorpay();
+    const sub = await rzp.subscriptions.create({
+      plan_id: planId,
+      total_count: TOTAL_BILLING_CYCLES,
+      quantity: 1,
+      customer_notify: 1,
+      // Stamped so the webhook can resolve the agency + plan from the event alone.
+      notes: { agencyId: member.agencyId, plan: planKey },
     });
-    url = session.url;
+
+    await scopedAgency(member).update({
+      where: { id: member.agencyId },
+      data: { razorpaySubscriptionId: sub.id, plan: planKey, subscriptionStatus: sub.status },
+    });
+
+    return { ok: true, subscriptionId: sub.id, keyId, planKey };
   } catch {
-    redirect("/agency/billing?error=checkout");
+    return { ok: false, error: "Couldn't start checkout. Please try again." };
+  }
+}
+
+/**
+ * Verifies the signature Razorpay Checkout returns to the success handler, then
+ * optimistically syncs the agency from the live subscription so the dashboard
+ * unlocks immediately (the webhook remains the source of truth).
+ */
+export async function verifySubscriptionPayment(args: {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
+}): Promise<Result> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+
+  // The subscription must be the one we created for THIS agency.
+  if (member.agency.razorpaySubscriptionId !== args.razorpay_subscription_id) {
+    return { ok: false, error: "Subscription mismatch." };
+  }
+  if (!verifyCheckoutSignature(args)) {
+    return { ok: false, error: "Payment could not be verified." };
   }
 
-  redirect(url ?? "/agency/billing?error=checkout");
+  try {
+    const rzp = getRazorpay();
+    const sub = await rzp.subscriptions.fetch(args.razorpay_subscription_id);
+    await scopedAgency(member).update({
+      where: { id: member.agencyId },
+      data: {
+        subscriptionStatus: sub.status,
+        ...(sub.customer_id ? { razorpayCustomerId: sub.customer_id } : {}),
+        ...(sub.current_end
+          ? { subscriptionExpiresAt: new Date(sub.current_end * 1000) }
+          : {}),
+      },
+    });
+    return { ok: true };
+  } catch {
+    // Signature was valid; the webhook will reconcile even if this fetch failed.
+    return { ok: true };
+  }
 }
 
-/** Opens the Stripe Billing Portal to change plan, update card, or cancel. */
-export async function openBillingPortal() {
+/** Upgrades or downgrades the plan immediately (prorated by Razorpay). */
+export async function changePlan(rawPlan: string): Promise<Result> {
   const member = await getCurrentMember();
-  if (!member) redirect("/sign-in");
-  if (!member.agency.stripeCustomerId) redirect("/agency/billing?error=nocustomer");
+  if (!member) return { ok: false, error: "Your session has expired." };
+  if (!isPlanKey(rawPlan)) return { ok: false, error: "Unknown plan." };
+  const subId = member.agency.razorpaySubscriptionId;
+  if (!subId) return { ok: false, error: "No active subscription to change." };
+  if (member.agency.plan === rawPlan) return { ok: false, error: "You're already on that plan." };
 
-  let url: string | null = null;
   try {
-    const stripe = getStripe();
-    const base = await baseUrl();
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: member.agency.stripeCustomerId,
-      return_url: `${base}/agency/billing`,
+    const planId = await ensurePlanId(rawPlan);
+    const rzp = getRazorpay();
+    await rzp.subscriptions.update(subId, { plan_id: planId, schedule_change_at: "now" });
+    await scopedAgency(member).update({
+      where: { id: member.agencyId },
+      data: { plan: rawPlan },
     });
-    url = portal.url;
+    return { ok: true };
   } catch {
-    redirect("/agency/billing?error=portal");
+    return { ok: false, error: "Couldn't change your plan. Please try again." };
   }
+}
 
-  redirect(url ?? "/agency/billing?error=portal");
+/** Pauses billing immediately; resume re-activates it. */
+export async function pauseSubscription(): Promise<Result> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired." };
+  const subId = member.agency.razorpaySubscriptionId;
+  if (!subId) return { ok: false, error: "No active subscription." };
+
+  try {
+    const rzp = getRazorpay();
+    const sub = await rzp.subscriptions.pause(subId, { pause_at: "now" });
+    await scopedAgency(member).update({
+      where: { id: member.agencyId },
+      data: { subscriptionStatus: sub.status },
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't pause your subscription." };
+  }
+}
+
+/** Resumes a paused subscription. */
+export async function resumeSubscription(): Promise<Result> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired." };
+  const subId = member.agency.razorpaySubscriptionId;
+  if (!subId) return { ok: false, error: "No active subscription." };
+
+  try {
+    const rzp = getRazorpay();
+    const sub = await rzp.subscriptions.resume(subId, { resume_at: "now" });
+    await scopedAgency(member).update({
+      where: { id: member.agencyId },
+      data: { subscriptionStatus: sub.status },
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't resume your subscription." };
+  }
+}
+
+/**
+ * Cancels at the end of the current billing cycle, so the agency keeps access
+ * until the period they've paid for ends. The subscription.cancelled webhook
+ * flips the status (and sends the confirmation email) when it actually cancels.
+ */
+export async function cancelSubscription(): Promise<Result> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired." };
+  const subId = member.agency.razorpaySubscriptionId;
+  if (!subId) return { ok: false, error: "No active subscription." };
+
+  try {
+    const rzp = getRazorpay();
+    await rzp.subscriptions.cancel(subId, true); // true = cancel at cycle end
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't cancel your subscription." };
+  }
 }

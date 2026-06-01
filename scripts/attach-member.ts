@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createClerkClient } from "@clerk/backend";
 import { prisma } from "../lib/prisma";
+import { getPlan, memberLimit } from "../lib/razorpay-plans";
 
 // Attach an existing Clerk user (by email) to a demo agency as admin, without
 // disturbing other members. Use after a teammate has signed up via /sign-up,
@@ -39,10 +40,33 @@ async function main() {
     process.exit(1);
   }
 
-  const agency = await prisma.agency.findFirst({ where: { name: agencyName }, select: { id: true } });
+  const agency = await prisma.agency.findFirst({
+    where: { name: agencyName },
+    select: { id: true, plan: true },
+  });
   if (!agency) {
     console.error(`No agency named "${agencyName}". Run \`npm run seed\` first.`);
     process.exit(1);
+  }
+
+  // Enforce the plan's team-member cap (same rule the app enforces for hotels).
+  // Only blocks when this would be a NEW membership; re-attaching an existing
+  // member is always allowed.
+  const existingMember = await prisma.agencyMember.findUnique({
+    where: { clerkId: user.id },
+    select: { id: true, agencyId: true },
+  });
+  const isNewToThisAgency = !existingMember || existingMember.agencyId !== agency.id;
+  const limit = memberLimit(agency.plan);
+  if (isNewToThisAgency && Number.isFinite(limit)) {
+    const count = await prisma.agencyMember.count({ where: { agencyId: agency.id } });
+    if (count >= limit) {
+      console.error(
+        `"${agencyName}" is on the ${getPlan(agency.plan).name} plan, which allows ` +
+          `${limit} team member(s) (${count}/${limit} used). Upgrade the plan to add more.`,
+      );
+      process.exit(1);
+    }
   }
 
   const name =
