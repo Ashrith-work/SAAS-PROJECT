@@ -9,6 +9,7 @@ import {
   getStoryInsights,
   InstagramAuthError,
 } from "@/lib/instagram";
+import { recordSyncFailure } from "@/lib/backfill";
 
 // Shared organic-social sync engine. Pulls Instagram account + post insights and
 // upserts SocialSnapshot / PostSnapshot rows. Used by:
@@ -183,11 +184,18 @@ export async function syncSocialAccount(
     return { ok: true, followers, postsSynced, storiesSynced };
   } catch (err) {
     if (err instanceof InstagramAuthError) {
-      // Dead/expired/revoked token — flag for reconnection (same as ads sync).
+      // Dead/expired/revoked token — mark expired + record a SyncFailure so the
+      // gap is surfaced (same as the ads sync). Reconnecting backfills + resolves.
       await prisma.socialAccount.update({
         where: { id: account.id },
-        data: { status: "disconnected" },
+        data: { status: "expired" },
       });
+      await recordSyncFailure(
+        account.agencyId,
+        account.hotelClientId,
+        "instagram",
+        err.message || "Instagram token expired/revoked during sync.",
+      );
       return { ok: false, disconnected: true, error: err.message };
     }
     return { ok: false, error: err instanceof Error ? err.message : "Unknown social sync error." };

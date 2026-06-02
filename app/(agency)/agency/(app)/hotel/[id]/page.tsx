@@ -30,6 +30,8 @@ import { FollowerChart } from "@/components/report/FollowerChart";
 import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
 import { ShareLinkManager } from "./ShareLinkManager";
+import { loadHotelStates } from "@/lib/integration-status";
+import { missingAdDays } from "@/lib/backfill";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -92,9 +94,31 @@ export default async function HotelDashboardPage({
   // Multi-tenant: scope by id AND agencyId so one agency can't open another's hotel.
   const hotel = await agencyScoped(prisma.hotelClient).findFirst({
     where: { id },
-    select: { id: true, name: true, websiteUrl: true, metaAdAccountId: true },
+    select: {
+      id: true,
+      name: true,
+      websiteUrl: true,
+      metaAdAccountId: true,
+      snippetStatus: true,
+      lastEventAt: true,
+    },
   });
   if (!hotel) notFound();
+
+  // Integration health for the "needs attention" banner (broken/expired only).
+  const integrationStatus = await loadHotelStates({
+    hotelId: hotel.id,
+    snippetStatus: hotel.snippetStatus,
+    lastEventAt: hotel.lastEventAt,
+    plan: member.agency.plan,
+    pixelMode,
+  });
+  // Cumulative days of missing Meta ad data, shown as a badge when the token
+  // isn't healthy (a reconnect will backfill the gap).
+  const missingDays =
+    integrationStatus.meta === "connected"
+      ? 0
+      : await missingAdDays(member.agencyId, hotel.id);
 
   // Latest non-revoked public share link for this hotel (may be expired — the
   // manager shows that so the agency can regenerate). Scoped to this agency.
@@ -522,17 +546,20 @@ export default async function HotelDashboardPage({
             <p className="text-zinc-500">{hotel.websiteUrl}</p>
           </div>
           <div className="flex items-center gap-4">
+            {missingDays > 0 && (
+              <Link
+                href={`/agency/hotel/${hotel.id}/integrations`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                {missingDays} day{missingDays === 1 ? "" : "s"} of data missing — reconnect Meta to backfill
+              </Link>
+            )}
             <Link
-              href={`/agency/hotels/${hotel.id}/setup`}
-              className="text-sm text-zinc-500 hover:underline"
+              href={`/agency/hotel/${hotel.id}/integrations`}
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
-              Snippet setup →
-            </Link>
-            <Link
-              href={`/agency/hotel/${hotel.id}/install`}
-              className="text-sm text-zinc-500 hover:underline"
-            >
-              Install &amp; test →
+              Manage Integrations
             </Link>
             <ReportMenu
               hotelId={hotel.id}
@@ -543,6 +570,20 @@ export default async function HotelDashboardPage({
           </div>
         </div>
       </div>
+
+      {/* Integration health banner — only when something is broken or expired */}
+      {integrationStatus.anyBrokenOrExpired && (
+        <Link
+          href={`/agency/hotel/${hotel.id}/integrations`}
+          className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
+        >
+          <span>
+            <strong>An integration needs attention.</strong> A connection for this
+            hotel is broken or expired — data may be missing from this dashboard.
+          </span>
+          <span className="shrink-0 font-medium underline">Fix it →</span>
+        </Link>
+      )}
 
       {/* Date range */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -763,7 +804,7 @@ export default async function HotelDashboardPage({
           <div className="px-4 py-8 text-center">
             <p className="text-sm text-zinc-500">No organic social data yet.</p>
             <Link
-              href={`/agency/hotels/${hotel.id}/setup`}
+              href={`/agency/hotel/${hotel.id}/integrations`}
               className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
             >
               Connect this hotel&apos;s Instagram in Setup →
@@ -952,7 +993,7 @@ export default async function HotelDashboardPage({
               No Google Analytics data yet.
             </p>
             <Link
-              href={`/agency/hotels/${hotel.id}/setup`}
+              href={`/agency/hotel/${hotel.id}/integrations`}
               className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
             >
               Connect this hotel&apos;s GA4 in Setup →

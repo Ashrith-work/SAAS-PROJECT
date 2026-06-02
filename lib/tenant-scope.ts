@@ -133,4 +133,7 @@ export const MULTI_TENANT_MODELS = [
   "gaSnapshot",
   "gaSourceBreakdown",
   "tokenAuditLog",
+  "backfillJob",
+  "backfillLog",
+  "syncFailure",
 ] as const;

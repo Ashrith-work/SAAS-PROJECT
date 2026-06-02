@@ -27,7 +27,7 @@ import "server-only";
 // The other ("Instagram API with Instagram Login") path issues tokens starting
 // with **"IGAA…"** and is served from **graph.instagram.com**. Those tokens
 // are NOT compatible with this client and are rejected at the connect server
-// action — see app/(agency)/agency/(app)/hotels/[id]/setup/social-actions.ts.
+// action — see app/(agency)/agency/(app)/hotel/[id]/integrations/social-actions.ts.
 //
 // This module is the counterpart to lib/meta.ts (paid Ads insights).
 //

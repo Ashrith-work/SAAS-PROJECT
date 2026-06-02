@@ -153,7 +153,7 @@ export async function linkInstagramAccount(
     },
   });
 
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
   return { error: null, ok: true };
 }
 
@@ -174,7 +174,7 @@ export async function disconnectSocialAccount(formData: FormData): Promise<void>
     action: "deleted",
     source: "action:disconnectSocialAccount",
   });
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
 }
 
 // ── Sync now: fetch insights and store snapshots ─────────────────────────────
@@ -200,7 +200,7 @@ export async function syncSocialInsights(
 
   // Reuse the shared engine (also used by the cron). One account, so no spacing.
   const res = await syncSocialAccount(account, { perRequestDelayMs: 0 });
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
 
   if (res.ok) {
     return {

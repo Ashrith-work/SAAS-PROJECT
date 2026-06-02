@@ -112,6 +112,9 @@ model Agency {
   gaSnapshots       GaSnapshot[]
   gaSourceBreakdowns GaSourceBreakdown[]
   tokenAuditLogs    TokenAuditLog[]
+  backfillJobs      BackfillJob[]
+  backfillLogs      BackfillLog[]
+  syncFailures      SyncFailure[]
 }
 
 model AgencyMember {
@@ -560,4 +563,67 @@ model GaSourceBreakdown {
   @@unique([hotelClientId, date, source]) // one row per hotel per day per source
   @@index([agencyId])
   @@index([hotelClientId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data-retention safety: backfill on reconnect + sync-failure tracking.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// One backfill run, kicked off when an agency reconnects a Meta/Instagram token.
+// The integrations/settings UI polls this row to render live progress.
+model BackfillJob {
+  id           String    @id @default(cuid())
+  agencyId     String
+  status       String    @default("pending") // pending | running | completed | partial | failed
+  rangeStart   DateTime  @db.Date
+  rangeEnd     DateTime  @db.Date
+  daysRestored Int       @default(0)
+  daysFailed   Int       @default(0)
+  message      String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  agency Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  logs   BackfillLog[]
+
+  @@index([agencyId])
+  @@index([agencyId, status])
+}
+
+// Per hotel + data type outcome of a backfill (success or failure). Failures
+// carry the error so the user gets a clear summary and the next sync retries.
+model BackfillLog {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String?
+  jobId         String?
+  dataType      String // ad | social | post
+  dateRange     String
+  status        String // success | failed
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  agency Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  job    BackfillJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([jobId])
+}
+
+// A scheduled sync hitting an expired/invalid token. Active while resolvedAt is
+// null; cleared when a successful reconnect/backfill restores the data flow.
+model SyncFailure {
+  id            String    @id @default(cuid())
+  agencyId      String
+  hotelClientId String? // null for the agency-wide Meta token
+  tokenType     String // meta_ads | instagram
+  failedAt      DateTime  @default(now())
+  reason        String
+  resolvedAt    DateTime?
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([agencyId, resolvedAt])
 }

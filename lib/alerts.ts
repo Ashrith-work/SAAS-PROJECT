@@ -387,7 +387,7 @@ async function checkSnippetError(
             p(
               "This usually means the tracking snippet was removed, a site deploy dropped it, or the page changed. Re-check the install to keep attribution flowing.",
             ),
-          cta: { label: "Check snippet setup", url: `${APP_URL}/agency/hotels/${hotel.id}/setup` },
+          cta: { label: "Check integrations", url: `${APP_URL}/agency/hotel/${hotel.id}/integrations` },
         }),
         text: message,
       },

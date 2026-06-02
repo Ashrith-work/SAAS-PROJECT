@@ -131,7 +131,7 @@ export async function connectGoogleAnalytics(
     },
   });
 
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
   return { error: null, ok: true };
 }
 
@@ -151,7 +151,7 @@ export async function disconnectGoogleAnalytics(formData: FormData): Promise<voi
     action: "deleted",
     source: "action:disconnectGoogleAnalytics",
   });
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
 }
 
 // ── Test connection: hits the live property with the stored credentials ──────
@@ -201,7 +201,7 @@ export async function testGaConnectionAction(
         where: { hotelClientId: ctx.hotelId },
         data: { status: "disconnected" },
       });
-      revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+      revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
     }
     return { error: gaErrorMessage(err), ok: false };
   }
@@ -235,7 +235,7 @@ export async function syncGaInsights(
   }
 
   const res = await syncGaConnection(conn);
-  revalidatePath(`/agency/hotels/${ctx.hotelId}/setup`);
+  revalidatePath(`/agency/hotel/${ctx.hotelId}/integrations`);
 
   if (res.ok) {
     return {

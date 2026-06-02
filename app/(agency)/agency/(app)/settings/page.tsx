@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -5,8 +6,9 @@ import { agencyScoped } from "@/lib/tenant";
 import { getTokenForApiCall } from "@/lib/token-access";
 import { getAdAccounts, MetaAuthError, type AdAccount } from "@/lib/meta";
 import { MetaTokenForm } from "./MetaTokenForm";
-import { AdAccountMapping } from "./AdAccountMapping";
 import { disconnectMetaToken } from "./actions";
+import { getActiveBackfill } from "./backfill-actions";
+import { BackfillProgress } from "./BackfillProgress";
 
 function formatExpiry(d: Date): string {
   // The save action stores a year-2999 sentinel for non-expiring tokens.
@@ -17,6 +19,8 @@ function formatExpiry(d: Date): string {
 export default async function SettingsPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
+
+  const backfillJob = await getActiveBackfill();
 
   // Multi-tenant: agencyScoped restricts to this agency's Meta connection.
   const token = await agencyScoped(prisma.metaToken).findFirst({
@@ -59,13 +63,6 @@ export default async function SettingsPage() {
     }
   }
 
-  const hotels = connected
-    ? await agencyScoped(prisma.hotelClient).findMany({
-        orderBy: { createdAt: "desc" },
-        select: { id: true, name: true, metaAdAccountId: true },
-      })
-    : [];
-
   // disconnected-but-present row means a previously connected token expired.
   const expired = Boolean(token) && !connected;
 
@@ -78,6 +75,8 @@ export default async function SettingsPage() {
           hotel&apos;s dashboard.
         </p>
       </div>
+
+      <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
 
       {/* ── Meta connection ─────────────────────────────────────────────── */}
       <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
@@ -144,16 +143,21 @@ export default async function SettingsPage() {
         )}
       </section>
 
-      {/* ── Ad account → hotel mapping ──────────────────────────────────── */}
+      {/* Ad-account → hotel mapping now lives per hotel on each hotel's
+          Integrations page, so the connection and its mapping sit together. */}
       {connected && (
-        <section className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 className="font-medium">Map ad accounts to hotels</h2>
-            <p className="mt-0.5 text-sm text-zinc-500">
-              Each hotel&apos;s dashboard pulls ROI from its mapped ad account.
-            </p>
-          </div>
-          <AdAccountMapping hotels={hotels} accounts={accounts} />
+        <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+          <h2 className="font-medium">Map ad accounts to hotels</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {accounts.length === 0
+              ? "This token can't access any ad accounts. Reconnect a token with ads permissions."
+              : `${accounts.length} ad account${accounts.length === 1 ? "" : "s"} available.`}{" "}
+            Map the right ad account to each hotel on its{" "}
+            <Link href="/agency/hotels" className="underline">
+              hotel&apos;s Integrations page
+            </Link>
+            .
+          </p>
         </section>
       )}
     </div>

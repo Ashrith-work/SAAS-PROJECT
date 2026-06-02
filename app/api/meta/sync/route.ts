@@ -4,6 +4,7 @@ import type { SecretToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
 import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
 import { runSocialSync, type SocialSyncResult } from "@/lib/social-sync";
+import { recordSyncFailure } from "@/lib/backfill";
 
 // Scheduled Meta Ads sync. Runs on Vercel Cron once a day (see vercel.json) and
 // can be triggered manually for testing. Guarded by CRON_SECRET — Vercel Cron
@@ -122,15 +123,23 @@ export async function GET(request: Request) {
         hotelsSynced += 1;
       } catch (err) {
         if (err instanceof MetaAuthError) {
-          // Token is dead — disconnect this agency and stop syncing its hotels.
+          // Token is dead — mark it expired, record a SyncFailure so the gap is
+          // never silent, and stop syncing this agency's hotels. Reconnecting
+          // will backfill the window and resolve the failure.
           await prisma.metaToken.update({
             where: { id: token.id },
-            data: { status: "disconnected" },
+            data: { status: "expired" },
           });
+          await recordSyncFailure(
+            token.agencyId,
+            null,
+            "meta_ads",
+            err.message || "Meta token expired/revoked during sync.",
+          );
           tokensDisconnected += 1;
           errors.push({
             agencyId: token.agencyId,
-            error: "Meta token expired/revoked — marked disconnected.",
+            error: "Meta token expired/revoked — marked expired.",
           });
           break;
         }

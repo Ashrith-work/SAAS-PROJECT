@@ -74,5 +74,5 @@ export async function createHotel(
     select: { id: true },
   });
 
-  redirect(`/agency/hotels/${hotel.id}/setup`);
+  redirect(`/agency/hotel/${hotel.id}/integrations`);
 }

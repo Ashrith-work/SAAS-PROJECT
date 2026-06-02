@@ -40,7 +40,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     pricePaise: 649900, // ₹6,499/month
     planIdEnvVar: "RAZORPAY_PLAN_GROWTH",
     limits: { hotels: 10, members: 5 },
-    features: ["Up to 10 hotel clients", "5 team members", "PDF + Excel reports"],
+    features: ["Up to 10 hotel clients", "5 team members", "PDF + Excel reports", "GA4 analytics"],
   },
   agency: {
     key: "agency",
@@ -48,7 +48,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     pricePaise: 1299900, // ₹12,999/month
     planIdEnvVar: "RAZORPAY_PLAN_AGENCY",
     limits: { hotels: Infinity, members: Infinity },
-    features: ["Unlimited hotel clients", "Unlimited team members", "White-label reports"],
+    features: ["Unlimited hotel clients", "Unlimited team members", "White-label reports", "GA4 analytics"],
   },
 };
 
@@ -112,4 +112,13 @@ export function formatInr(paise: number): string {
  */
 export function isActiveStatus(status: string | null | undefined): boolean {
   return status === "active";
+}
+
+/**
+ * Whether a plan unlocks the Google Analytics 4 integration. GA4 is a paid
+ * upgrade — the Starter tier is gated and shown an "Upgrade to Growth" overlay
+ * on the integrations page. Growth and Agency both include it.
+ */
+export function planHasGa4(planKey: string | null | undefined): boolean {
+  return planKey === "growth" || planKey === "agency";
 }

@@ -6,13 +6,20 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
+import { computeAgencyBackfillRange } from "@/lib/backfill";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
 // The MetaToken.tokenExpiresAt column is non-null, so we store this far-future
 // sentinel for those. The UI shows "Does not expire" for dates past ~2900.
 const NEVER_EXPIRES = new Date("2999-12-31T00:00:00.000Z");
 
-export type SaveTokenState = { error: string | null; ok: boolean };
+export type SaveTokenState = {
+  error: string | null;
+  ok: boolean;
+  // Set when reconnecting revealed a data gap and a backfill job was created.
+  // The progress banner polls this job; null when there was nothing to backfill.
+  backfillJobId?: string | null;
+};
 
 /**
  * Validates a pasted Meta access token with Meta, then stores it encrypted
@@ -72,8 +79,31 @@ export async function saveMetaToken(
     });
   }
 
+  // Reconnecting may have left a data gap (the scheduled sync stopped while the
+  // token was dead). If so, queue a backfill job for the missing window; the
+  // BackfillProgress banner picks it up and runs it. Never blocks the save.
+  let backfillJobId: string | null = null;
+  try {
+    const range = await computeAgencyBackfillRange(member.agencyId);
+    if (range) {
+      const job = await agencyScoped(prisma.backfillJob).create({
+        data: {
+          agencyId: member.agencyId,
+          status: "pending",
+          rangeStart: range.start,
+          rangeEnd: range.end,
+        },
+        select: { id: true },
+      });
+      backfillJobId = job.id;
+    }
+  } catch {
+    // A backfill-scheduling hiccup must never fail the reconnect itself — the
+    // next scheduled sync will fill the gap regardless.
+  }
+
   revalidatePath("/agency/settings");
-  return { error: null, ok: true };
+  return { error: null, ok: true, backfillJobId };
 }
 
 /**
@@ -125,6 +155,9 @@ export async function mapAdAccount(
     data: { metaAdAccountId: adAccountId || null },
   });
 
+  // The mapping is set per hotel on its Integrations page; also keep Settings
+  // fresh in case it's open.
+  revalidatePath(`/agency/hotel/${hotel.id}/integrations`);
   revalidatePath("/agency/settings");
   return { error: null, ok: true };
 }
