@@ -27,7 +27,6 @@ import { IntegrationCard } from "@/components/ui/IntegrationCard";
 import { IntegrationStatusBadge } from "@/components/ui/IntegrationStatusBadge";
 import { TestConnection } from "../install/TestConnection";
 import { HotelAdAccountSelect } from "./HotelAdAccountSelect";
-import { InstagramConnect } from "./InstagramConnect";
 import { InstagramActions } from "./InstagramActions";
 import { GoogleAnalyticsConnect } from "./GoogleAnalyticsConnect";
 import { GoogleAnalyticsActions } from "./GoogleAnalyticsActions";
@@ -44,8 +43,8 @@ function SyncFailureNotice({ failedAt, now }: { failedAt: Date; now: Date }) {
   const n = daysAgo(failedAt, now);
   return (
     <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
-      Data sync failed {n} day{n === 1 ? "" : "s"} ago. Reconnect your token to
-      restore data flow.
+      Data sync failed {n} day{n === 1 ? "" : "s"} ago. Reconnect to restore
+      data flow.
     </div>
   );
 }
@@ -59,6 +58,16 @@ function fmtExpiry(d: Date | null | undefined): string {
   if (d.getUTCFullYear() >= 2900) return "Does not expire";
   return new Date(d).toLocaleString();
 }
+
+// User-facing messages for the ?ig_error= codes set by the OAuth callback.
+const IG_ERROR_MESSAGES: Record<string, string> = {
+  personal_account_not_supported:
+    "Personal Instagram accounts are not supported. Please switch to Business or Creator in the Instagram app (Settings → Account type), then try again.",
+  access_denied:
+    "Instagram access was declined. Click “Log in with Instagram” to try again.",
+  exchange_failed:
+    "Instagram sign-in didn't complete — the token exchange failed. Please try again in a moment.",
+};
 
 // Small lettered/icon glyphs for each card (kept inline to avoid an icon dep).
 const SnippetIcon = (
@@ -78,10 +87,13 @@ const SnippetIcon = (
 
 export default async function HotelIntegrationsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
 
@@ -105,13 +117,20 @@ export default async function HotelIntegrationsPage({
   const planAllowsGa4 = planHasGa4(member.agency.plan);
   const now = new Date();
 
+  // OAuth round-trip feedback (?ig_connected=success / ?ig_error=…).
+  const igConnectedBanner = sp.ig_connected === "success";
+  const igErrorCode = typeof sp.ig_error === "string" ? sp.ig_error : null;
+  const igErrorBanner = igErrorCode
+    ? IG_ERROR_MESSAGES[igErrorCode] ?? "Instagram connection failed. Please try again."
+    : null;
+
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://your-domain.com").replace(
     /\/$/,
     "",
   );
   const snippet = `<script src="${appUrl}/t.js?id=${hotel.siteId}" async></script>`;
 
-  // ── Meta (agency-wide token) ───────────────────────────────────────────────
+  // ── Meta Ads (agency-wide EAA token) ───────────────────────────────────────
   const token = await agencyScoped(prisma.metaToken).findFirst({
     orderBy: { createdAt: "desc" },
     // Ciphertext is never selected here — only read + decrypted via
@@ -146,13 +165,21 @@ export default async function HotelIntegrationsPage({
     }
   }
 
-  // ── Instagram (per-hotel) ──────────────────────────────────────────────────
-  const social = await agencyScoped(prisma.socialAccount).findFirst({
-    where: { hotelClientId: hotel.id, platform: "instagram" },
-    select: { status: true, username: true, tokenExpiresAt: true, lastSyncedAt: true },
+  // ── Instagram (per-hotel IGAA connection) ──────────────────────────────────
+  const ig = await agencyScoped(prisma.instagramConnection).findFirst({
+    where: { hotelClientId: hotel.id, tokenType: "igaa_direct" },
+    select: {
+      status: true,
+      username: true,
+      igAccountType: true,
+      profilePicUrl: true,
+      tokenExpiresAt: true,
+      lastSyncedAt: true,
+      errorMessage: true,
+    },
   });
-  const igSt = instagramState(social, now);
-  const igConnected = social?.status === "connected";
+  const igSt = instagramState(ig, now);
+  const igConnected = ig?.status === "active";
 
   const since30 = new Date(now.getTime() - 30 * DAY_MS);
   const [latestSnap, reachAgg, recentPosts] = igConnected
@@ -237,71 +264,26 @@ export default async function HotelIntegrationsPage({
 
       <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
 
-      {/* ── Card 1 — Website Tracking Snippet ─────────────────────────────── */}
-      <IntegrationCard
-        icon={SnippetIcon}
-        title="Website Tracking Snippet"
-        subtitle="Captures which content sends visitors and records bookings."
-        badge={
-          pixelMode ? (
-            <IntegrationStatusBadge tone="gray" label="Facebook Pixel mode" />
-          ) : (
-            <IntegrationStatusBadge
-              tone={snippetTone(snippetSt)}
-              label={SNIPPET_LABELS[snippetSt]}
-            />
-          )
-        }
-      >
-        {pixelMode ? (
-          <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <p>
-              This agency uses Meta&apos;s Pixel for website tracking, so the
-              HotelTrack snippet isn&apos;t used here. Conversions and ROAS appear
-              under <strong>Paid ads performance</strong> on the dashboard.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-start gap-2">
-              <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
-                {snippet}
-              </code>
-              <CopyButton text={snippet} />
-            </div>
-            <p className="text-xs text-zinc-500">
-              Site ID: <code>{hotel.siteId}</code>
-            </p>
-            {snippetSt === "live" && (
-              <p className="text-xs text-zinc-500">
-                Last event received: {fmtDate(hotel.lastEventAt)}
-              </p>
-            )}
+      {/* OAuth round-trip feedback */}
+      {igConnectedBanner && (
+        <div className="rounded-lg border border-green-300 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300">
+          Instagram connected successfully. Click <strong>Sync insights now</strong>{" "}
+          on the Instagram card to pull the first data.
+        </div>
+      )}
+      {igErrorBanner && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+          {igErrorBanner}
+        </div>
+      )}
 
-            <TestConnection hotelId={hotel.id} />
-
-            <p className="text-sm">
-              <Link
-                href={`/agency/hotel/${hotel.id}/install`}
-                className="font-medium underline"
-              >
-                View install guide →
-              </Link>{" "}
-              <span className="text-zinc-500">
-                — step-by-step for WordPress, Shopify, or any site.
-              </span>
-            </p>
-          </div>
-        )}
-      </IntegrationCard>
-
-      {/* ── Card 2 — Meta Ads ─────────────────────────────────────────────── */}
+      {/* ── Card 1 — Meta Ads (EAA token, agency-wide) ───────────────────── */}
       {(metaSt === "expiring" || metaSt === "expired") && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800/60 dark:bg-amber-900/20">
           <p className="font-medium text-amber-800 dark:text-amber-300">
             {metaSt === "expired"
-              ? "Your Meta connection expired or was revoked."
-              : "Your Meta connection token is expiring soon."}{" "}
+              ? "Your Meta Ads connection expired or was revoked."
+              : "Your Meta Ads token is expiring soon."}{" "}
             Ad spend &amp; ROI syncing is at risk for all your hotels.
           </p>
           <Link
@@ -314,8 +296,8 @@ export default async function HotelIntegrationsPage({
       )}
       <IntegrationCard
         icon={<span className="text-base font-bold text-blue-600">f</span>}
-        title="Meta Ads & Instagram Connection"
-        subtitle="Agency-wide Meta token — powers ad spend & ROI for every hotel."
+        title="Meta Ads"
+        subtitle="Paid ad performance, ROAS, campaign data"
         badge={<IntegrationStatusBadge tone={tokenTone(metaSt)} label={TOKEN_LABELS[metaSt]} />}
       >
         {metaFailure && (
@@ -370,11 +352,11 @@ export default async function HotelIntegrationsPage({
         )}
       </IntegrationCard>
 
-      {/* ── Card 3 — Instagram (Organic Social) ───────────────────────────── */}
+      {/* ── Card 2 — Instagram (IGAA via Instagram Login) ────────────────── */}
       <IntegrationCard
         icon={<span className="text-xs font-bold text-pink-600">IG</span>}
-        title="Instagram (Organic Social)"
-        subtitle="Per-hotel — organic reach, followers, and post engagement."
+        title="Instagram"
+        subtitle="Organic reach, followers, post engagement"
         badge={<IntegrationStatusBadge tone={tokenTone(igSt)} label={TOKEN_LABELS[igSt]} />}
       >
         {igFailure && (
@@ -384,19 +366,27 @@ export default async function HotelIntegrationsPage({
         )}
         {igConnected ? (
           <div className="space-y-5">
-            {igSt !== "connected" && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
-                {igSt === "expired"
-                  ? "This Instagram token has expired — reconnect to resume syncing."
-                  : "This Instagram token is expiring soon — reconnect to avoid an interruption."}
+            <div className="flex items-center gap-3">
+              {ig?.profilePicUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external IG CDN avatar
+                <img
+                  src={ig.profilePicUrl}
+                  alt={`@${ig.username ?? "instagram"} profile picture`}
+                  className="h-12 w-12 rounded-full border border-zinc-200 object-cover dark:border-zinc-800"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-100 text-sm font-bold text-pink-600 dark:bg-pink-900/40">
+                  IG
+                </div>
+              )}
+              <div className="text-sm">
+                <p className="font-medium">@{ig?.username}</p>
+                <p className="text-zinc-500">
+                  {ig?.igAccountType === "CREATOR" ? "Creator" : "Business"} account ·
+                  Last synced: {fmtDate(ig?.lastSyncedAt)}
+                </p>
               </div>
-            )}
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              <span className="font-medium">@{social?.username}</span> connected
-              {social?.lastSyncedAt
-                ? ` · last synced ${fmtDate(social.lastSyncedAt)}`
-                : " · not synced yet — run a sync to pull insights"}
-            </p>
+            </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Followers" value={(latestSnap?.followers ?? 0).toLocaleString()} />
@@ -474,7 +464,89 @@ export default async function HotelIntegrationsPage({
             </div>
           </div>
         ) : (
-          <InstagramConnect hotelId={hotel.id} />
+          <div className="space-y-3">
+            {ig?.status === "error" && ig.errorMessage && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+                The last sync failed: {ig.errorMessage} — reconnect below to
+                resume.
+              </div>
+            )}
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Bring organic reach, impressions, follower growth, and per-post
+              engagement into HotelTrack.
+            </p>
+            <a
+              href={`/api/auth/instagram/start?hotelClientId=${hotel.id}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z" />
+              </svg>
+              Log in with Instagram
+            </a>
+            <p className="text-xs text-zinc-500">
+              The hotel will be asked to log in with their Instagram Business or
+              Creator account. No Facebook Page required.
+            </p>
+          </div>
+        )}
+      </IntegrationCard>
+
+      {/* ── Card 3 — Website Tracking Snippet ─────────────────────────────── */}
+      <IntegrationCard
+        icon={SnippetIcon}
+        title="Website Tracking Snippet"
+        subtitle="Captures which content sends visitors and records bookings."
+        badge={
+          pixelMode ? (
+            <IntegrationStatusBadge tone="gray" label="Facebook Pixel mode" />
+          ) : (
+            <IntegrationStatusBadge
+              tone={snippetTone(snippetSt)}
+              label={SNIPPET_LABELS[snippetSt]}
+            />
+          )
+        }
+      >
+        {pixelMode ? (
+          <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
+            <p>
+              This agency uses Meta&apos;s Pixel for website tracking, so the
+              HotelTrack snippet isn&apos;t used here. Conversions and ROAS appear
+              under <strong>Paid ads performance</strong> on the dashboard.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2">
+              <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+                {snippet}
+              </code>
+              <CopyButton text={snippet} />
+            </div>
+            <p className="text-xs text-zinc-500">
+              Site ID: <code>{hotel.siteId}</code>
+            </p>
+            {snippetSt === "live" && (
+              <p className="text-xs text-zinc-500">
+                Last event received: {fmtDate(hotel.lastEventAt)}
+              </p>
+            )}
+
+            <TestConnection hotelId={hotel.id} />
+
+            <p className="text-sm">
+              <Link
+                href={`/agency/hotel/${hotel.id}/install`}
+                className="font-medium underline"
+              >
+                View install guide →
+              </Link>{" "}
+              <span className="text-zinc-500">
+                — step-by-step for WordPress, Shopify, or any site.
+              </span>
+            </p>
+          </div>
         )}
       </IntegrationCard>
 

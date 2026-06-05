@@ -4,16 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
-import { getAccountInsights, getMediaInsights, InstagramAuthError } from "@/lib/instagram";
+import { syncInstagramConnection } from "@/lib/instagram-sync";
+import { recordSyncFailure, resolveSyncFailures } from "@/lib/sync-failures";
+
+export { recordSyncFailure } from "@/lib/sync-failures";
 
 // Automatic backfill engine. When an agency reconnects a Meta/Instagram token,
 // we fill the gap between the last stored snapshot and yesterday so the
 // dashboard has no visual holes. It is driven by a BackfillJob row that the UI
 // polls for live progress.
 //
-// EFFICIENCY: insight calls fetch a whole date range in one request
-// (`getDailyInsights` / `getAccountInsights` already use per-day breakdowns), so
-// a typical ≤60-day gap is a handful of calls. Long gaps are split into ≤30-day
+// EFFICIENCY: insight calls fetch a whole date range in one request (ads via
+// `getDailyInsights`, Instagram via the shared IGAA engine), so a typical
+// ≤60-day gap is a handful of calls. Long ad gaps are split into ≤30-day
 // chunks with a short delay to stay well under Meta's ~200 calls/hour limit.
 //
 // RESILIENCE: a dead token never aborts the whole job — it's logged to
@@ -110,8 +113,8 @@ export async function computeAgencyBackfillRange(
       where: { agencyId, metaAdAccountId: { not: null } },
       select: { id: true },
     }),
-    prisma.socialAccount.findMany({
-      where: { agencyId, status: "connected", platform: "instagram" },
+    prisma.instagramConnection.findMany({
+      where: { agencyId, status: "active", tokenType: "igaa_direct" },
       select: { hotelClientId: true },
     }),
   ]);
@@ -231,117 +234,38 @@ async function backfillSocial(
   let failedDays = 0;
   let sampleError: string | null = null;
 
-  const accounts = await prisma.socialAccount.findMany({
-    where: { agencyId, status: "connected", platform: "instagram" },
+  // IGAA connections only — the EAA-via-Page flow is retired and its rows sit
+  // at status "deprecated_eaa", never synced.
+  const connections = await prisma.instagramConnection.findMany({
+    where: { agencyId, status: "active", tokenType: "igaa_direct" },
     select: { id: true, hotelClientId: true, igUserId: true },
   });
 
-  for (const account of accounts) {
-    const gap = computeGap(await lastSocialDate(agencyId, account.hotelClientId));
+  for (const conn of connections) {
+    const gap = computeGap(await lastSocialDate(agencyId, conn.hotelClientId));
     if (!gap) continue;
 
-    let secret: SecretToken;
-    try {
-      secret = await getTokenForApiCall("instagram", account.id, {
-        agencyId,
-        hotelClientId: account.hotelClientId,
-        source: "backfill:social",
-      });
-    } catch {
-      failedDays += gap.days;
-      sampleError ??= "Token could not be decrypted.";
-      await logBackfill(agencyId, account.hotelClientId, "social", gap, "failed", "Token could not be decrypted.");
-      continue;
-    }
+    // The shared IGAA engine fetches the whole gap in one date-ranged insights
+    // call (plus recent media) and handles its own failure bookkeeping
+    // (status="error", SyncFailure, agency email).
+    const res = await syncInstagramConnection(
+      { id: conn.id, agencyId, hotelClientId: conn.hotelClientId, igUserId: conn.igUserId },
+      { days: gap.days },
+    );
 
-    try {
-      let written = 0;
-      const chunks = chunkRanges(gap);
-      for (let i = 0; i < chunks.length; i++) {
-        if (i > 0) await sleep(CHUNK_DELAY_MS);
-        const insights = await getAccountInsights(secret.reveal(), account.igUserId, {
-          since: new Date(`${chunks[i].since}T00:00:00.000Z`),
-          until: new Date(`${chunks[i].until}T00:00:00.000Z`),
-        });
-        for (const day of insights.daily) {
-          const date = new Date(`${day.date}T00:00:00.000Z`);
-          const data = {
-            followers: day.followers,
-            reach: day.reach,
-            impressions: day.impressions,
-            profileViews: day.profileViews,
-            engagement: 0,
-          };
-          await prisma.socialSnapshot.upsert({
-            where: { hotelClientId_date: { hotelClientId: account.hotelClientId, date } },
-            create: { agencyId, hotelClientId: account.hotelClientId, date, ...data },
-            update: data,
-          });
-          written += 1;
-        }
-      }
-      accumulate(written);
+    if (res.ok) {
+      accumulate(res.daysSynced ?? gap.days);
       anySuccess = true;
-      await logBackfill(agencyId, account.hotelClientId, "social", gap, "success");
-
-      // Refresh post metrics too (media fetch isn't date-ranged — re-pull the
-      // most recent posts, capped at the Graph limit, and upsert by mediaId).
-      try {
-        const posts = await getMediaInsights(secret.reveal(), account.igUserId, 50, 350);
-        for (const p of posts) {
-          const data = {
-            agencyId,
-            caption: p.caption,
-            mediaType: p.mediaType,
-            permalink: p.permalink,
-            postedAt: p.timestamp ? new Date(p.timestamp) : null,
-            impressions: p.impressions,
-            reach: p.reach,
-            likes: p.likes,
-            comments: p.comments,
-            engagement: p.engagement,
-            saves: p.saves,
-            shares: p.shares,
-            videoViews: p.videoViews,
-            fetchedAt: new Date(),
-          };
-          await prisma.postSnapshot.upsert({
-            where: {
-              hotelClientId_mediaId: { hotelClientId: account.hotelClientId, mediaId: p.mediaId },
-            },
-            create: { hotelClientId: account.hotelClientId, mediaId: p.mediaId, ...data },
-            update: data,
-          });
-        }
-        await logBackfill(agencyId, account.hotelClientId, "post", gap, "success");
-      } catch (err) {
-        await logBackfill(
-          agencyId,
-          account.hotelClientId,
-          "post",
-          gap,
-          "failed",
-          err instanceof Error ? err.message : "Unknown post backfill error.",
-        );
-      }
-
-      await prisma.socialAccount.update({
-        where: { id: account.id },
-        data: { lastSyncedAt: new Date(), status: "connected" },
-      });
-    } catch (err) {
+      await logBackfill(agencyId, conn.hotelClientId, "social", gap, "success");
+      await logBackfill(agencyId, conn.hotelClientId, "post", gap, "success");
+    } else {
       failedDays += gap.days;
-      const message = err instanceof Error ? err.message : "Unknown social backfill error.";
+      const message = res.error ?? "Unknown Instagram backfill error.";
       sampleError ??= message;
-      if (err instanceof InstagramAuthError) {
-        await prisma.socialAccount.update({
-          where: { id: account.id },
-          data: { status: "expired" },
-        });
-        await recordSyncFailure(agencyId, account.hotelClientId, "instagram", err.message);
-      }
-      await logBackfill(agencyId, account.hotelClientId, "social", gap, "failed", message);
+      await logBackfill(agencyId, conn.hotelClientId, "social", gap, "failed", message);
     }
+
+    await sleep(CHUNK_DELAY_MS);
   }
 
   return { anySuccess, failedDays, sampleError };
@@ -369,29 +293,8 @@ async function logBackfill(
   });
 }
 
-/** Creates a SyncFailure unless an unresolved one already exists (dedupe). */
-export async function recordSyncFailure(
-  agencyId: string,
-  hotelClientId: string | null,
-  tokenType: "meta_ads" | "instagram",
-  reason: string,
-) {
-  const existing = await prisma.syncFailure.findFirst({
-    where: { agencyId, hotelClientId, tokenType, resolvedAt: null },
-    select: { id: true },
-  });
-  if (existing) return;
-  await prisma.syncFailure.create({
-    data: { agencyId, hotelClientId, tokenType, reason },
-  });
-}
-
-async function resolveSyncFailures(agencyId: string, tokenType: "meta_ads" | "instagram") {
-  await prisma.syncFailure.updateMany({
-    where: { agencyId, tokenType, resolvedAt: null },
-    data: { resolvedAt: new Date() },
-  });
-}
+// recordSyncFailure / resolveSyncFailures live in lib/sync-failures.ts (shared
+// with the Instagram sync engine; re-exported above for existing importers).
 
 // ── Job runner ────────────────────────────────────────────────────────────────
 

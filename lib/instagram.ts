@@ -1,82 +1,38 @@
 import "server-only";
 
-// ============================================================================
-// Instagram organic-social client — GRAPH API (EAA tokens) ONLY
-// ============================================================================
+// Instagram client for the "Instagram API with Instagram Login" (IGAA) flow.
 //
-// This module talks to **graph.facebook.com** (the Facebook Graph API), not
-// graph.instagram.com. The access token it expects begins with **"EAA…"** and
-// is generated from:
+// This is the ONLY way HotelTrack connects Instagram. The hotel logs in with
+// its own Instagram Business/Creator account via OAuth — no Facebook Page, no
+// EAA token, completely separate from the Meta *Ads* integration (lib/meta.ts).
 //
-//   Meta for Developers → your Facebook app (type: Business)
-//     → Tools → Graph API Explorer
-//     → with the Facebook Page the IG Business account is linked to
-//     → scopes: instagram_basic, instagram_manage_insights, pages_show_list,
-//               pages_read_engagement, business_management
+//   • OAuth:    api.instagram.com/oauth/*          (code → short-lived token)
+//   • Data:     graph.instagram.com/v21.0/*        (IGAA… tokens)
+//   • Refresh:  graph.instagram.com/refresh_access_token (rolling 60-day)
 //
-// Why the Graph API / EAA path and not the newer Instagram Login flow (IGAA)?
-//
-//   1. Our Meta Ads integration (lib/meta.ts) already uses EAA tokens, so one
-//      consistent token type covers paid + organic across the platform.
-//   2. Meta Ads requires a Facebook Page anyway — so every hotel an agency
-//      runs ads for already meets the prerequisite for this flow (an IG
-//      Business account linked to a Facebook Page).
-//   3. /me/accounts → each Page's instagram_business_account lets us discover
-//      the IG Business Account ID server-side without a second OAuth round-trip.
-//
-// The other ("Instagram API with Instagram Login") path issues tokens starting
-// with **"IGAA…"** and is served from **graph.instagram.com**. Those tokens
-// are NOT compatible with this client and are rejected at the connect server
-// action — see app/(agency)/agency/(app)/hotel/[id]/integrations/social-actions.ts.
-//
-// This module is the counterpart to lib/meta.ts (paid Ads insights).
-//
-// SECURITY (see CLAUDE.md): the decrypted token is a secret. It's sent in the
-// `Authorization: Bearer` header (never the query string) so it can't land in
-// request logs, and this module is `server-only`. Callers must NEVER log the
-// token or pass it to the frontend.
-// ============================================================================
+// SECURITY (see CLAUDE.md): tokens are secrets. Data calls send the token in
+// the `Authorization: Bearer` header (never the query string) so it can't land
+// in request logs. The OAuth/refresh endpoints REQUIRE query/body credentials
+// per Meta's spec — those are server-to-server calls whose URLs are never
+// logged. This module is `server-only` and must never reach client code.
 
-const GRAPH_API_VERSION = process.env.IG_GRAPH_API_VERSION ?? "v21.0";
-// Host: graph.facebook.com — NOT graph.instagram.com. See header comment.
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const IG_GRAPH = "https://graph.instagram.com";
+const IG_OAUTH = "https://api.instagram.com";
+const IG_API_VERSION = process.env.INSTAGRAM_API_VERSION ?? "v21.0";
 
 /**
- * Returns true if the token looks like an "Instagram API with Instagram Login"
- * (IGAA) token rather than a Graph API (EAA) token. Used by the connect server
- * action to reject incompatible tokens before any Graph call.
+ * The token is invalid, expired, or revoked — the hotel must reconnect via
+ * "Log in with Instagram". Callers catch this to set the connection status and
+ * surface a reconnect message.
  */
-export function isInstagramLoginToken(token: string): boolean {
-  return token.trim().startsWith("IGAA");
-}
-
-/** Token is invalid, expired, or revoked — the agency must paste a fresh one. */
 export class InstagramAuthError extends Error {
-  constructor(message = "Your Instagram access token is invalid or has expired. Please reconnect.") {
+  constructor(message = "The Instagram connection is invalid or has expired. Please reconnect.") {
     super(message);
     this.name = "InstagramAuthError";
   }
 }
 
-/**
- * The connected account can't be used for organic insights — almost always
- * because it's a personal Instagram account, or a Business/Creator account that
- * isn't linked to a Facebook Page the token manages. The message tells the agency
- * exactly how to fix it.
- */
-export class InstagramSetupError extends Error {
-  constructor(
-    message = "No Instagram Business or Creator account is linked to a Facebook Page on this login. " +
-      "To connect: (1) convert the hotel's Instagram to a Business or Creator account " +
-      "(Instagram app → Settings → Account type and tools), (2) link it to a Facebook Page you manage, " +
-      "then generate the token again with that Page selected.",
-  ) {
-    super(message);
-    this.name = "InstagramSetupError";
-  }
-}
-
-/** Any other Graph API failure (bad request, rate limit, Meta outage, …). */
+/** Any other Instagram API failure (bad request, rate limit, outage, …). */
 export class InstagramApiError extends Error {
   constructor(message: string) {
     super(message);
@@ -84,524 +40,394 @@ export class InstagramApiError extends Error {
   }
 }
 
-type GraphParams = Record<string, string>;
+type GraphError = { error?: { message?: string; type?: string; code?: number } };
 
-async function graphGet<T>(
+function classify(status: number, err: GraphError["error"]): Error {
+  // Only 190 (invalid/expired token) and 102 (session expired) mean the token
+  // is dead — permission errors also arrive as OAuthException but must not
+  // mark the connection expired (same rule as lib/meta.ts).
+  if (err?.code === 190 || err?.code === 102) {
+    return new InstagramAuthError(err.message || undefined);
+  }
+  return new InstagramApiError(err?.message || `Instagram API request failed (HTTP ${status}).`);
+}
+
+/** GET on graph.instagram.com with the token in the Authorization header. */
+async function igGet<T>(
   path: string,
   accessToken: string,
-  params: GraphParams = {},
+  params: Record<string, string> = {},
 ): Promise<T> {
-  const url = new URL(`${GRAPH_BASE}/${path}`);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
+  const url = new URL(`${IG_GRAPH}/${IG_API_VERSION}/${path}`);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store", // per-token, per-hotel calls — never cache
   });
-
-  const json = (await res.json().catch(() => ({}))) as {
-    error?: { message?: string; type?: string; code?: number };
-  } & T;
-
-  if (!res.ok || json?.error) {
-    const err = json?.error ?? {};
-    // Only code 190 (invalid/expired token) or 102 (session expired) mean the
-    // token is dead. Permission errors (#200, #10) also arrive with type
-    // "OAuthException" but mean "no access to this asset" — they must NOT mark
-    // the connection expired.
-    if (err.code === 190 || err.code === 102) {
-      throw new InstagramAuthError(err.message || undefined);
-    }
-    throw new InstagramApiError(
-      err.message || `Instagram API request failed (HTTP ${res.status}).`,
-    );
-  }
-
+  const json = (await res.json().catch(() => ({}))) as GraphError & T;
+  if (!res.ok || json?.error) throw classify(res.status, json?.error);
   return json;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// connectInstagramAccount — resolve the IG Business account(s) from FB Pages
+// OAuth — code exchange, long-lived exchange, refresh
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IgAccount = {
-  /** The Facebook Page this IG account is linked to. */
-  pageId: string;
-  pageName: string;
-  /** Instagram Business account id — pass this to the insights calls. */
-  igUserId: string;
-  username: string;
-  followersCount: number;
-};
+function oauthEnv() {
+  const clientId = process.env.INSTAGRAM_APP_ID;
+  const clientSecret = process.env.INSTAGRAM_APP_SECRET;
+  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new InstagramApiError(
+      "Instagram Login is not configured — set INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET and INSTAGRAM_REDIRECT_URI.",
+    );
+  }
+  return { clientId, clientSecret, redirectUri };
+}
 
-type RawPage = {
-  id: string;
-  name?: string;
-  instagram_business_account?: {
-    id: string;
-    username?: string;
-    followers_count?: number;
+/** The authorize URL the browser is redirected to from /api/auth/instagram/start. */
+export function buildAuthorizeUrl(state: string): string {
+  const { clientId, redirectUri } = oauthEnv();
+  const url = new URL(`${IG_OAUTH}/oauth/authorize`);
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("scope", "instagram_business_basic,instagram_business_manage_insights");
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
+/** Exchanges the OAuth ?code for a short-lived IGAA token (+ ig user id). */
+export async function exchangeCodeForToken(
+  code: string,
+): Promise<{ accessToken: string; igUserId: string }> {
+  const { clientId, clientSecret, redirectUri } = oauthEnv();
+  const res = await fetch(`${IG_OAUTH}/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      code,
+    }),
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    user_id?: number | string;
+    error_message?: string;
+    error?: { message?: string };
   };
-};
+  if (!res.ok || !json.access_token) {
+    throw new InstagramApiError(
+      json.error_message || json.error?.message || `Instagram code exchange failed (HTTP ${res.status}).`,
+    );
+  }
+  return { accessToken: json.access_token, igUserId: String(json.user_id ?? "") };
+}
+
+/** Exchanges a short-lived token for a long-lived (~60-day) one. */
+export async function exchangeLongLivedToken(
+  shortLivedToken: string,
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const { clientSecret } = oauthEnv();
+  const url = new URL(`${IG_GRAPH}/access_token`);
+  url.searchParams.set("grant_type", "ig_exchange_token");
+  url.searchParams.set("client_secret", clientSecret);
+  url.searchParams.set("access_token", shortLivedToken);
+
+  const res = await fetch(url, { cache: "no-store" });
+  const json = (await res.json().catch(() => ({}))) as GraphError & {
+    access_token?: string;
+    expires_in?: number;
+  };
+  if (!res.ok || !json.access_token) throw classify(res.status, json?.error);
+  const expiresIn = typeof json.expires_in === "number" ? json.expires_in : 60 * 86_400;
+  return { accessToken: json.access_token, expiresAt: new Date(Date.now() + expiresIn * 1000) };
+}
 
 /**
- * Lists the Instagram Business/Creator accounts reachable from the Facebook Pages
- * this token manages (`/me/accounts` → each Page's `instagram_business_account`).
- *
- * Throws two distinct {@link InstagramSetupError} messages so the UI can guide
- * the agency to the right fix:
- *   • No Facebook Pages at all on this token → the token wasn't generated with
- *     a Page selected, or the user has no Pages.
- *   • Pages exist but none have an instagram_business_account → the hotel's IG
- *     isn't a Business/Creator account, or it isn't linked to a Page yet.
- * Throws {@link InstagramAuthError} when the token itself is bad.
+ * Rolls a long-lived token forward (IGAA's superpower: a token older than 24h
+ * and not yet expired can be refreshed for another ~60 days, indefinitely).
  */
-export async function connectInstagramAccount(accessToken: string): Promise<IgAccount[]> {
-  const res = await graphGet<{ data?: RawPage[] }>("me/accounts", accessToken, {
-    fields: "name,instagram_business_account{id,username,followers_count}",
-    limit: "100",
-  });
+export async function refreshLongLivedToken(
+  currentToken: string,
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const url = new URL(`${IG_GRAPH}/refresh_access_token`);
+  url.searchParams.set("grant_type", "ig_refresh_token");
+  url.searchParams.set("access_token", currentToken);
 
-  const pages = res.data ?? [];
-  if (pages.length === 0) {
-    throw new InstagramSetupError(
-      "This token has no Facebook Pages linked. The hotel's Instagram must be a " +
-        "Business/Creator account linked to a Facebook Page. Generate the token " +
-        "again with that Page selected in Graph API Explorer.",
-    );
-  }
-
-  const accounts: IgAccount[] = [];
-  for (const page of pages) {
-    const ig = page.instagram_business_account;
-    if (!ig?.id) continue;
-    accounts.push({
-      pageId: page.id,
-      pageName: page.name ?? page.id,
-      igUserId: ig.id,
-      username: ig.username ?? "(unknown)",
-      followersCount: ig.followers_count ?? 0,
-    });
-  }
-
-  if (accounts.length === 0) {
-    throw new InstagramSetupError(
-      "This Facebook Page has no Instagram Business account linked. Please link " +
-        "the hotel's Instagram account to this Facebook Page in Meta Business " +
-        "Suite first, then generate the token again.",
-    );
-  }
-  return accounts;
+  const res = await fetch(url, { cache: "no-store" });
+  const json = (await res.json().catch(() => ({}))) as GraphError & {
+    access_token?: string;
+    expires_in?: number;
+  };
+  if (!res.ok || !json.access_token) throw classify(res.status, json?.error);
+  const expiresIn = typeof json.expires_in === "number" ? json.expires_in : 60 * 86_400;
+  return { accessToken: json.access_token, expiresAt: new Date(Date.now() + expiresIn * 1000) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// testConnection — one small Graph call to confirm the stored token still works
+// Profile
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IgConnectionTest = {
+export type IgProfile = {
   igUserId: string;
   username: string;
+  /** "BUSINESS" | "CREATOR" | "PERSONAL" (PERSONAL is rejected at connect). */
+  accountType: string;
+  profilePictureUrl: string | null;
   followersCount: number;
 };
 
-/**
- * Reads the IG Business account's username + live follower count from
- * `/{ig-user-id}?fields=id,username,followers_count`. Used by the
- * "Test connection" button on the connect screen as proof the stored,
- * encrypted token still works against `graph.facebook.com`.
- */
-export async function testInstagramConnection(
-  accessToken: string,
-  igUserId: string,
-): Promise<IgConnectionTest> {
-  const res = await graphGet<{
+/** Fetches the logged-in account's profile. Used at connect + test-connection. */
+export async function getProfile(accessToken: string): Promise<IgProfile> {
+  const me = await igGet<{
+    user_id?: number | string;
     id?: string;
     username?: string;
+    account_type?: string;
+    profile_picture_url?: string;
     followers_count?: number;
-  }>(igUserId, accessToken, {
-    fields: "id,username,followers_count",
+  }>("me", accessToken, {
+    fields: "user_id,username,account_type,profile_picture_url,followers_count",
   });
   return {
-    igUserId: res.id ?? igUserId,
-    username: res.username ?? "(unknown)",
-    followersCount: res.followers_count ?? 0,
+    igUserId: String(me.user_id ?? me.id ?? ""),
+    username: me.username ?? "(unknown)",
+    accountType: (me.account_type ?? "UNKNOWN").toUpperCase(),
+    profilePictureUrl: me.profile_picture_url ?? null,
+    followersCount: me.followers_count ?? 0,
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getTokenExpiry — best-effort expiry via /debug_token
+// Account insights (daily)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Reads the token's own expiry (null = unknown / non-expiring). Never throws. */
-export async function getTokenExpiry(accessToken: string): Promise<Date | null> {
-  try {
-    const debug = await graphGet<{ data?: { expires_at?: number } }>(
-      "debug_token",
-      accessToken,
-      { input_token: accessToken },
-    );
-    const unix = debug.data?.expires_at;
-    // expires_at === 0 means a non-expiring token (e.g. a system-user token).
-    return typeof unix === "number" && unix > 0 ? new Date(unix * 1000) : null;
-  } catch {
-    return null;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// getAccountInsights — /{ig-user-id}/insights over a date range
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type DateRange = { since: Date; until: Date };
-
-export type AccountInsightsDay = {
-  date: string; // YYYY-MM-DD
+export type DailyAccountInsight = {
+  /** "YYYY-MM-DD" */
+  date: string;
   reach: number;
   impressions: number;
   profileViews: number;
-  followers: number;
+  /** Daily follower_count metric when Meta returns it (new follows that day). */
+  followerCount: number;
 };
 
-export type AccountInsights = {
-  /** Σ reach over the range. */
-  reach: number;
-  /** Σ impressions over the range. */
-  impressions: number;
-  /** Σ profile views over the range. */
-  profileViews: number;
-  /** Latest follower_count in the range (followers is a point-in-time metric). */
-  followers: number;
-  daily: AccountInsightsDay[];
+type InsightRow = {
+  name?: string;
+  period?: string;
+  values?: { value?: number; end_time?: string }[];
 };
 
-type RawInsightValue = { value?: number; end_time?: string };
-type RawInsightMetric = { name?: string; values?: RawInsightValue[] };
-
-const ymd = (iso: string) => iso.slice(0, 10);
-const unix = (d: Date) => Math.floor(d.getTime() / 1000).toString();
-
-/**
- * Account-level organic insights: reach, impressions, profile_views, and
- * follower_count, by day across the range. Returns per-day rows plus range
- * totals (followers = the latest value, since it's a stock not a flow).
- */
-export async function getAccountInsights(
+// Newer Graph versions retire individual metrics (impressions is deprecated on
+// v22+). Rather than failing the whole sync, retry without the metric Meta
+// rejected so the remaining ones still land.
+async function insightsWithFallback(
   accessToken: string,
   igUserId: string,
-  range: DateRange,
-): Promise<AccountInsights> {
-  const res = await graphGet<{ data?: RawInsightMetric[] }>(
-    `${igUserId}/insights`,
+  metrics: string[],
+  params: Record<string, string>,
+): Promise<InsightRow[]> {
+  let current = [...metrics];
+  for (let attempt = 0; attempt < metrics.length; attempt++) {
+    try {
+      const res = await igGet<{ data?: InsightRow[] }>(`${igUserId}/insights`, accessToken, {
+        ...params,
+        metric: current.join(","),
+      });
+      return res.data ?? [];
+    } catch (err) {
+      if (err instanceof InstagramAuthError) throw err;
+      const message = err instanceof Error ? err.message : "";
+      // "(#100) metric[N] must be one of the following values: …" — drop the
+      // metric Meta named (or the first one) and retry with the rest.
+      const rejected = current.find((m) => message.includes(m));
+      if (current.length <= 1 || !message.includes("metric")) throw err;
+      current = current.filter((m) => m !== (rejected ?? current[0]));
+    }
+  }
+  return [];
+}
+
+/**
+ * Daily account metrics for a date window via
+ * `{igUserId}/insights?period=day&since&until` on graph.instagram.com.
+ */
+export async function getDailyAccountInsights(
+  accessToken: string,
+  igUserId: string,
+  range: { since: Date; until: Date },
+): Promise<DailyAccountInsight[]> {
+  const rows = await insightsWithFallback(
     accessToken,
+    igUserId,
+    ["reach", "impressions", "profile_views", "follower_count"],
     {
-      metric: "reach,impressions,profile_views,follower_count",
       period: "day",
-      since: unix(range.since),
-      until: unix(range.until),
+      since: String(Math.floor(range.since.getTime() / 1000)),
+      until: String(Math.floor(range.until.getTime() / 1000)),
     },
   );
 
-  // Merge the parallel metric series into one row per day, keyed by end_time.
-  const byDay = new Map<string, AccountInsightsDay>();
-  const ensure = (date: string) => {
-    let row = byDay.get(date);
-    if (!row) {
-      row = { date, reach: 0, impressions: 0, profileViews: 0, followers: 0 };
-      byDay.set(date, row);
+  // Pivot metric-major rows into one record per day.
+  const byDate = new Map<string, DailyAccountInsight>();
+  const ensure = (date: string): DailyAccountInsight => {
+    let d = byDate.get(date);
+    if (!d) {
+      d = { date, reach: 0, impressions: 0, profileViews: 0, followerCount: 0 };
+      byDate.set(date, d);
     }
-    return row;
+    return d;
   };
 
-  // Numeric fields only (excludes `date`), so the keyed write below type-checks.
-  type NumericField = "reach" | "impressions" | "profileViews" | "followers";
-  const field: Record<string, NumericField> = {
-    reach: "reach",
-    impressions: "impressions",
-    profile_views: "profileViews",
-    follower_count: "followers",
-  };
-
-  for (const metric of res.data ?? []) {
-    const key = metric.name ? field[metric.name] : undefined;
-    if (!key) continue;
-    for (const v of metric.values ?? []) {
+  for (const row of rows) {
+    for (const v of row.values ?? []) {
       if (!v.end_time) continue;
-      ensure(ymd(v.end_time))[key] = v.value ?? 0;
+      const date = v.end_time.slice(0, 10);
+      const value = typeof v.value === "number" ? v.value : 0;
+      switch (row.name) {
+        case "reach":
+          ensure(date).reach = value;
+          break;
+        case "impressions":
+          ensure(date).impressions = value;
+          break;
+        case "profile_views":
+          ensure(date).profileViews = value;
+          break;
+        case "follower_count":
+          ensure(date).followerCount = value;
+          break;
+      }
     }
   }
-
-  const daily = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
-  return {
-    reach: daily.reduce((s, d) => s + d.reach, 0),
-    impressions: daily.reduce((s, d) => s + d.impressions, 0),
-    profileViews: daily.reduce((s, d) => s + d.profileViews, 0),
-    followers: daily.length ? daily[daily.length - 1].followers : 0,
-    daily,
-  };
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getMediaInsights — recent posts + their per-post insights
+// Media + per-post insights
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Normalised post media types, stable across the DB + dashboard filter. */
-export type NormalisedMediaType = "image" | "video" | "carousel" | "reels";
-
-export type PostInsight = {
+export type IgMedia = {
   mediaId: string;
   caption: string | null;
-  /** Normalised: "image" | "video" | "carousel" | "reels" — null if unknown. */
-  mediaType: NormalisedMediaType | null;
+  /** Normalised: "image" | "video" | "carousel" | "reels". */
+  mediaType: string | null;
+  mediaUrl: string | null;
   permalink: string | null;
-  /** ISO timestamp the post was published. */
   timestamp: string | null;
-  impressions: number;
-  reach: number;
-  /** From /media (like_count) — NOT from /insights. */
   likes: number;
-  /** From /media (comments_count) — NOT from /insights. */
   comments: number;
-  /** Meta-reported aggregate engagement; kept alongside raw likes/comments. */
-  engagement: number;
-  saves: number;
-  shares: number;
-  videoViews: number;
 };
 
-type RawMedia = {
-  id: string;
-  caption?: string;
-  media_type?: string; // IMAGE | VIDEO | CAROUSEL_ALBUM
-  media_product_type?: string; // FEED | REELS | STORY | AD — distinguishes Reels
-  permalink?: string;
-  timestamp?: string;
-  like_count?: number;
-  comments_count?: number;
-};
-
-/**
- * Normalises the Graph API's media_type + media_product_type into the four
- * values the dashboard + filter understand. Reels are returned as VIDEO with
- * media_product_type=REELS, so we check that combination first.
- */
-export function normaliseMediaType(
-  mediaType: string | undefined,
-  mediaProductType: string | undefined,
-): NormalisedMediaType | null {
-  if (mediaProductType === "REELS") return "reels";
-  switch (mediaType) {
+function normaliseMediaType(raw?: string): string | null {
+  switch ((raw ?? "").toUpperCase()) {
     case "IMAGE":
       return "image";
     case "VIDEO":
       return "video";
     case "CAROUSEL_ALBUM":
       return "carousel";
+    case "REELS":
+      return "reels";
     default:
-      return null;
+      return raw ? raw.toLowerCase() : null;
   }
 }
 
-/** Metrics valid for a given media type. video_views only applies to video/reels. */
-function metricsFor(mediaType: string | undefined): string[] {
-  const base = ["reach", "impressions", "saved", "shares", "engagement"];
-  if (mediaType === "VIDEO") return [...base, "video_views"];
-  return base;
+/** The account's recent media (no insights — those are fetched per media id). */
+export async function getRecentMedia(
+  accessToken: string,
+  igUserId: string,
+  limit = 25,
+): Promise<IgMedia[]> {
+  const res = await igGet<{
+    data?: {
+      id: string;
+      caption?: string;
+      media_type?: string;
+      media_url?: string;
+      permalink?: string;
+      timestamp?: string;
+      like_count?: number;
+      comments_count?: number;
+    }[];
+  }>(`${igUserId}/media`, accessToken, {
+    fields: "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count",
+    limit: String(limit),
+  });
+
+  return (res.data ?? []).map((m) => ({
+    mediaId: m.id,
+    caption: m.caption ?? null,
+    mediaType: normaliseMediaType(m.media_type),
+    mediaUrl: m.media_url ?? null,
+    permalink: m.permalink ?? null,
+    timestamp: m.timestamp ?? null,
+    likes: m.like_count ?? 0,
+    comments: m.comments_count ?? 0,
+  }));
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export type MediaInsights = {
+  reach: number;
+  impressions: number;
+  saved: number;
+  engagement: number;
+};
 
 /**
- * The most recent posts for an IG account, each with its organic insights
- * plus likes + comments. Resilient: one post whose insights fail (e.g. a
- * metric unsupported for its type) is returned with zeroed metrics rather
- * than failing the whole batch.
- *
- * Likes and comments come from /{ig-user-id}/media (like_count, comments_count)
- * — NOT from /insights. We fetch both fields on the single media list call so
- * we don't burn an extra request per post.
- *
- * `delayMs` spaces out the per-post insight calls to respect Instagram's rate
- * limit (~200 requests/hour) — pass a small value from a scheduled batch sync.
+ * Per-post insights. Tolerant of per-version metric churn: falls back through
+ * `engagement` → `total_interactions` and drops `impressions` when rejected. A
+ * metric quirk on one post must never kill the sync, so unknown-metric
+ * failures resolve to zeros (auth errors still propagate).
  */
 export async function getMediaInsights(
   accessToken: string,
-  igUserId: string,
-  limit = 12,
-  delayMs = 0,
-): Promise<PostInsight[]> {
-  const media = await graphGet<{ data?: RawMedia[] }>(`${igUserId}/media`, accessToken, {
-    fields:
-      "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
-    limit: String(Math.min(Math.max(limit, 1), 50)),
-  });
+  mediaId: string,
+): Promise<MediaInsights> {
+  const out: MediaInsights = { reach: 0, impressions: 0, saved: 0, engagement: 0 };
+  const metricSets = [
+    ["reach", "impressions", "saved", "engagement"],
+    ["reach", "impressions", "saved", "total_interactions"],
+    ["reach", "saved", "total_interactions"],
+    ["reach", "saved"],
+  ];
 
-  const posts: PostInsight[] = [];
-  let first = true;
-  for (const m of media.data ?? []) {
-    if (!first && delayMs > 0) await sleep(delayMs);
-    first = false;
-    const post: PostInsight = {
-      mediaId: m.id,
-      caption: m.caption ?? null,
-      mediaType: normaliseMediaType(m.media_type, m.media_product_type),
-      permalink: m.permalink ?? null,
-      timestamp: m.timestamp ?? null,
-      impressions: 0,
-      reach: 0,
-      likes: m.like_count ?? 0,
-      comments: m.comments_count ?? 0,
-      engagement: 0,
-      saves: 0,
-      shares: 0,
-      videoViews: 0,
-    };
-
+  for (const metrics of metricSets) {
     try {
-      const ins = await graphGet<{ data?: RawInsightMetric[] }>(
-        `${m.id}/insights`,
-        accessToken,
-        { metric: metricsFor(m.media_type).join(",") },
-      );
-      for (const metric of ins.data ?? []) {
-        const value = metric.values?.[0]?.value ?? 0;
-        switch (metric.name) {
-          case "impressions":
-            post.impressions = value;
-            break;
+      const res = await igGet<{ data?: InsightRow[] }>(`${mediaId}/insights`, accessToken, {
+        metric: metrics.join(","),
+      });
+      for (const row of res.data ?? []) {
+        const value = row.values?.[0]?.value ?? 0;
+        switch (row.name) {
           case "reach":
-            post.reach = value;
+            out.reach = value;
             break;
-          case "engagement":
-            post.engagement = value;
+          case "impressions":
+            out.impressions = value;
             break;
           case "saved":
-            post.saves = value;
+            out.saved = value;
             break;
-          case "shares":
-            post.shares = value;
-            break;
-          case "video_views":
-            post.videoViews = value;
+          case "engagement":
+          case "total_interactions":
+            out.engagement = value;
             break;
         }
       }
-    } catch (err) {
-      // A dead token must still surface; a per-post metric quirk must not.
-      if (err instanceof InstagramAuthError) throw err;
-    }
-
-    posts.push(post);
-  }
-
-  return posts;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// getStoryInsights — active Stories + per-story insights
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type StoryInsight = {
-  storyId: string;
-  /** "image" | "video" — stories are never carousels. */
-  mediaType: "image" | "video" | null;
-  /** ISO timestamp the story was published. */
-  timestamp: string | null;
-  reach: number;
-  impressions: number;
-  tapsForward: number;
-  tapsBack: number;
-  exits: number;
-  replies: number;
-};
-
-type RawStory = {
-  id: string;
-  media_type?: string;
-  timestamp?: string;
-};
-
-/**
- * Active Instagram Stories + their per-story insights.
- *
- * IMPORTANT: Instagram Stories expire 24 hours after posting and disappear from
- * `/{ig-user-id}/stories` once they do. Any story not captured before expiry is
- * gone forever. This is why the dedicated cron at /api/social/sync-stories runs
- * every 2 hours instead of the post sync's 6 hours.
- *
- * Resilient: one story whose insights call fails (a known metric quirk on the
- * Stories API around the edge of the 24h window) is returned with zeroed
- * metrics, never aborting the batch. A dead token still surfaces.
- *
- * `delayMs` spaces out the per-story calls — typical hotels post 3-8 stories at
- * once so the per-call rate adds up across many accounts.
- */
-export async function getStoryInsights(
-  accessToken: string,
-  igUserId: string,
-  delayMs = 0,
-): Promise<StoryInsight[]> {
-  const list = await graphGet<{ data?: RawStory[] }>(`${igUserId}/stories`, accessToken, {
-    fields: "id,media_type,timestamp",
-    limit: "50",
-  });
-
-  const stories: StoryInsight[] = [];
-  let first = true;
-  for (const s of list.data ?? []) {
-    if (!first && delayMs > 0) await sleep(delayMs);
-    first = false;
-
-    const story: StoryInsight = {
-      storyId: s.id,
-      mediaType: s.media_type === "VIDEO" ? "video" : s.media_type === "IMAGE" ? "image" : null,
-      timestamp: s.timestamp ?? null,
-      reach: 0,
-      impressions: 0,
-      tapsForward: 0,
-      tapsBack: 0,
-      exits: 0,
-      replies: 0,
-    };
-
-    try {
-      const ins = await graphGet<{ data?: RawInsightMetric[] }>(
-        `${s.id}/insights`,
-        accessToken,
-        { metric: "reach,impressions,taps_forward,taps_back,exits,replies" },
-      );
-      for (const metric of ins.data ?? []) {
-        const value = metric.values?.[0]?.value ?? 0;
-        switch (metric.name) {
-          case "reach":
-            story.reach = value;
-            break;
-          case "impressions":
-            story.impressions = value;
-            break;
-          case "taps_forward":
-            story.tapsForward = value;
-            break;
-          case "taps_back":
-            story.tapsBack = value;
-            break;
-          case "exits":
-            story.exits = value;
-            break;
-          case "replies":
-            story.replies = value;
-            break;
-        }
-      }
+      return out;
     } catch (err) {
       if (err instanceof InstagramAuthError) throw err;
-      // Some stories near the 24h boundary return a metric error; persist what
-      // we have rather than dropping the batch.
+      const message = err instanceof Error ? err.message : "";
+      if (!message.includes("metric")) return out; // per-post quirk — keep zeros
     }
-
-    stories.push(story);
   }
-
-  return stories;
+  return out;
 }

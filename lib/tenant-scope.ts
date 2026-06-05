@@ -125,7 +125,7 @@ export const MULTI_TENANT_MODELS = [
   "report",
   "alert",
   "shareLink",
-  "socialAccount",
+  "instagramConnection",
   "socialSnapshot",
   "postSnapshot",
   "storySnapshot",

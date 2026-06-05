@@ -74,7 +74,7 @@ enables RLS on exactly these (plus `Agency`, scoped by `id`).
 
 `AgencyMember`, `HotelClient`, `ContentPiece`, `TrackingEvent`, `MetaToken`,
 `AdSnapshot`, `CouponRedemption`, `Report`, `Alert`, `ShareLink`,
-`SocialAccount`, `SocialSnapshot`, `PostSnapshot`, `StorySnapshot`,
+`InstagramConnection`, `SocialSnapshot`, `PostSnapshot`, `StorySnapshot`,
 `GoogleAnalyticsConnection`, `GaSnapshot`, `GaSourceBreakdown`.
 
 Tenant root: `Agency` (scoped by `id`, no `agencyId` column).
@@ -96,7 +96,8 @@ they correctly bypass `agencyScoped()`. Each still writes/filters the correct
 | `app/admin/page.tsx`, `app/admin/actions.ts` | Super-admin, **cross-agency by design**. | `requireSuperAdmin()`; deliberately un-scoped platform-wide queries. |
 | `app/(agency)/agency/onboarding/actions.ts` | Bootstraps the Agency + first member (pre-agency). | Creates the tenant; no `agencyId` exists yet. |
 | `lib/auth.ts` (`getCurrentMember`) | Bootstrap lookup that **finds** the agency. | `clerkId` → `AgencyMember`; the caller doesn't have an `agencyId` yet. |
-| `app/api/meta/sync`, `app/api/social/sync`, `app/api/social/sync-stories`, `app/api/ga/sync` + `lib/meta`/`lib/social-sync.ts`/`lib/ga-sync.ts`/`lib/alerts.ts` | Cron jobs gated by `CRON_SECRET`; iterate **all** agencies. | Each writes rows with the `agencyId` of the hotel/connection it is processing, scoped per-agency in the loop. |
+| `app/api/meta/sync`, `app/api/instagram/sync`, `app/api/instagram/refresh-tokens`, `app/api/ga/sync` + `lib/meta`/`lib/instagram-sync.ts`/`lib/ga-sync.ts`/`lib/alerts.ts` | Cron jobs gated by `CRON_SECRET`; iterate **all** agencies. | Each writes rows with the `agencyId` of the hotel/connection it is processing, scoped per-agency in the loop. |
+| `app/api/auth/instagram/callback/route.ts` | OAuth callback from instagram.com (browser redirect, state-authenticated). | HMAC-signed 10-minute `state` token minted by `/start` for an authenticated member → `agencyId` + `hotelClientId`, re-verified against the DB before writing. |
 
 `lib/report-data.ts` is **not** an exception: it receives `agencyId` as a
 parameter (so it serves both the authenticated dashboard and the token-based

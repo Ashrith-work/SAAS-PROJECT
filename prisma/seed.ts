@@ -408,16 +408,17 @@ async function seedAds(agencyId: string, hotelClientId: string, scale: number) {
 
 async function seedSocial(agencyId: string, hotelClientId: string, def: HotelDef) {
   const username = def.short.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-  await prisma.socialAccount.create({
+  await prisma.instagramConnection.create({
     data: {
       agencyId,
       hotelClientId,
-      platform: "instagram",
+      tokenType: "igaa_direct",
       igUserId: `demo_ig_${uid()}`,
       username,
-      encryptedToken: encryptToken("demo-social-token-not-a-real-meta-token"),
+      igAccountType: "BUSINESS",
+      encryptedToken: encryptToken("demo-social-token-not-a-real-ig-token"),
       tokenExpiresAt: daysAgo(-50), // ~50 days out
-      status: "connected",
+      status: "active",
       lastSyncedAt: daysAgo(0),
     },
   });

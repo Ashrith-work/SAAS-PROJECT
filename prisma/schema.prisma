@@ -104,7 +104,7 @@ model Agency {
   reports           Report[]
   alerts            Alert[]
   shareLinks        ShareLink[]
-  socialAccounts    SocialAccount[]
+  instagramConnections InstagramConnection[]
   socialSnapshots   SocialSnapshot[]
   postSnapshots     PostSnapshot[]
   storySnapshots    StorySnapshot[]
@@ -164,7 +164,7 @@ model HotelClient {
   reports         Report[]
   alerts          Alert[]
   shareLinks      ShareLink[]
-  socialAccounts  SocialAccount[]
+  instagramConnections InstagramConnection[]
   socialSnapshots SocialSnapshot[]
   postSnapshots   PostSnapshot[]
   storySnapshots  StorySnapshot[]
@@ -381,29 +381,42 @@ model ShareLink {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Organic social (Instagram/Facebook) — SEPARATE from the Meta *Ads* integration
-// (MetaToken/AdSnapshot above). One SocialAccount per hotel per platform holds
-// the IG Business account id + its own encrypted token. SocialSnapshot stores
-// daily account metrics; PostSnapshot stores per-post metrics.
+// Instagram organic — SEPARATE from the Meta *Ads* integration (MetaToken/
+// AdSnapshot above). Connected via the "Instagram API with Instagram Login"
+// OAuth flow (IGAA tokens on graph.instagram.com) — NO Facebook Page involved.
+// One InstagramConnection per hotel. SocialSnapshot stores daily account
+// metrics; PostSnapshot stores per-post metrics.
+//
+// tokenType is a String (not an enum) per this schema's convention for
+// open-ended vocabularies: today it's always "igaa_direct"; rows from the
+// retired EAA-via-Page flow were stamped "eaa_via_page" + status
+// "deprecated_eaa" by the rename migration and are never used again.
 // ─────────────────────────────────────────────────────────────────────────────
 
-model SocialAccount {
+model InstagramConnection {
   id             String    @id @default(cuid())
   agencyId       String
   hotelClientId  String
-  platform       Platform  @default(instagram)
-  igUserId       String // the Instagram Business account id (resolved from a Page)
+  tokenType      String    @default("igaa_direct")
+  igUserId       String // the Instagram user id returned by the IGAA flow
   username       String?
+  igAccountType  String? // BUSINESS | CREATOR (PERSONAL is rejected at connect)
+  profilePicUrl  String?
   encryptedToken String // AES-256-GCM ciphertext (base64). NEVER log or expose.
   tokenExpiresAt DateTime?
-  status         String    @default("disconnected")
+  // active | error | deprecated_eaa. "error" carries errorMessage and is set by
+  // the sync when a connection fails; reconnecting via OAuth resets to active.
+  status         String    @default("active")
+  errorMessage   String?
   lastSyncedAt   DateTime?
+  // When the weekly refresh cron last rolled the 60-day IGAA token forward.
+  lastRefreshedAt DateTime?
   createdAt      DateTime  @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
-  @@unique([hotelClientId, platform]) // one social account per hotel per platform
+  @@unique([hotelClientId]) // one Instagram connection per hotel
   @@index([agencyId])
   @@index([hotelClientId])
 }

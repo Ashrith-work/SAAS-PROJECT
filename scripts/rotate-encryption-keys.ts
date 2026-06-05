@@ -51,13 +51,13 @@ const TARGETS: Target[] = [
       prisma.metaToken.update({ where: { id }, data: { encryptedToken: cipher } }),
   },
   {
-    label: "SocialAccount.encryptedToken",
+    label: "InstagramConnection.encryptedToken",
     tokenType: "instagram",
-    table: "SocialAccount",
+    table: "InstagramConnection",
     column: "encryptedToken",
     hasHotel: true,
     save: (id, cipher) =>
-      prisma.socialAccount.update({ where: { id }, data: { encryptedToken: cipher } }),
+      prisma.instagramConnection.update({ where: { id }, data: { encryptedToken: cipher } }),
   },
   {
     label: "GoogleAnalyticsConnection.encryptedCredentials",

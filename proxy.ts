@@ -24,9 +24,12 @@ const isPublicRoute = createRouteMatcher([
   "/api/meta/sync(.*)",
   // Same pattern: cron-style trigger, gated by CRON_SECRET inside the route.
   "/api/alerts/run(.*)",
-  "/api/social/sync(.*)",
-  "/api/social/sync-stories(.*)",
+  "/api/instagram/sync(.*)",
+  "/api/instagram/refresh-tokens(.*)",
   "/api/ga/sync(.*)",
+  // Instagram OAuth callback: the browser arrives from instagram.com; the
+  // signed 10-minute state token (bound to agency + hotel) is the auth.
+  "/api/auth/instagram/callback(.*)",
   // Razorpay posts webhooks with no Clerk session; the route verifies the
   // Razorpay HMAC-SHA256 signature instead.
   "/api/webhooks/razorpay(.*)",

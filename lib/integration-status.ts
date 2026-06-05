@@ -64,11 +64,15 @@ export function metaState(
 }
 
 export function instagramState(
-  social: { status: string; tokenExpiresAt: Date | null } | null,
+  conn: { status: string; tokenExpiresAt: Date | null } | null,
   now: Date,
 ): TokenState {
-  if (!social) return "not_connected";
-  return tokenStateFrom(social.status, social.tokenExpiresAt, now);
+  // IGAA connections: "active" is healthy; "error" needs a reconnect; rows from
+  // the retired EAA flow ("deprecated_eaa") count as never connected. The
+  // weekly refresh cron rolls tokens before expiry, so "expiring" is rare.
+  if (!conn || conn.status === "deprecated_eaa") return "not_connected";
+  if (conn.status !== "active") return "expired";
+  return tokenStateFrom("connected", conn.tokenExpiresAt, now);
 }
 
 export function gaState(
@@ -194,8 +198,8 @@ export async function loadHotelStates(opts: {
       orderBy: { createdAt: "desc" },
       select: { status: true, tokenExpiresAt: true },
     }),
-    agencyScoped(prisma.socialAccount).findFirst({
-      where: { hotelClientId: hotelId, platform: "instagram" },
+    agencyScoped(prisma.instagramConnection).findFirst({
+      where: { hotelClientId: hotelId, tokenType: "igaa_direct" },
       select: { status: true, tokenExpiresAt: true },
     }),
     agencyScoped(prisma.googleAnalyticsConnection).findFirst({
@@ -236,8 +240,8 @@ export async function loadListStates(
             orderBy: { createdAt: "desc" },
             select: { status: true, tokenExpiresAt: true },
           }),
-          agencyScoped(prisma.socialAccount).findMany({
-            where: { hotelClientId: { in: ids }, platform: "instagram" },
+          agencyScoped(prisma.instagramConnection).findMany({
+            where: { hotelClientId: { in: ids }, tokenType: "igaa_direct" },
             select: { hotelClientId: true, status: true, tokenExpiresAt: true },
           }),
           agencyScoped(prisma.googleAnalyticsConnection).findMany({

@@ -3,8 +3,8 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  syncSocialInsights,
-  disconnectSocialAccount,
+  syncInstagramNow,
+  disconnectInstagram,
   testInstagramConnectionAction,
   type SyncState,
   type TestConnectionState,
@@ -20,7 +20,7 @@ const testInitial: TestConnectionState = {
 
 export function InstagramActions({ hotelId }: { hotelId: string }) {
   const router = useRouter();
-  const [state, action, syncing] = useActionState(syncSocialInsights, syncInitial);
+  const [state, action, syncing] = useActionState(syncInstagramNow, syncInitial);
   const [testState, testAction, testing] = useActionState(
     testInstagramConnectionAction,
     testInitial,
@@ -54,7 +54,7 @@ export function InstagramActions({ hotelId }: { hotelId: string }) {
             {testing ? "Testing…" : "Test connection"}
           </button>
         </form>
-        <form action={disconnectSocialAccount}>
+        <form action={disconnectInstagram}>
           <input type="hidden" name="hotelId" value={hotelId} />
           <button
             type="submit"
@@ -73,7 +73,7 @@ export function InstagramActions({ hotelId }: { hotelId: string }) {
         <p className="text-sm text-green-600 dark:text-green-400">
           Connection OK — @{testState.username} ·{" "}
           {testState.followersCount.toLocaleString()} followers (live from
-          graph.facebook.com).
+          graph.instagram.com).
         </p>
       )}
     </div>

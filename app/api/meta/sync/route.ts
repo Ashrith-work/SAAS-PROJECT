@@ -3,7 +3,6 @@ import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
 import { getDailyInsights, MetaAuthError } from "@/lib/meta";
 import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
-import { runSocialSync, type SocialSyncResult } from "@/lib/social-sync";
 import { recordSyncFailure } from "@/lib/backfill";
 
 // Scheduled Meta Ads sync. Runs on Vercel Cron once a day (see vercel.json) and
@@ -152,15 +151,8 @@ export async function GET(request: Request) {
     }
   }
 
-  // Extend the daily job to also refresh organic social. The dedicated
-  // /api/social/sync cron runs this more often (every 6h); doing it here keeps
-  // the daily run complete. Isolated: a social failure NEVER affects the result.
-  let social: SocialSyncResult | { error: string };
-  try {
-    social = await runSocialSync();
-  } catch (err) {
-    social = { error: err instanceof Error ? err.message : "Social sync failed." };
-  }
+  // Instagram organic now syncs separately via /api/instagram/sync (IGAA
+  // connections, daily 6am cron) — this job is ADS ONLY.
 
   // Email alerts run after the data is fresh so performance/summary alerts
   // reflect the latest numbers. Fully isolated: a failure here NEVER affects the
@@ -180,7 +172,6 @@ export async function GET(request: Request) {
     snapshotsWritten,
     tokensDisconnected,
     errors,
-    social,
     alerts,
     syncedAt: now.toISOString(),
   });

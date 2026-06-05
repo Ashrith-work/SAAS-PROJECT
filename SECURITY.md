@@ -86,7 +86,7 @@ npm run rotate:keys
 ```
 
 The script (`scripts/rotate-encryption-keys.ts`) covers `MetaToken`,
-`SocialAccount`, and `GoogleAnalyticsConnection`, is idempotent (skips rows
+`InstagramConnection`, and `GoogleAnalyticsConnection`, is idempotent (skips rows
 already on the target version), and logs a `rotated` audit event per row.
 
 ---

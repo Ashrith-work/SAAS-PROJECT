@@ -27,7 +27,7 @@ import {
 // table/column identifiers below are constants — never caller input.
 const SECRET_SOURCES = {
   meta_ads: { table: "MetaToken", column: "encryptedToken" },
-  instagram: { table: "SocialAccount", column: "encryptedToken" },
+  instagram: { table: "InstagramConnection", column: "encryptedToken" },
   ga_credentials: { table: "GoogleAnalyticsConnection", column: "encryptedCredentials" },
 } as const;
 

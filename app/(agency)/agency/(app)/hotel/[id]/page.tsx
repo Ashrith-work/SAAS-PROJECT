@@ -223,8 +223,8 @@ export default async function HotelDashboardPage({
   // (account-level engagement isn't synced), and the top-posts table.
   const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg] =
     await Promise.all([
-      agencyScoped(prisma.socialAccount).findFirst({
-        where: { hotelClientId: hotel.id, platform: "instagram" },
+      agencyScoped(prisma.instagramConnection).findFirst({
+        where: { hotelClientId: hotel.id, tokenType: "igaa_direct" },
         select: { status: true, username: true, lastSyncedAt: true },
       }),
       agencyScoped(prisma.socialSnapshot).findMany({

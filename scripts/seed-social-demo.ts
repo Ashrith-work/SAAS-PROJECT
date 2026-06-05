@@ -59,26 +59,27 @@ async function main() {
   const { id: hid, agencyId } = hotel;
   console.log(`Seeding demo social data for hotel "${hotel.name}" (${hid})…`);
 
-  // ── SocialAccount: create (with a demo token) or just refresh lastSyncedAt ──
-  const existing = await prisma.socialAccount.findFirst({
-    where: { agencyId, hotelClientId: hid, platform: "instagram" },
+  // ── InstagramConnection: create (with a demo token) or refresh lastSyncedAt ──
+  const existing = await prisma.instagramConnection.findFirst({
+    where: { agencyId, hotelClientId: hid, tokenType: "igaa_direct" },
     select: { id: true },
   });
   if (existing) {
-    await prisma.socialAccount.update({
+    await prisma.instagramConnection.update({
       where: { id: existing.id },
-      data: { status: "connected", lastSyncedAt: new Date() },
+      data: { status: "active", lastSyncedAt: new Date() },
     });
   } else {
-    await prisma.socialAccount.create({
+    await prisma.instagramConnection.create({
       data: {
         agencyId,
         hotelClientId: hid,
-        platform: "instagram",
+        tokenType: "igaa_direct",
         igUserId: "demo_ig_user",
         username: "demo_resort",
-        encryptedToken: encryptToken("social-demo-token-not-a-real-meta-token"),
-        status: "connected",
+        igAccountType: "BUSINESS",
+        encryptedToken: encryptToken("social-demo-token-not-a-real-ig-token"),
+        status: "active",
         lastSyncedAt: new Date(),
       },
     });

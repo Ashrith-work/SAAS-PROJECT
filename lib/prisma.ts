@@ -32,7 +32,7 @@ function createPrismaClient() {
           return scrub(await query(args), "encryptedToken");
         },
       },
-      socialAccount: {
+      instagramConnection: {
         async $allOperations({ args, query }) {
           return scrub(await query(args), "encryptedToken");
         },

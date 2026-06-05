@@ -6,12 +6,12 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/social/sync",
-      "schedule": "0 */6 * * *"
+      "path": "/api/instagram/sync",
+      "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/social/sync-stories",
-      "schedule": "0 */2 * * *"
+      "path": "/api/instagram/refresh-tokens",
+      "schedule": "0 3 * * 1"
     },
     {
       "path": "/api/ga/sync",
