@@ -107,7 +107,11 @@ async function graphGet<T>(
 
   if (!res.ok || json?.error) {
     const err = json?.error ?? {};
-    if (err.code === 190 || err.type === "OAuthException") {
+    // Only code 190 (invalid/expired token) or 102 (session expired) mean the
+    // token is dead. Permission errors (#200, #10) also arrive with type
+    // "OAuthException" but mean "no access to this asset" — they must NOT mark
+    // the connection expired.
+    if (err.code === 190 || err.code === 102) {
       throw new InstagramAuthError(err.message || undefined);
     }
     throw new InstagramApiError(

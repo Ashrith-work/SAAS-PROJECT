@@ -60,7 +60,12 @@ async function graphGet<T>(
 
   if (!res.ok || json?.error) {
     const err = json?.error ?? {};
-    if (err.code === 190 || err.type === "OAuthException") {
+    // Only treat the token itself as dead for code 190 (invalid/expired token)
+    // or 102 (session expired). Meta also reports PERMISSION errors (e.g. #200
+    // "ad account owner has not granted ads_read") with type "OAuthException" —
+    // those mean "no access to this asset", not "token expired", and must NOT
+    // flip the agency's valid token to expired.
+    if (err.code === 190 || err.code === 102) {
       throw new MetaAuthError(err.message || undefined);
     }
     throw new MetaApiError(

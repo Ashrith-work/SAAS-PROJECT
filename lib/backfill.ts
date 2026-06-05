@@ -132,16 +132,17 @@ export async function computeAgencyBackfillRange(
 async function backfillAds(
   agencyId: string,
   accumulate: (days: number) => void,
-): Promise<{ anySuccess: boolean; tokenDead: boolean; failedDays: number }> {
+): Promise<{ anySuccess: boolean; tokenDead: boolean; failedDays: number; sampleError: string | null }> {
   let anySuccess = false;
   let tokenDead = false;
   let failedDays = 0;
+  let sampleError: string | null = null;
 
   const token = await prisma.metaToken.findFirst({
     where: { agencyId, status: "connected" },
     select: { id: true },
   });
-  if (!token) return { anySuccess, tokenDead, failedDays };
+  if (!token) return { anySuccess, tokenDead, failedDays, sampleError };
 
   let secret: SecretToken;
   try {
@@ -150,7 +151,7 @@ async function backfillAds(
       source: "backfill:ads",
     });
   } catch {
-    return { anySuccess, tokenDead, failedDays };
+    return { anySuccess, tokenDead, failedDays, sampleError };
   }
 
   const hotels = await prisma.hotelClient.findMany({
@@ -203,6 +204,8 @@ async function backfillAds(
       await logBackfill(agencyId, hotel.id, "ad", gap, "success");
     } catch (err) {
       failedDays += gap.days;
+      const message = err instanceof Error ? err.message : "Unknown ad backfill error.";
+      sampleError ??= message;
       if (err instanceof MetaAuthError) {
         tokenDead = true;
         await prisma.metaToken.updateMany({
@@ -213,26 +216,20 @@ async function backfillAds(
         await logBackfill(agencyId, hotel.id, "ad", gap, "failed", err.message);
         break; // token is dead for every hotel
       }
-      await logBackfill(
-        agencyId,
-        hotel.id,
-        "ad",
-        gap,
-        "failed",
-        err instanceof Error ? err.message : "Unknown ad backfill error.",
-      );
+      await logBackfill(agencyId, hotel.id, "ad", gap, "failed", message);
     }
   }
 
-  return { anySuccess, tokenDead, failedDays };
+  return { anySuccess, tokenDead, failedDays, sampleError };
 }
 
 async function backfillSocial(
   agencyId: string,
   accumulate: (days: number) => void,
-): Promise<{ anySuccess: boolean; failedDays: number }> {
+): Promise<{ anySuccess: boolean; failedDays: number; sampleError: string | null }> {
   let anySuccess = false;
   let failedDays = 0;
+  let sampleError: string | null = null;
 
   const accounts = await prisma.socialAccount.findMany({
     where: { agencyId, status: "connected", platform: "instagram" },
@@ -252,6 +249,7 @@ async function backfillSocial(
       });
     } catch {
       failedDays += gap.days;
+      sampleError ??= "Token could not be decrypted.";
       await logBackfill(agencyId, account.hotelClientId, "social", gap, "failed", "Token could not be decrypted.");
       continue;
     }
@@ -333,6 +331,8 @@ async function backfillSocial(
       });
     } catch (err) {
       failedDays += gap.days;
+      const message = err instanceof Error ? err.message : "Unknown social backfill error.";
+      sampleError ??= message;
       if (err instanceof InstagramAuthError) {
         await prisma.socialAccount.update({
           where: { id: account.id },
@@ -340,18 +340,11 @@ async function backfillSocial(
         });
         await recordSyncFailure(agencyId, account.hotelClientId, "instagram", err.message);
       }
-      await logBackfill(
-        agencyId,
-        account.hotelClientId,
-        "social",
-        gap,
-        "failed",
-        err instanceof Error ? err.message : "Unknown social backfill error.",
-      );
+      await logBackfill(agencyId, account.hotelClientId, "social", gap, "failed", message);
     }
   }
 
-  return { anySuccess, failedDays };
+  return { anySuccess, failedDays, sampleError };
 }
 
 // ── Logging helpers ───────────────────────────────────────────────────────────
@@ -441,12 +434,15 @@ export async function runBackfillJob(jobId: string): Promise<void> {
       : daysFailed > 0 && daysRestored === 0
         ? "failed"
         : "completed";
+  // Surface the first real API error so the user sees WHY it failed (e.g. a
+  // permission error on the mapped ad account) instead of a generic hint.
+  const cause = ads.sampleError ?? social.sampleError;
   const message =
     status === "completed"
       ? `Backfill complete — ${daysRestored} day${daysRestored === 1 ? "" : "s"} of data restored.`
       : status === "partial"
         ? `Successfully backfilled ${daysRestored} day${daysRestored === 1 ? "" : "s"}. ${daysFailed} day${daysFailed === 1 ? "" : "s"} failed due to API errors — these will retry on the next scheduled sync.`
-        : `Backfill failed — ${daysFailed} day${daysFailed === 1 ? "" : "s"} could not be restored. Check the token and try again.`;
+        : `Backfill failed — ${daysFailed} day${daysFailed === 1 ? "" : "s"} could not be restored.${cause ? ` Meta said: "${cause}"` : " Check the token and try again."}`;
 
   await prisma.backfillJob.update({
     where: { id: jobId },
