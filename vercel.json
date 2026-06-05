@@ -3,19 +3,19 @@
   "crons": [
     {
       "path": "/api/meta/sync",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/instagram/sync",
-      "schedule": "0 6 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/instagram/refresh-tokens",
-      "schedule": "0 3 * * 1"
+      "schedule": "0 5 * * 1"
     },
     {
       "path": "/api/ga/sync",
-      "schedule": "0 3 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/billing/renewal-reminders",
