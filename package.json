@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build:snippet": "esbuild scripts/snippet.src.js --minify --legal-comments=none --banner:js=\"/* HotelTrack tracking snippet — generated from scripts/snippet.src.js */\" --outfile=public/t.js",
+    "postinstall": "prisma generate",
     "prebuild": "npm run build:snippet",
     "build": "next build",
     "start": "next start",
