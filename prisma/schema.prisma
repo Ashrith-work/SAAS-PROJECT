@@ -115,6 +115,8 @@ model Agency {
   backfillJobs      BackfillJob[]
   backfillLogs      BackfillLog[]
   syncFailures      SyncFailure[]
+  adCampaignSnapshots  AdCampaignSnapshot[]
+  campaignPerformances CampaignPerformance[]
 }
 
 model AgencyMember {
@@ -172,6 +174,8 @@ model HotelClient {
   gaSnapshots     GaSnapshot[]
   gaSourceBreakdowns GaSourceBreakdown[]
   tokenAuditLogs  TokenAuditLog[]
+  adCampaignSnapshots  AdCampaignSnapshot[]
+  campaignPerformances CampaignPerformance[]
 
   @@index([agencyId])
 }
@@ -266,6 +270,65 @@ model AdSnapshot {
   @@unique([hotelClientId, date]) // one snapshot per hotel per day
   @@index([agencyId])
   @@index([hotelClientId])
+}
+
+// Campaign-level Meta insights — one row per hotel per campaign per day
+// (AdSnapshot stays account-level; this adds the campaign_name dimension that
+// campaign↔booking attribution joins on).
+model AdCampaignSnapshot {
+  id             String   @id @default(cuid())
+  agencyId       String
+  hotelClientId  String
+  metaCampaignId String
+  campaignName   String
+  date           DateTime @db.Date
+  spend          Decimal  @db.Decimal(12, 2)
+  impressions    Int
+  clicks         Int
+  // Meta-reported pixel purchases for this campaign-day.
+  conversions    Int
+  // Meta-reported purchase value for this campaign-day.
+  purchaseValue  Decimal  @db.Decimal(12, 2)
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, metaCampaignId, date]) // idempotent re-sync per campaign-day
+  @@index([agencyId])
+  @@index([hotelClientId, date])
+}
+
+// Materialized campaign↔booking attribution, refreshed after every Meta sync
+// (see lib/campaign-attribution.ts). One row per hotel per campaign per day;
+// the "Direct / Unattributed" bucket uses campaignKey UNATTRIBUTED_KEY.
+model CampaignPerformance {
+  id                      String   @id @default(cuid())
+  agencyId                String
+  hotelClientId           String
+  date                    DateTime @db.Date
+  // Lowercased campaignName — the case-insensitive join key (also dedupes
+  // Meta campaigns whose names differ only by case).
+  campaignKey             String
+  campaignName            String
+  metaCampaignId          String?
+  metaSpend               Decimal  @db.Decimal(12, 2)
+  metaReportedConversions Int
+  metaReportedRevenue     Decimal  @db.Decimal(12, 2)
+  realBookings            Int
+  realBookingValue        Decimal  @db.Decimal(12, 2)
+  // realBookingValue / metaSpend. Null when there is no spend that day.
+  realRoas                Float?
+  // ((realBookings − metaReportedConversions) / metaReportedConversions) × 100.
+  // Null when Meta reported zero conversions.
+  variancePct             Float?
+  computedAt              DateTime @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date, campaignKey])
+  @@index([agencyId])
+  @@index([hotelClientId, date])
 }
 
 model CouponRedemption {

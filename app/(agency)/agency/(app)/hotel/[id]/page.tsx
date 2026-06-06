@@ -25,6 +25,20 @@ import {
 import { DateRangeSelector } from "./DateRangeSelector";
 import { PostTypeFilter } from "./PostTypeFilter";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
+import {
+  CampaignPerformanceTable,
+  type CampaignRow,
+} from "@/components/dashboard/CampaignPerformanceTable";
+import {
+  ConversionJourneys,
+  type ConversionJourney,
+} from "@/components/dashboard/ConversionJourneys";
+import {
+  attributeConversions,
+  UNATTRIBUTED_KEY,
+  UNATTRIBUTED_NAME,
+  type CampaignDay,
+} from "@/lib/campaign-attribution";
 import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
 import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
@@ -214,6 +228,87 @@ export default async function HotelDashboardPage({
             redemptionDate: { gte: range.since, lte: range.until },
           },
           select: { contentPieceId: true, orderValue: true },
+        })
+      : [];
+
+  // ── Campaign attribution: Meta campaigns ↔ real tracked bookings ──
+  // Materialized per-day rows (refreshed by the Meta sync) + the raw events
+  // needed for the per-conversion journey drill-down. Hidden in pixel mode
+  // (no snippet events to attribute). All queries agency-scoped.
+  const [campaignPerfRows, campaignSnapRows, recentConversionRows] = pixelMode
+    ? [[], [], []]
+    : await Promise.all([
+        agencyScoped(prisma.campaignPerformance).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            date: { gte: range.since, lte: range.until },
+          },
+          select: {
+            campaignKey: true,
+            campaignName: true,
+            metaSpend: true,
+            metaReportedConversions: true,
+            realBookings: true,
+            realBookingValue: true,
+          },
+        }),
+        agencyScoped(prisma.adCampaignSnapshot).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            date: { gte: range.since, lte: range.until },
+          },
+          select: {
+            date: true,
+            metaCampaignId: true,
+            campaignName: true,
+            spend: true,
+            conversions: true,
+            purchaseValue: true,
+          },
+        }),
+        agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "conversion",
+            createdAt: { gte: range.since, lte: range.until },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 15,
+          select: {
+            id: true,
+            sessionId: true,
+            utmCampaign: true,
+            utmContent: true,
+            pageUrl: true,
+            conversionValue: true,
+            createdAt: true,
+          },
+        }),
+      ]);
+  // The journeys need each conversion session's visit history (30 days back,
+  // matching the snippet's first-touch cookie window).
+  const journeySessionIds = [...new Set(recentConversionRows.map((c) => c.sessionId))];
+  const journeyVisitRows =
+    journeySessionIds.length > 0
+      ? await agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "visit",
+            sessionId: { in: journeySessionIds },
+            createdAt: {
+              gte: new Date(range.since.getTime() - 30 * DAY_MS),
+              lte: range.until,
+            },
+          },
+          orderBy: { createdAt: "asc" },
+          select: {
+            sessionId: true,
+            utmCampaign: true,
+            utmContent: true,
+            utmSource: true,
+            pageUrl: true,
+            createdAt: true,
+          },
         })
       : [];
 
@@ -435,6 +530,94 @@ export default async function HotelDashboardPage({
   const realAdRevenue = paidCampaigns.reduce((sum, c) => sum + c.revenue, 0);
   const realRoi = trueRoi(realAdRevenue, ads.spend);
 
+  // ── Campaign performance: aggregate the per-day rows over the range ──
+  const campaignAgg = new Map<string, CampaignRow>();
+  for (const r of campaignPerfRows) {
+    const row =
+      campaignAgg.get(r.campaignKey) ??
+      ({
+        campaignKey: r.campaignKey,
+        campaignName: r.campaignName,
+        unattributed: r.campaignKey === UNATTRIBUTED_KEY,
+        spend: 0,
+        realBookings: 0,
+        realRevenue: 0,
+        realRoas: null,
+        metaConversions: 0,
+      } satisfies CampaignRow);
+    row.spend += Number(r.metaSpend);
+    row.metaConversions += r.metaReportedConversions;
+    row.realBookings += r.realBookings;
+    row.realRevenue += Number(r.realBookingValue);
+    campaignAgg.set(r.campaignKey, row);
+  }
+  const campaignRows = [...campaignAgg.values()].map((r) => ({
+    ...r,
+    realRoas: r.spend > 0 ? r.realRevenue / r.spend : null,
+  }));
+  const matchedCampaignRows = campaignRows.filter((r) => !r.unattributed);
+  const campaignTotalSpend = matchedCampaignRows.reduce((s, r) => s + r.spend, 0);
+  const campaignRealRevenue = matchedCampaignRows.reduce((s, r) => s + r.realRevenue, 0);
+  const campaignRealRoi = trueRoi(campaignRealRevenue, campaignTotalSpend);
+  const matchedBookings = matchedCampaignRows.reduce((s, r) => s + r.realBookings, 0);
+  const totalTrackedConversions = kpis.bookings;
+
+  // ── Per-conversion journeys (the drill-down proof artifact) ──
+  const journeyCampaignDays: CampaignDay[] = campaignSnapRows.map((s) => ({
+    date: s.date.toISOString().slice(0, 10),
+    campaignId: s.metaCampaignId,
+    campaignName: s.campaignName,
+    spend: Number(s.spend),
+    conversions: s.conversions,
+    purchaseValue: Number(s.purchaseValue),
+  }));
+  const attributedRecent = attributeConversions(
+    recentConversionRows.map((e) => ({
+      id: e.id,
+      sessionId: e.sessionId,
+      utmCampaign: e.utmCampaign,
+      utmContent: e.utmContent,
+      pageUrl: e.pageUrl,
+      conversionValue: e.conversionValue == null ? null : Number(e.conversionValue),
+      createdAt: e.createdAt,
+    })),
+    journeyVisitRows,
+    journeyCampaignDays,
+  );
+  const journeys: ConversionJourney[] = attributedRecent.map((a) => {
+    const conv = a.conversion;
+    const sessionVisits = journeyVisitRows.filter(
+      (v) => v.sessionId === conv.sessionId && v.createdAt <= conv.createdAt,
+    );
+    const first = sessionVisits[0] ?? null;
+    const between = first
+      ? sessionVisits.slice(1).map((v) => v.pageUrl)
+      : [];
+    // Collapse consecutive repeats of the same page.
+    const pagesVisited = between.filter((p, i) => i === 0 || p !== between[i - 1]).slice(0, 12);
+    return {
+      id: conv.id,
+      convertedAt: conv.createdAt.toISOString(),
+      conversionValue: conv.conversionValue,
+      bookingPage: conv.pageUrl,
+      firstTouch: first
+        ? {
+            campaign: first.utmCampaign,
+            adTag: first.utmContent,
+            source: first.utmSource,
+            date: first.createdAt.toISOString(),
+            landingPage: first.pageUrl,
+          }
+        : null,
+      pagesVisited,
+      daysToConvert: first
+        ? Math.floor((conv.createdAt.getTime() - first.createdAt.getTime()) / DAY_MS)
+        : null,
+      attributedTo: a.campaignName,
+      attributionReason: a.reason,
+    };
+  });
+
   // Serializable snapshot passed to the client report generator.
   const reportData: ReportData = {
     hotelName: hotel.name,
@@ -476,6 +659,20 @@ export default async function HotelDashboardPage({
         revenue: c.revenue,
       })),
     },
+    campaignPerformance: [...campaignRows]
+      .sort((a, b) => {
+        if (a.unattributed !== b.unattributed) return a.unattributed ? 1 : -1;
+        return (b.realRoas ?? -1) - (a.realRoas ?? -1);
+      })
+      .map((r) => ({
+        campaignName: r.campaignName,
+        unattributed: r.unattributed,
+        spend: r.spend,
+        realBookings: r.realBookings,
+        realRevenue: r.realRevenue,
+        realRoas: r.realRoas,
+        metaConversions: r.metaConversions,
+      })),
     influencers: influencerRows.map((r) => ({
       influencerName: r.influencerName,
       couponCode: r.couponCode,
@@ -625,6 +822,80 @@ export default async function HotelDashboardPage({
           subtitle="Every content piece for this hotel, attributed via its utm_content tag. Click a column to sort."
         >
           <ContentPerformanceTable rows={contentPerf} />
+        </SectionCard>
+      )}
+
+      {/* Section 2.5 — Campaign performance: Meta's claims vs reality */}
+      {!pixelMode && (
+        <SectionCard
+          title="Campaign performance"
+          subtitle="Each Meta campaign's spend joined to the bookings our snippet actually tracked on the hotel's website — what Meta claims vs what really happened."
+        >
+          {matchedBookings === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <p className="text-sm font-medium">
+                Campaign performance will appear once we&apos;ve collected at least 5
+                conversions across your ads.
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Currently tracking: {formatNumber(totalTrackedConversions)} conversion
+                {totalTrackedConversions === 1 ? "" : "s"}.
+                {totalTrackedConversions < 5 &&
+                  ` Need: ${5 - totalTrackedConversions} more.`}
+                {totalTrackedConversions >= 5 &&
+                  " None carried a utm_campaign matching a Meta campaign yet — check that your ad URLs include utm_campaign tags."}
+              </p>
+            </div>
+          ) : (
+            <>
+              <CampaignPerformanceTable rows={campaignRows} />
+              <div className="grid grid-cols-1 gap-px border-t border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Total ad spend (selected period)
+                  </p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">
+                    {formatCurrency(campaignTotalSpend)}
+                  </p>
+                </div>
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Real revenue from ads
+                  </p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">
+                    {formatCurrency(campaignRealRevenue)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-500">Snippet-tracked bookings</p>
+                </div>
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Real ROI
+                  </p>
+                  <p
+                    className={`mt-1 text-xl font-semibold tabular-nums ${
+                      campaignRealRoi == null
+                        ? ""
+                        : campaignRealRoi >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {campaignRealRoi == null ? "—" : formatPercent(campaignRealRoi)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    (Revenue − spend) ÷ spend
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="border-t border-zinc-200 dark:border-zinc-800">
+            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Recent tracked bookings
+            </p>
+            <ConversionJourneys journeys={journeys} />
+          </div>
         </SectionCard>
       )}
 

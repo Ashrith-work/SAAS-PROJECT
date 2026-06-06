@@ -356,6 +356,83 @@ export async function getDailyInsights(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// getDailyCampaignInsights — one row per CAMPAIGN per day
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single campaign-day's metrics, mapped to AdCampaignSnapshot columns. */
+export type DailyCampaignRow = {
+  /** "YYYY-MM-DD" (Meta's date_start for the day). */
+  date: string;
+  campaignId: string;
+  campaignName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  /** Meta-reported pixel purchases (same matcher set as getDailyInsights). */
+  conversions: number;
+  /** Meta-reported purchase value. */
+  purchaseValue: number;
+};
+
+type RawCampaignInsights = RawDailyInsights & {
+  campaign_id?: string;
+  campaign_name?: string;
+};
+
+/**
+ * Daily insights at `level=campaign` — the campaign_name dimension is what
+ * utm_campaign↔booking attribution joins on (lib/campaign-attribution.ts).
+ * Same pagination + pixel-action mapping as {@link getDailyInsights}.
+ */
+export async function getDailyCampaignInsights(
+  accessToken: string,
+  adAccountId: string,
+  range: DateRange,
+): Promise<DailyCampaignRow[]> {
+  const act = normalizeAccountId(adAccountId);
+  const raw: RawCampaignInsights[] = [];
+  let params: GraphParams = {
+    fields: "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values",
+    time_range: JSON.stringify({ since: range.since, until: range.until }),
+    time_increment: "1",
+    level: "campaign",
+    limit: "500",
+  };
+
+  // campaigns × days can exceed one page fast — follow pagination with the
+  // same runaway-cursor cap as getDailyInsights.
+  for (let page = 0; page < 20; page++) {
+    const res = await graphGet<{
+      data?: RawCampaignInsights[];
+      paging?: { cursors?: { after?: string }; next?: string };
+    }>(`${act}/insights`, accessToken, params);
+
+    raw.push(...(res.data ?? []));
+
+    const after = res.paging?.cursors?.after;
+    if (!after || !res.paging?.next) break;
+    params = { ...params, after };
+  }
+
+  return raw
+    .filter((row) => row.campaign_id && row.date_start)
+    .map((row) => {
+      const actions = mapActions(row.actions);
+      const values = mapActions(row.action_values);
+      return {
+        date: row.date_start!,
+        campaignId: row.campaign_id!,
+        campaignName: row.campaign_name ?? row.campaign_id!,
+        spend: toNumber(row.spend),
+        impressions: Math.round(toNumber(row.impressions)),
+        clicks: Math.round(toNumber(row.clicks)),
+        conversions: Math.round(pickFirst(actions, PIXEL_MATCHERS.purchase)),
+        purchaseValue: pickFirst(values, PIXEL_MATCHERS.purchase),
+      };
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // getPixelEvents
 // ─────────────────────────────────────────────────────────────────────────────
 

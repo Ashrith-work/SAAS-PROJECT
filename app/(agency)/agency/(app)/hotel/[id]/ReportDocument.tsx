@@ -43,6 +43,16 @@ export type ReportData = {
     trueRoi: number | null;
     campaigns: { title: string; sessions: number; bookings: number; revenue: number }[];
   };
+  /** Meta campaign ↔ real-booking attribution (the claims-vs-reality table). */
+  campaignPerformance: {
+    campaignName: string;
+    unattributed: boolean;
+    spend: number;
+    realBookings: number;
+    realRevenue: number;
+    realRoas: number | null;
+    metaConversions: number;
+  }[];
   influencers: {
     influencerName: string;
     couponCode: string | null;
@@ -262,6 +272,72 @@ export function ReportDocument({ data }: { data: ReportData }) {
             <KpiTile label="ROAS" value={formatMultiple(k.roas)} />
           </div>
         </section>
+
+        {/* Campaign performance — the claims-vs-reality table, the report's
+            centerpiece: what Meta says each campaign did vs the bookings the
+            snippet actually recorded on the hotel's own website. */}
+        {data.campaignPerformance.length > 0 && (
+          <section style={{ marginBottom: 32 }}>
+            <SectionTitle>Campaign performance — Meta&apos;s claims vs reality</SectionTitle>
+            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: MUTE, margin: "0 0 12px" }}>
+              Bookings and revenue below are measured by HotelTrack on the hotel&apos;s own
+              website — not platform-reported. &ldquo;Meta says&rdquo; shows the platform&apos;s
+              claim for the same campaign.
+            </p>
+            <table style={{ width: "100%", borderCollapse: "collapse", border: `2px solid ${BRAND}` }}>
+              <thead>
+                <tr style={{ background: "#f5f3ff" }}>
+                  <th style={th("left")}>Campaign</th>
+                  <th style={th("right")}>Spend</th>
+                  <th style={th("right")}>Bookings (real)</th>
+                  <th style={th("right")}>Revenue (real)</th>
+                  <th style={th("right")}>True ROAS</th>
+                  <th style={th("left")}>Meta says</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.campaignPerformance.map((c, i) => {
+                  const roasColor =
+                    c.unattributed || c.realRoas == null
+                      ? MUTE
+                      : c.realRoas > 4
+                        ? "#16a34a"
+                        : c.realRoas >= 2
+                          ? "#d97706"
+                          : "#dc2626";
+                  let verdict = "—";
+                  if (!c.unattributed) {
+                    const claim = `"${formatNumber(c.metaConversions)} bookings"`;
+                    if (c.realBookings === 0) {
+                      verdict = c.metaConversions === 0 ? `✓ ${claim}` : `⚠ ${claim} — none tracked on-site`;
+                    } else {
+                      const diffPct = ((c.metaConversions - c.realBookings) / c.realBookings) * 100;
+                      if (Math.abs(c.metaConversions - c.realBookings) <= 0.25 * c.realBookings) {
+                        verdict = `✓ ${claim} (close match)`;
+                      } else if (diffPct > 50) {
+                        verdict = `⚠ ${claim} (${Math.round(diffPct)}% inflated)`;
+                      } else {
+                        verdict = `${claim} (${Math.round(Math.abs(diffPct))}% ${diffPct > 0 ? "higher" : "lower"})`;
+                      }
+                    }
+                  }
+                  return (
+                    <tr key={i} style={c.unattributed ? { color: MUTE } : undefined}>
+                      <td style={td("left")}>{c.campaignName}</td>
+                      <td style={td("right")}>{c.unattributed ? "—" : formatCurrency(c.spend)}</td>
+                      <td style={td("right")}>{formatNumber(c.realBookings)}</td>
+                      <td style={td("right")}>{formatCurrency(c.realRevenue)}</td>
+                      <td style={{ ...td("right"), color: roasColor, fontWeight: 700 }}>
+                        {c.unattributed ? "—" : formatMultiple(c.realRoas)}
+                      </td>
+                      <td style={td("left")}>{verdict}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        )}
 
         <section style={{ marginBottom: 32 }}>
           <SectionTitle>Top performing content</SectionTitle>

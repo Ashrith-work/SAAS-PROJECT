@@ -3,8 +3,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
-import { getDailyInsights, MetaAuthError } from "@/lib/meta";
+import { getDailyInsights, getDailyCampaignInsights, MetaAuthError } from "@/lib/meta";
 import { recordSyncFailure } from "@/lib/sync-failures";
+import { refreshCampaignPerformance } from "@/lib/campaign-attribution";
 
 // Per-hotel Meta Ads sync — the single-hotel counterpart of the scheduled
 // /api/meta/sync cron (same trailing-window upsert; same dead-token handling).
@@ -107,12 +108,60 @@ export async function syncHotelAds(
       written += 1;
     }
 
+    // Campaign-level rows + the materialized attribution refresh, same window.
+    let campaignsWritten = 0;
+    const campaignRows = await getDailyCampaignInsights(
+      secret.reveal(),
+      hotel.metaAdAccountId,
+      range,
+    );
+    for (const row of campaignRows) {
+      const date = new Date(`${row.date}T00:00:00.000Z`);
+      const data = {
+        campaignName: row.campaignName,
+        spend: row.spend.toFixed(2),
+        impressions: row.impressions,
+        clicks: row.clicks,
+        conversions: row.conversions,
+        purchaseValue: row.purchaseValue.toFixed(2),
+      };
+      await prisma.adCampaignSnapshot.upsert({
+        where: {
+          hotelClientId_metaCampaignId_date: {
+            hotelClientId: hotel.id,
+            metaCampaignId: row.campaignId,
+            date,
+          },
+        },
+        create: {
+          agencyId: hotel.agencyId,
+          hotelClientId: hotel.id,
+          metaCampaignId: row.campaignId,
+          date,
+          ...data,
+        },
+        update: data,
+      });
+      campaignsWritten += 1;
+    }
+    await refreshCampaignPerformance(
+      hotel.agencyId,
+      hotel.id,
+      new Date(`${range.since}T00:00:00.000Z`),
+      now,
+    );
+
     await prisma.hotelClient.update({
       where: { id: hotel.id },
       data: { lastSyncedAt: new Date() },
     });
 
-    return { ok: true, hotelName: hotel.name, snapshotsWritten: written, range };
+    return {
+      ok: true,
+      hotelName: hotel.name,
+      snapshotsWritten: written + campaignsWritten,
+      range,
+    };
   } catch (err) {
     if (err instanceof MetaAuthError) {
       // Same bookkeeping as the cron: mark the token dead and record the

@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
-import { getDailyInsights, MetaAuthError } from "@/lib/meta";
+import { getDailyInsights, getDailyCampaignInsights, MetaAuthError } from "@/lib/meta";
 import { runDailyAlerts, type RunAlertsResult } from "@/lib/alerts";
 import { recordSyncFailure } from "@/lib/backfill";
+import { refreshCampaignPerformance } from "@/lib/campaign-attribution";
 
 // Scheduled Meta Ads sync. Runs on Vercel Cron once a day (see vercel.json) and
 // can be triggered manually for testing. Guarded by CRON_SECRET — Vercel Cron
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
   let agenciesProcessed = 0;
   let hotelsSynced = 0;
   let snapshotsWritten = 0;
+  let campaignSnapshotsWritten = 0;
   let tokensDisconnected = 0;
   const errors: { agencyId: string; hotelId?: string; error: string }[] = [];
 
@@ -114,6 +116,50 @@ export async function GET(request: Request) {
           });
           snapshotsWritten += 1;
         }
+
+        // Campaign-level insights (same window) → AdCampaignSnapshot, then
+        // recompute the materialized campaign↔booking attribution for the
+        // window. Same idempotent-upsert pattern as the account-level rows.
+        const campaignRows = await getDailyCampaignInsights(
+          accessToken.reveal(),
+          accountId,
+          range,
+        );
+        for (const row of campaignRows) {
+          const date = new Date(`${row.date}T00:00:00.000Z`);
+          const data = {
+            campaignName: row.campaignName,
+            spend: row.spend.toFixed(2),
+            impressions: row.impressions,
+            clicks: row.clicks,
+            conversions: row.conversions,
+            purchaseValue: row.purchaseValue.toFixed(2),
+          };
+          await prisma.adCampaignSnapshot.upsert({
+            where: {
+              hotelClientId_metaCampaignId_date: {
+                hotelClientId: hotel.id,
+                metaCampaignId: row.campaignId,
+                date,
+              },
+            },
+            create: {
+              agencyId: token.agencyId,
+              hotelClientId: hotel.id,
+              metaCampaignId: row.campaignId,
+              date,
+              ...data,
+            },
+            update: data,
+          });
+          campaignSnapshotsWritten += 1;
+        }
+        await refreshCampaignPerformance(
+          token.agencyId,
+          hotel.id,
+          new Date(`${range.since}T00:00:00.000Z`),
+          now,
+        );
 
         await prisma.hotelClient.update({
           where: { id: hotel.id },
@@ -170,6 +216,7 @@ export async function GET(request: Request) {
     agenciesProcessed,
     hotelsSynced,
     snapshotsWritten,
+    campaignSnapshotsWritten,
     tokensDisconnected,
     errors,
     alerts,
