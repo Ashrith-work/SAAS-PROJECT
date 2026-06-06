@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   mapAdAccount,
   type MapAccountState,
@@ -31,6 +31,16 @@ export function HotelAdAccountSelect({
   // select back to "— Not mapped —" right after every successful save (the
   // mapping DID persist; the UI lied). Controlled state survives that reset.
   const [selected, setSelected] = useState(currentAdAccountId ?? "");
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  // …but React 19's reset still desyncs the controlled <select>'s DOM (it
+  // snaps to the first option while state keeps the choice), so the display
+  // could still lie after a save. Re-assert the DOM value after every render.
+  useEffect(() => {
+    if (selectRef.current && selectRef.current.value !== selected) {
+      selectRef.current.value = selected;
+    }
+  });
 
   if (accounts.length === 0) {
     // Don't hide an existing mapping just because the account list couldn't
@@ -65,6 +75,7 @@ export function HotelAdAccountSelect({
         Ad account
       </label>
       <select
+        ref={selectRef}
         name="adAccountId"
         value={selected}
         disabled={pending}

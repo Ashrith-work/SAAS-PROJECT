@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { adminSyncNow, type SyncNowState } from "./actions";
 
 const initialState: SyncNowState = { error: null, ok: false, message: null };
@@ -25,6 +25,17 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
   const [hotelId, setHotelId] = useState(firstMapped?.id ?? "");
   const [days, setDays] = useState("7");
   const [password, setPassword] = useState("");
+  const hotelRef = useRef<HTMLSelectElement>(null);
+
+  // React 19's automatic form reset after an action desyncs even a CONTROLLED
+  // <select>: the DOM snaps to the first option while React state (and so the
+  // next submission) keeps the user's choice — the display lies. Re-assert the
+  // DOM value after every render so what the admin sees is what will sync.
+  useEffect(() => {
+    if (hotelRef.current && hotelRef.current.value !== hotelId) {
+      hotelRef.current.value = hotelId;
+    }
+  });
 
   return (
     <form action={action} className="max-w-xl space-y-4">
@@ -33,6 +44,7 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
           Hotel
         </label>
         <select
+          ref={hotelRef}
           id="hotelId"
           name="hotelId"
           value={hotelId}
