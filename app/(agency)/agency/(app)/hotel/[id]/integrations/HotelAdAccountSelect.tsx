@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 import {
   mapAdAccount,
   type MapAccountState,
@@ -26,15 +26,37 @@ export function HotelAdAccountSelect({
 }) {
   const [state, action, pending] = useActionState(mapAdAccount, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  // CONTROLLED select — React 19 resets uncontrolled form fields to their
+  // mount-time defaultValue after a form action completes, which snapped this
+  // select back to "— Not mapped —" right after every successful save (the
+  // mapping DID persist; the UI lied). Controlled state survives that reset.
+  const [selected, setSelected] = useState(currentAdAccountId ?? "");
 
   if (accounts.length === 0) {
+    // Don't hide an existing mapping just because the account list couldn't
+    // load (no ads permission, transient Meta error) — the mapping is intact.
     return (
       <p className="text-sm text-zinc-500">
-        This Meta token can&apos;t access any ad accounts. Reconnect a token with
-        ads permissions to map an account to this hotel.
+        {currentAdAccountId ? (
+          <>
+            Mapped to <code className="font-mono">{currentAdAccountId}</code> —
+            unchanged, but this Meta token can&apos;t list ad accounts right
+            now, so the mapping can&apos;t be edited here. Reconnect a token
+            with ads permissions to change it.
+          </>
+        ) : (
+          <>
+            This Meta token can&apos;t access any ad accounts. Reconnect a token
+            with ads permissions to map an account to this hotel.
+          </>
+        )}
       </p>
     );
   }
+
+  // A mapped account the current token can't list would otherwise silently
+  // render as "— Not mapped —". Surface it as an explicit option instead.
+  const inList = accounts.some((a) => a.id === selected);
 
   return (
     <form ref={formRef} action={action} className="flex flex-wrap items-center gap-3">
@@ -44,12 +66,20 @@ export function HotelAdAccountSelect({
       </label>
       <select
         name="adAccountId"
-        defaultValue={currentAdAccountId ?? ""}
+        value={selected}
         disabled={pending}
-        onChange={() => formRef.current?.requestSubmit()}
+        onChange={(e) => {
+          // The DOM already holds the new value when onChange fires, so the
+          // synchronous requestSubmit serializes the right adAccountId.
+          setSelected(e.target.value);
+          formRef.current?.requestSubmit();
+        }}
         className={selectCls}
       >
         <option value="">— Not mapped —</option>
+        {selected && !inList && (
+          <option value={selected}>{selected} (not visible to this token)</option>
+        )}
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name} ({a.accountId})
