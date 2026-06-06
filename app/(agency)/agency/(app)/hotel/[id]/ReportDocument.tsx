@@ -114,7 +114,7 @@ export function execSummary(d: ReportData): string {
   if (spend > 0) {
     parts.push(
       `Across paid Meta ads, ${formatCurrency(spend)} was spent` +
-        (roas != null ? `, returning ${formatMultiple(roas)} in attributed revenue per dollar` : "") +
+        (roas != null ? `, returning ${formatMultiple(roas)} in attributed revenue per rupee` : "") +
         ".",
     );
   } else {

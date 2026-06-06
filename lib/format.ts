@@ -1,29 +1,29 @@
 // Shared display formatters for the dashboard (used by both the server page and
 // the client table/chart, so they live in a plain module).
 
-const USD = new Intl.NumberFormat("en-US", {
+const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
-  currency: "USD",
+  currency: "INR",
   maximumFractionDigits: 0,
 });
 
-const USD_CENTS = new Intl.NumberFormat("en-US", {
+const INR_PAISE = new Intl.NumberFormat("en-IN", {
   style: "currency",
-  currency: "USD",
+  currency: "INR",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-const NUM = new Intl.NumberFormat("en-US");
+const NUM = new Intl.NumberFormat("en-IN");
 
-/** "$1,234" — whole dollars, for headline figures. */
+/** "₹1,23,456" — whole rupees, for headline figures. */
 export function formatCurrency(value: number): string {
-  return USD.format(value);
+  return INR.format(value);
 }
 
-/** "$1,234.56" — cents precision, for per-unit figures like cost/booking. */
+/** "₹1,234.56" — paise precision, for per-unit figures like cost/booking. */
 export function formatCurrencyCents(value: number): string {
-  return USD_CENTS.format(value);
+  return INR_PAISE.format(value);
 }
 
 /** "1,234" — grouped integer. */
