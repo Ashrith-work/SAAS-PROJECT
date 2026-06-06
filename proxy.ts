@@ -41,6 +41,32 @@ const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
 const isHotelRoute = createRouteMatcher(["/hotel(.*)"]);
 
+// When the session token doesn't carry the metadata claim (Clerk dashboard
+// not configured — see types/globals.d.ts), the role falls back to a Clerk
+// API call costing ~400ms PER REQUEST and counting against Clerk's rate
+// limit; on a dev instance the limit makes the whole app hang. Cache the
+// fallback per user for a few minutes — proxy runs on the Node runtime, so
+// this Map survives across warm requests. A stale entry only delays a role
+// CHANGE (rare: set-super-admin); sign-in/out stays instant because Clerk
+// resolves the session itself. Cold starts simply refetch.
+type Role = "super_admin" | "agency_admin" | "hotel_client";
+const ROLE_TTL_MS = 5 * 60_000;
+const roleCache = new Map<string, { role: Role | undefined; exp: number }>();
+
+async function lookupRoleUncached(userId: string): Promise<Role | undefined> {
+  const cached = roleCache.get(userId);
+  if (cached && cached.exp > Date.now()) return cached.role;
+
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  const role = user.publicMetadata?.role;
+
+  // Crude size bound — clearing is fine, the cache is just an optimization.
+  if (roleCache.size > 5000) roleCache.clear();
+  roleCache.set(userId, { role, exp: Date.now() + ROLE_TTL_MS });
+  return role;
+}
+
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) return NextResponse.next();
 
@@ -59,9 +85,7 @@ export default clerkMiddleware(async (auth, req) => {
   // resilient, fall back to reading publicMetadata directly from Clerk.
   let role = sessionClaims?.metadata?.role;
   if (!role) {
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    role = user.publicMetadata?.role;
+    role = await lookupRoleUncached(userId);
   }
   const home = new URL("/", req.url);
 
