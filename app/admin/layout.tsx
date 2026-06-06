@@ -34,6 +34,9 @@ export default async function AdminLayout({
               <Link href="/admin/audit" className="hover:text-black dark:hover:text-white">
                 Audit log
               </Link>
+              <Link href="/admin/sync-now" className="hover:text-black dark:hover:text-white">
+                Sync now
+              </Link>
             </nav>
           </div>
           <UserButton />
