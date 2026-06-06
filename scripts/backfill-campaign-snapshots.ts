@@ -85,21 +85,36 @@ async function main() {
       ? hotel.metaAdAccountId!
       : `act_${hotel.metaAdAccountId}`;
 
-    // Page through campaign-day rows (same caps as lib/meta.ts).
+    // Long ranges trip Meta's "reduce the amount of data" limit (error code 1),
+    // so fetch in 30-day chunks; each chunk still pages through its rows.
     const rows: RawRow[] = [];
-    let params: Record<string, string> = {
-      fields: "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values",
-      time_range: JSON.stringify(range),
-      time_increment: "1",
-      level: "campaign",
-      limit: "500",
-    };
-    for (let page = 0; page < 20; page++) {
-      const res = await graphGet(`${act}/insights`, token, params);
-      rows.push(...(res.data ?? []));
-      const after = res.paging?.cursors?.after;
-      if (!after || !res.paging?.next) break;
-      params = { ...params, after };
+    const CHUNK_DAYS = 30;
+    const rangeStart = new Date(`${range.since}T00:00:00.000Z`);
+    const rangeEnd = new Date(`${range.until}T00:00:00.000Z`);
+    for (
+      let chunkStart = rangeStart;
+      chunkStart <= rangeEnd;
+      chunkStart = new Date(chunkStart.getTime() + CHUNK_DAYS * DAY_MS)
+    ) {
+      const chunkEnd = new Date(
+        Math.min(chunkStart.getTime() + (CHUNK_DAYS - 1) * DAY_MS, rangeEnd.getTime()),
+      );
+      const chunk = { since: ymd(chunkStart), until: ymd(chunkEnd) };
+      let params: Record<string, string> = {
+        fields: "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values",
+        time_range: JSON.stringify(chunk),
+        time_increment: "1",
+        level: "campaign",
+        limit: "500",
+      };
+      for (let page = 0; page < 20; page++) {
+        const res = await graphGet(`${act}/insights`, token, params);
+        rows.push(...(res.data ?? []));
+        const after = res.paging?.cursors?.after;
+        if (!after || !res.paging?.next) break;
+        params = { ...params, after };
+      }
+      console.log(`  fetched ${chunk.since} → ${chunk.until} (${rows.length} rows so far)`);
     }
 
     let written = 0;

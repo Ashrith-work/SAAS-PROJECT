@@ -359,6 +359,8 @@ export async function refreshCampaignPerformance(
   const attributed = attributeConversions(conversions, visitRows, campaignDays);
   const rows = aggregatePerformance(campaignDays, attributed);
 
+  // Year-long backfills replace thousands of rows — Prisma's default 5s
+  // transaction timeout is too tight for that, so give it room explicitly.
   await prisma.$transaction([
     prisma.campaignPerformance.deleteMany({
       where: { agencyId, hotelClientId, date: { gte: dayStart, lte: dayEnd } },
@@ -380,7 +382,7 @@ export async function refreshCampaignPerformance(
         variancePct: r.variancePct,
       })),
     }),
-  ]);
+  ], { timeout: 120_000, maxWait: 10_000 });
 
   const unattributed = attributed.filter((a) => a.campaignKey === UNATTRIBUTED_KEY);
   return {
