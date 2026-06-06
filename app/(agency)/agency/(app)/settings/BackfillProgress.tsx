@@ -45,8 +45,11 @@ export function BackfillProgress({ initialJob }: { initialJob: BackfillJobView |
       return;
     }
 
-    // Kick off the run exactly once for a pending job.
-    if (job.status === "pending" && triggeredRef.current !== job.id) {
+    // Kick off the run exactly once per mount for an active job. For "pending"
+    // this starts the work; for "running" it lets the server resume a job whose
+    // previous runner timed out (the claim is atomic server-side, so a healthy
+    // running job is left untouched).
+    if (triggeredRef.current !== job.id) {
       triggeredRef.current = job.id;
       void fetch("/api/meta/backfill", {
         method: "POST",

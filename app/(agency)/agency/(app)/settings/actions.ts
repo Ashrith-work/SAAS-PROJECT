@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
-import { computeAgencyBackfillRange } from "@/lib/backfill";
+import { queueBackfillJob } from "@/lib/backfill";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
 // The MetaToken.tokenExpiresAt column is non-null, so we store this far-future
@@ -79,27 +79,16 @@ export async function saveMetaToken(
     });
   }
 
-  // Reconnecting may have left a data gap (the scheduled sync stopped while the
-  // token was dead). If so, queue a backfill job for the missing window; the
+  // A first connect imports the trailing 12 months of ads history for every
+  // mapped hotel; a reconnect refills the gap left while the token was dead.
+  // Either way, queue a backfill job for the missing windows; the
   // BackfillProgress banner picks it up and runs it. Never blocks the save.
   let backfillJobId: string | null = null;
   try {
-    const range = await computeAgencyBackfillRange(member.agencyId);
-    if (range) {
-      const job = await agencyScoped(prisma.backfillJob).create({
-        data: {
-          agencyId: member.agencyId,
-          status: "pending",
-          rangeStart: range.start,
-          rangeEnd: range.end,
-        },
-        select: { id: true },
-      });
-      backfillJobId = job.id;
-    }
+    backfillJobId = await queueBackfillJob(member.agencyId);
   } catch {
-    // A backfill-scheduling hiccup must never fail the reconnect itself — the
-    // next scheduled sync will fill the gap regardless.
+    // A backfill-scheduling hiccup must never fail the connect itself — the
+    // next scheduled sync still keeps recent days fresh.
   }
 
   revalidatePath("/agency/settings");
@@ -154,6 +143,17 @@ export async function mapAdAccount(
     where: { id: hotel.id },
     data: { metaAdAccountId: adAccountId || null },
   });
+
+  // Mapping an ad account is what makes a hotel syncable, so kick off its
+  // 12-month history import right away (no-op without a connected token or
+  // when nothing is missing). Never blocks the mapping itself.
+  if (adAccountId) {
+    try {
+      await queueBackfillJob(member.agencyId);
+    } catch {
+      // The scheduled sync still covers recent days if scheduling hiccups.
+    }
+  }
 
   // The mapping is set per hotel on its Integrations page; also keep Settings
   // fresh in case it's open.

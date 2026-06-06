@@ -38,10 +38,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "Backfill job not found." }, { status: 404 });
   }
 
-  // Idempotent: if it's already running/finished, just report current state.
-  if (job.status === "pending") {
-    await runBackfillJob(job.id);
-  }
+  // Idempotent: runBackfillJob atomically claims pending jobs (and stale
+  // "running" jobs whose serverless runner timed out, resuming where the data
+  // stops). A healthy running or finished job just reports current state.
+  await runBackfillJob(job.id);
 
   const finished = await prisma.backfillJob.findUnique({
     where: { id: job.id },

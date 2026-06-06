@@ -9,15 +9,24 @@ import { recordSyncFailure, resolveSyncFailures } from "@/lib/sync-failures";
 
 export { recordSyncFailure } from "@/lib/sync-failures";
 
-// Automatic backfill engine. When an agency reconnects a Meta/Instagram token,
-// we fill the gap between the last stored snapshot and yesterday so the
-// dashboard has no visual holes. It is driven by a BackfillJob row that the UI
-// polls for live progress.
+// Automatic backfill engine. It does two jobs, both driven by a BackfillJob
+// row that the UI polls for live progress:
+//
+//   • FIRST CONNECT — when a Meta token is connected (or an ad account is
+//     mapped to a hotel), import the trailing 12 months of ads history so a
+//     new client's dashboard isn't empty.
+//   • RECONNECT REPAIR — when a token died and was reconnected, refill the
+//     gap the scheduled sync left while it was dead.
+//
+// Gaps are always recomputed from what's actually stored, so runs are
+// resumable: if a serverless runner times out mid-import, the next trigger
+// picks up exactly where the data stops.
 //
 // EFFICIENCY: insight calls fetch a whole date range in one request (ads via
-// `getDailyInsights`, Instagram via the shared IGAA engine), so a typical
-// ≤60-day gap is a handful of calls. Long ad gaps are split into ≤30-day
-// chunks with a short delay to stay well under Meta's ~200 calls/hour limit.
+// `getDailyInsights`, which paginates; Instagram via the shared IGAA engine).
+// Long ad gaps are split into ≤90-day chunks with a short delay to stay well
+// under Meta's ~200 calls/hour limit — a full 12-month import is 5 calls per
+// hotel.
 //
 // RESILIENCE: a dead token never aborts the whole job — it's logged to
 // BackfillLog + SyncFailure and the run continues; partial results persist via
@@ -26,9 +35,13 @@ export { recordSyncFailure } from "@/lib/sync-failures";
 // SECURITY: tokens are resolved only via getTokenForApiCall and never logged.
 
 const DAY_MS = 86_400_000;
-const CHUNK_DAYS = 30;
+const CHUNK_DAYS = 90;
 const CHUNK_DELAY_MS = 1500;
-const MAX_GAP_DAYS = 90; // a 60-day token can't have left a longer real gap
+const MAX_GAP_DAYS = 90; // social repair cap — a 60-day token can't have left a longer real gap
+const HISTORY_DAYS = 365; // ads: how far back the first-connect import reaches
+// A "running" job whose runner hasn't touched it for this long is considered
+// dead (serverless timeout) and may be reclaimed by the next trigger.
+const STALE_RUNNING_MS = 10 * 60_000;
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -44,6 +57,9 @@ export type Gap = { start: Date; end: Date; days: number };
  * The missing window after `lastDate`, bounded to yesterday and capped at
  * MAX_GAP_DAYS. Returns null when there's no baseline snapshot (nothing to
  * anchor a bounded range) or when the data is already current.
+ *
+ * Used for the social (IGAA) repair path and the "N days missing" badge — the
+ * ads import path uses {@link computeAdGaps}, which also covers history.
  */
 export function computeGap(lastDate: Date | null, now = new Date()): Gap | null {
   if (!lastDate) return null;
@@ -58,9 +74,73 @@ export function computeGap(lastDate: Date | null, now = new Date()): Gap | null 
   return { start, end, days };
 }
 
-/** Split a gap into ≤CHUNK_DAYS ranges of "YYYY-MM-DD" strings. */
-function chunkRanges(gap: Gap): { since: string; until: string }[] {
+export type AdGap = Gap & {
+  /**
+   * initial — no snapshots at all (first connect): the whole 12-month window.
+   * head — history missing before the earliest snapshot.
+   * tail — days missing after the latest snapshot (the classic reconnect gap).
+   */
+  kind: "initial" | "head" | "tail";
+};
+
+/** A Gap normalised to midnight-UTC bounds with an inclusive day count. */
+function mkGap(start: Date, end: Date, kind: AdGap["kind"]): AdGap {
+  const s = new Date(`${ymd(start)}T00:00:00.000Z`);
+  const e = new Date(`${ymd(end)}T00:00:00.000Z`);
+  const days = Math.round((e.getTime() - s.getTime()) / DAY_MS) + 1;
+  return { start: s, end: e, days, kind };
+}
+
+/**
+ * Missing AdSnapshot windows inside the trailing HISTORY_DAYS (12 months),
+ * given the earliest/latest stored snapshot dates for a hotel. A hotel with no
+ * snapshots gets the full year (the first-connect import); one with data gets
+ * a head gap (history before its first row) and/or a tail gap (days since its
+ * last row). Interior holes between first and last are not repaired here — the
+ * daily sync's trailing window plus idempotent upserts handle those.
+ */
+export function computeAdGaps(
+  first: Date | null,
+  last: Date | null,
+  now = new Date(),
+): AdGap[] {
+  const end = yesterday(now);
+  const horizon = new Date(end.getTime() - (HISTORY_DAYS - 1) * DAY_MS);
+  if (!first || !last) return [mkGap(horizon, end, "initial")];
+
+  const gaps: AdGap[] = [];
+  const headEnd = new Date(first.getTime() - DAY_MS);
+  if (horizon <= headEnd) gaps.push(mkGap(horizon, headEnd, "head"));
+
+  // Clamp to the horizon so stored data older than the window can't stretch
+  // the tail beyond 12 months.
+  const tailStart = new Date(Math.max(last.getTime() + DAY_MS, horizon.getTime()));
+  if (tailStart <= end) gaps.push(mkGap(tailStart, end, "tail"));
+
+  return gaps;
+}
+
+/**
+ * Split a gap into ≤CHUNK_DAYS ranges of "YYYY-MM-DD" strings. With
+ * `newestFirst` the chunks anchor at the gap's END and walk backwards — used
+ * for head/initial gaps so an interrupted run leaves the stored history
+ * contiguous (the next run's recomputed head gap then resumes cleanly instead
+ * of skipping over an interior hole). Tail gaps fill oldest-first for the
+ * mirrored reason. Exported for tests.
+ */
+export function chunkRanges(gap: Gap, newestFirst = false): { since: string; until: string }[] {
   const out: { since: string; until: string }[] = [];
+  if (newestFirst) {
+    let cursor = gap.end;
+    while (cursor >= gap.start) {
+      const chunkStart = new Date(
+        Math.max(cursor.getTime() - (CHUNK_DAYS - 1) * DAY_MS, gap.start.getTime()),
+      );
+      out.push({ since: ymd(chunkStart), until: ymd(cursor) });
+      cursor = new Date(chunkStart.getTime() - DAY_MS);
+    }
+    return out;
+  }
   let cursor = gap.start;
   while (cursor <= gap.end) {
     const chunkEnd = new Date(
@@ -79,6 +159,19 @@ async function lastAdDate(agencyId: string, hotelClientId: string): Promise<Date
     select: { date: true },
   });
   return row?.date ?? null;
+}
+
+/** Earliest + latest stored AdSnapshot dates for a hotel (null when none). */
+async function adDateBounds(
+  agencyId: string,
+  hotelClientId: string,
+): Promise<{ first: Date | null; last: Date | null }> {
+  const agg = await prisma.adSnapshot.aggregate({
+    where: { agencyId, hotelClientId },
+    _min: { date: true },
+    _max: { date: true },
+  });
+  return { first: agg._min.date, last: agg._max.date };
 }
 
 async function lastSocialDate(agencyId: string, hotelClientId: string): Promise<Date | null> {
@@ -101,14 +194,20 @@ export async function missingAdDays(agencyId: string, hotelClientId: string): Pr
 
 /**
  * Earliest gap start across an agency's hotels (ad + social), bounded to
- * yesterday — used to seed a BackfillJob's range on reconnect. Null when there's
- * nothing to backfill.
+ * yesterday — used to seed a BackfillJob's range on connect/reconnect. Ads
+ * cover the trailing 12 months (history import + repair) and only count when
+ * the agency has a connected Meta token; social is repair-only. Null when
+ * there's nothing to backfill.
  */
 export async function computeAgencyBackfillRange(
   agencyId: string,
 ): Promise<{ start: Date; end: Date } | null> {
   const now = new Date();
-  const [adHotels, igAccounts] = await Promise.all([
+  const [metaToken, adHotels, igAccounts] = await Promise.all([
+    prisma.metaToken.findFirst({
+      where: { agencyId, status: "connected" },
+      select: { id: true },
+    }),
     prisma.hotelClient.findMany({
       where: { agencyId, metaAdAccountId: { not: null } },
       select: { id: true },
@@ -123,11 +222,44 @@ export async function computeAgencyBackfillRange(
   const consider = (gap: Gap | null) => {
     if (gap && (!earliest || gap.start < earliest)) earliest = gap.start;
   };
-  for (const h of adHotels) consider(computeGap(await lastAdDate(agencyId, h.id), now));
+  if (metaToken) {
+    for (const h of adHotels) {
+      const bounds = await adDateBounds(agencyId, h.id);
+      for (const gap of computeAdGaps(bounds.first, bounds.last, now)) consider(gap);
+    }
+  }
   for (const a of igAccounts)
     consider(computeGap(await lastSocialDate(agencyId, a.hotelClientId), now));
 
   return earliest ? { start: earliest, end: yesterday(now) } : null;
+}
+
+/**
+ * Queues a pending BackfillJob covering the agency's current missing windows,
+ * or returns the already-active job's id (never stacks duplicate jobs). Called
+ * after a token connect or an ad-account mapping; the BackfillProgress banner
+ * triggers and polls it. Null when there's nothing to backfill.
+ */
+export async function queueBackfillJob(agencyId: string): Promise<string | null> {
+  const active = await prisma.backfillJob.findFirst({
+    where: { agencyId, status: { in: ["pending", "running"] } },
+    select: { id: true },
+  });
+  if (active) return active.id;
+
+  const range = await computeAgencyBackfillRange(agencyId);
+  if (!range) return null;
+
+  const job = await prisma.backfillJob.create({
+    data: {
+      agencyId,
+      status: "pending",
+      rangeStart: range.start,
+      rangeEnd: range.end,
+    },
+    select: { id: true },
+  });
+  return job.id;
 }
 
 // ── Backfill writers ──────────────────────────────────────────────────────────
@@ -163,64 +295,81 @@ async function backfillAds(
   });
 
   for (const hotel of hotels) {
-    const gap = computeGap(await lastAdDate(agencyId, hotel.id));
-    if (!gap) continue;
+    const bounds = await adDateBounds(agencyId, hotel.id);
+    // Tail gap first: it lands the most recent days (what the dashboard opens
+    // on) before the longer history import starts.
+    const gaps = computeAdGaps(bounds.first, bounds.last).sort((a, b) =>
+      a.kind === "tail" ? -1 : b.kind === "tail" ? 1 : 0,
+    );
+    if (gaps.length === 0) continue;
     const accountId = hotel.metaAdAccountId!;
-    try {
-      let written = 0;
-      const chunks = chunkRanges(gap);
-      for (let i = 0; i < chunks.length; i++) {
-        if (i > 0) await sleep(CHUNK_DELAY_MS);
-        const rows = await getDailyInsights(secret.reveal(), accountId, chunks[i]);
-        for (const row of rows) {
-          if (!row.date) continue;
-          const date = new Date(`${row.date}T00:00:00.000Z`);
-          const data = {
-            metaAccountId: accountId,
-            spend: row.spend.toFixed(2),
-            impressions: row.impressions,
-            reach: row.reach,
-            clicks: row.clicks,
-            ctr: row.ctr,
-            cpc: row.cpc.toFixed(4),
-            cpm: row.cpm.toFixed(4),
-            conversions: row.conversions,
-            roas: row.roas,
-            pixelPurchases: row.pixelPurchases,
-            pixelLeads: row.pixelLeads,
-            pixelPageViews: row.pixelPageViews,
-          };
-          await prisma.adSnapshot.upsert({
-            where: { hotelClientId_date: { hotelClientId: hotel.id, date } },
-            create: { agencyId, hotelClientId: hotel.id, date, ...data },
-            update: data,
-          });
-          written += 1;
+    let hotelOk = false;
+
+    for (const gap of gaps) {
+      try {
+        let written = 0;
+        // Head/initial gaps fill newest-first, tail gaps oldest-first — both
+        // keep stored data contiguous if the runner dies mid-gap, so a resumed
+        // job's recomputed gaps pick up exactly where the data stops.
+        const chunks = chunkRanges(gap, gap.kind !== "tail");
+        for (let i = 0; i < chunks.length; i++) {
+          if (i > 0) await sleep(CHUNK_DELAY_MS);
+          const rows = await getDailyInsights(secret.reveal(), accountId, chunks[i]);
+          for (const row of rows) {
+            if (!row.date) continue;
+            const date = new Date(`${row.date}T00:00:00.000Z`);
+            const data = {
+              metaAccountId: accountId,
+              spend: row.spend.toFixed(2),
+              impressions: row.impressions,
+              reach: row.reach,
+              clicks: row.clicks,
+              ctr: row.ctr,
+              cpc: row.cpc.toFixed(4),
+              cpm: row.cpm.toFixed(4),
+              conversions: row.conversions,
+              roas: row.roas,
+              pixelPurchases: row.pixelPurchases,
+              pixelLeads: row.pixelLeads,
+              pixelPageViews: row.pixelPageViews,
+            };
+            await prisma.adSnapshot.upsert({
+              where: { hotelClientId_date: { hotelClientId: hotel.id, date } },
+              create: { agencyId, hotelClientId: hotel.id, date, ...data },
+              update: data,
+            });
+            written += 1;
+          }
         }
+        accumulate(written);
+        hotelOk = true;
+        anySuccess = true;
+        await logBackfill(agencyId, hotel.id, "ad", gap, "success");
+      } catch (err) {
+        failedDays += gap.days;
+        const message = err instanceof Error ? err.message : "Unknown ad backfill error.";
+        sampleError ??= message;
+        if (err instanceof MetaAuthError) {
+          tokenDead = true;
+          await prisma.metaToken.updateMany({
+            where: { agencyId, status: "connected" },
+            data: { status: "expired" },
+          });
+          await recordSyncFailure(agencyId, null, "meta_ads", err.message);
+          await logBackfill(agencyId, hotel.id, "ad", gap, "failed", err.message);
+          break; // token is dead for every hotel
+        }
+        await logBackfill(agencyId, hotel.id, "ad", gap, "failed", message);
       }
+    }
+
+    if (hotelOk) {
       await prisma.hotelClient.update({
         where: { id: hotel.id },
         data: { lastSyncedAt: new Date() },
       });
-      accumulate(written);
-      anySuccess = true;
-      await logBackfill(agencyId, hotel.id, "ad", gap, "success");
-    } catch (err) {
-      failedDays += gap.days;
-      const message = err instanceof Error ? err.message : "Unknown ad backfill error.";
-      sampleError ??= message;
-      if (err instanceof MetaAuthError) {
-        tokenDead = true;
-        await prisma.metaToken.updateMany({
-          where: { agencyId, status: "connected" },
-          data: { status: "expired" },
-        });
-        await recordSyncFailure(agencyId, null, "meta_ads", err.message);
-        await logBackfill(agencyId, hotel.id, "ad", gap, "failed", err.message);
-        break; // token is dead for every hotel
-      }
-      await logBackfill(agencyId, hotel.id, "ad", gap, "failed", message);
     }
+    if (tokenDead) break;
   }
 
   return { anySuccess, tokenDead, failedDays, sampleError };
@@ -301,18 +450,33 @@ async function logBackfill(
 /**
  * Runs a BackfillJob to completion, updating its row as it goes so the UI poll
  * shows progress. Never throws — failures are captured in the job + BackfillLog.
+ *
+ * Safe to call repeatedly: the claim below is atomic, so concurrent triggers
+ * (two open tabs, a re-POST) can't double-run a job, and a "running" job whose
+ * runner died (serverless timeout mid-import) becomes reclaimable after
+ * STALE_RUNNING_MS — the resumed run recomputes gaps from what's stored and
+ * continues where the data stops.
  */
 export async function runBackfillJob(jobId: string): Promise<void> {
   const job = await prisma.backfillJob.findUnique({ where: { id: jobId } });
-  if (!job || job.status === "completed" || job.status === "running") return;
+  if (!job) return;
 
-  const agencyId = job.agencyId;
-  await prisma.backfillJob.update({
-    where: { id: jobId },
+  const claimed = await prisma.backfillJob.updateMany({
+    where: {
+      id: jobId,
+      OR: [
+        { status: "pending" },
+        { status: "running", startedAt: { lt: new Date(Date.now() - STALE_RUNNING_MS) } },
+        { status: "running", startedAt: null },
+      ],
+    },
     data: { status: "running", startedAt: new Date() },
   });
+  if (claimed.count === 0) return;
 
-  let daysRestored = 0;
+  const agencyId = job.agencyId;
+  // A resumed job keeps the days its previous runner already restored.
+  let daysRestored = job.daysRestored;
   let daysFailed = 0;
   // Bump the job's counter after each hotel so polling reflects live progress.
   const bumpRestored = async (days: number) => {

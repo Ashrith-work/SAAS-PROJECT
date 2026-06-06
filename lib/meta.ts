@@ -304,18 +304,34 @@ export async function getDailyInsights(
   range: DateRange,
 ): Promise<DailyAdRow[]> {
   const act = normalizeAccountId(adAccountId);
-  const res = await graphGet<{ data?: RawDailyInsights[] }>(
-    `${act}/insights`,
-    accessToken,
-    {
-      fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values",
-      time_range: JSON.stringify({ since: range.since, until: range.until }),
-      time_increment: "1",
-      level: "account",
-    },
-  );
+  const raw: RawDailyInsights[] = [];
+  let params: GraphParams = {
+    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values",
+    time_range: JSON.stringify({ since: range.since, until: range.until }),
+    time_increment: "1",
+    level: "account",
+    // One row per day. Without an explicit limit Meta pages insights at ~25
+    // rows, which silently truncated ranges longer than ~a month before
+    // pagination was added here.
+    limit: "500",
+  };
 
-  return (res.data ?? []).map((row) => {
+  // Follow pagination like getAdAccounts does, with the same runaway-cursor cap.
+  // 20 pages × 500 rows is far beyond any range the app requests.
+  for (let page = 0; page < 20; page++) {
+    const res = await graphGet<{
+      data?: RawDailyInsights[];
+      paging?: { cursors?: { after?: string }; next?: string };
+    }>(`${act}/insights`, accessToken, params);
+
+    raw.push(...(res.data ?? []));
+
+    const after = res.paging?.cursors?.after;
+    if (!after || !res.paging?.next) break;
+    params = { ...params, after };
+  }
+
+  return raw.map((row) => {
     const actions = mapActions(row.actions);
     const values = mapActions(row.action_values);
     const spend = toNumber(row.spend);
