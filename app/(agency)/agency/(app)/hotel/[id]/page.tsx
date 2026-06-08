@@ -30,6 +30,10 @@ import {
   type CampaignRow,
 } from "@/components/dashboard/CampaignPerformanceTable";
 import {
+  MetaCampaignBreakdownTable,
+  type MetaCampaignRow,
+} from "@/components/dashboard/MetaCampaignBreakdownTable";
+import {
   ConversionJourneys,
   type ConversionJourney,
 } from "@/components/dashboard/ConversionJourneys";
@@ -311,6 +315,25 @@ export default async function HotelDashboardPage({
           },
         })
       : [];
+
+  // ── Meta Campaign Breakdown: raw per-campaign numbers straight from Meta
+  //    (AdCampaignSnapshot), with NO snippet/UTM matching. Independent of the
+  //    snippet, so it loads even in pixel mode. Agency-scoped. ──
+  const metaCampaignSnaps = await agencyScoped(prisma.adCampaignSnapshot).findMany({
+    where: {
+      hotelClientId: hotel.id,
+      date: { gte: range.since, lte: range.until },
+    },
+    select: {
+      metaCampaignId: true,
+      campaignName: true,
+      spend: true,
+      impressions: true,
+      clicks: true,
+      conversions: true,
+      purchaseValue: true,
+    },
+  });
 
   // ── Organic social (Instagram) — all scoped to this agency + hotel ──
   // `priorFollowerSnap` is the last reading BEFORE the range, so follower growth
@@ -620,6 +643,42 @@ export default async function HotelDashboardPage({
     };
   });
 
+  // ── Aggregate the raw Meta campaign snapshots per campaign over the range ──
+  const metaCampAgg = new Map<
+    string,
+    { campaignId: string; campaignName: string; spend: number; impressions: number; clicks: number; metaBookings: number; revenue: number }
+  >();
+  for (const r of metaCampaignSnaps) {
+    const row =
+      metaCampAgg.get(r.metaCampaignId) ??
+      {
+        campaignId: r.metaCampaignId,
+        campaignName: r.campaignName,
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        metaBookings: 0,
+        revenue: 0,
+      };
+    row.spend += Number(r.spend);
+    row.impressions += r.impressions;
+    row.clicks += r.clicks;
+    row.metaBookings += r.conversions;
+    row.revenue += Number(r.purchaseValue);
+    row.campaignName = r.campaignName; // latest name wins on a rename
+    metaCampAgg.set(r.metaCampaignId, row);
+  }
+  const metaCampaignRows: MetaCampaignRow[] = [...metaCampAgg.values()].map((r) => ({
+    campaignId: r.campaignId,
+    campaignName: r.campaignName,
+    spend: r.spend,
+    impressions: r.impressions,
+    clicks: r.clicks,
+    ctr: r.impressions > 0 ? r.clicks / r.impressions : 0,
+    metaBookings: r.metaBookings,
+    metaRoas: r.spend > 0 ? r.revenue / r.spend : null,
+  }));
+
   // Serializable snapshot passed to the client report generator.
   const reportData: ReportData = {
     hotelName: hotel.name,
@@ -827,80 +886,6 @@ export default async function HotelDashboardPage({
         </SectionCard>
       )}
 
-      {/* Section 2.5 — Campaign performance: Meta's claims vs reality */}
-      {!pixelMode && (
-        <SectionCard
-          title="Campaign performance"
-          subtitle="Each Meta campaign's spend joined to the bookings our snippet actually tracked on the hotel's website — what Meta claims vs what really happened."
-        >
-          {matchedBookings === 0 ? (
-            <div className="px-4 py-10 text-center">
-              <p className="text-sm font-medium">
-                Campaign performance will appear once we&apos;ve collected at least 5
-                conversions across your ads.
-              </p>
-              <p className="mt-1 text-sm text-zinc-500">
-                Currently tracking: {formatNumber(totalTrackedConversions)} conversion
-                {totalTrackedConversions === 1 ? "" : "s"}.
-                {totalTrackedConversions < 5 &&
-                  ` Need: ${5 - totalTrackedConversions} more.`}
-                {totalTrackedConversions >= 5 &&
-                  " None carried a utm_campaign matching a Meta campaign yet — check that your ad URLs include utm_campaign tags."}
-              </p>
-            </div>
-          ) : (
-            <>
-              <CampaignPerformanceTable rows={campaignRows} />
-              <div className="grid grid-cols-1 gap-px border-t border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Total ad spend (selected period)
-                  </p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums">
-                    {formatCurrency(campaignTotalSpend)}
-                  </p>
-                </div>
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Real revenue from ads
-                  </p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums">
-                    {formatCurrency(campaignRealRevenue)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-zinc-500">Snippet-tracked bookings</p>
-                </div>
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Real ROI
-                  </p>
-                  <p
-                    className={`mt-1 text-xl font-semibold tabular-nums ${
-                      campaignRealRoi == null
-                        ? ""
-                        : campaignRealRoi >= 0
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400"
-                    }`}
-                  >
-                    {campaignRealRoi == null ? "—" : formatPercent(campaignRealRoi)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    (Revenue − spend) ÷ spend
-                  </p>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="border-t border-zinc-200 dark:border-zinc-800">
-            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Recent tracked bookings
-            </p>
-            <ConversionJourneys journeys={journeys} />
-          </div>
-        </SectionCard>
-      )}
-
       {/* Section 3 — Paid ads */}
       <SectionCard
         title="Paid ads performance"
@@ -1002,6 +987,104 @@ export default async function HotelDashboardPage({
           </div>
         )}
       </SectionCard>
+
+      {/* Section 3.4 — Meta Campaign Breakdown: raw per-campaign numbers from
+          Meta, NO snippet matching. Sits above the verified attribution below. */}
+      <SectionCard
+        title="Meta Campaign Breakdown"
+        subtitle="Meta-reported (raw from Facebook). For verified booking attribution, see the Campaign Performance section below."
+      >
+        {metaCampaignRows.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            {hotel.metaAdAccountId
+              ? "No Meta campaign data for this range yet — runs after the next ad sync."
+              : "No Meta ad account mapped — map one in Settings to pull campaign data."}
+          </p>
+        ) : (
+          <>
+            <MetaCampaignBreakdownTable rows={metaCampaignRows} />
+            <p className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500 dark:border-zinc-800">
+              {metaCampaignRows.length} campaign{metaCampaignRows.length === 1 ? "" : "s"} · {range.label} ·
+              numbers exactly as Meta reports them, before HotelTrack attribution. Use the date range
+              selector at the top to switch between last 7 / 30 / 90 days.
+            </p>
+          </>
+        )}
+      </SectionCard>
+
+      {/* Section 3.5 — Campaign performance: Meta's claims vs reality (verified) */}
+      {!pixelMode && (
+        <SectionCard
+          title="Campaign performance"
+          subtitle="Each Meta campaign's spend joined to the bookings our snippet actually tracked on the hotel's website — what Meta claims vs what really happened."
+        >
+          {matchedBookings === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <p className="text-sm font-medium">
+                Campaign performance will appear once we&apos;ve collected at least 5
+                conversions across your ads.
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Currently tracking: {formatNumber(totalTrackedConversions)} conversion
+                {totalTrackedConversions === 1 ? "" : "s"}.
+                {totalTrackedConversions < 5 &&
+                  ` Need: ${5 - totalTrackedConversions} more.`}
+                {totalTrackedConversions >= 5 &&
+                  " None carried a utm_campaign matching a Meta campaign yet — check that your ad URLs include utm_campaign tags."}
+              </p>
+            </div>
+          ) : (
+            <>
+              <CampaignPerformanceTable rows={campaignRows} />
+              <div className="grid grid-cols-1 gap-px border-t border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Total ad spend (selected period)
+                  </p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">
+                    {formatCurrency(campaignTotalSpend)}
+                  </p>
+                </div>
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Real revenue from ads
+                  </p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">
+                    {formatCurrency(campaignRealRevenue)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-500">Snippet-tracked bookings</p>
+                </div>
+                <div className="bg-white p-4 dark:bg-zinc-950">
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Real ROI
+                  </p>
+                  <p
+                    className={`mt-1 text-xl font-semibold tabular-nums ${
+                      campaignRealRoi == null
+                        ? ""
+                        : campaignRealRoi >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {campaignRealRoi == null ? "—" : formatPercent(campaignRealRoi)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    (Revenue − spend) ÷ spend
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="border-t border-zinc-200 dark:border-zinc-800">
+            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Recent tracked bookings
+            </p>
+            <ConversionJourneys journeys={journeys} />
+          </div>
+        </SectionCard>
+      )}
 
       {/* Section 4 — Influencer impact */}
       <SectionCard
