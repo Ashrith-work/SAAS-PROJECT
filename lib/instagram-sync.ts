@@ -130,6 +130,7 @@ export async function syncInstagramConnection(
         followers: profile.followersCount,
         reach: day.reach,
         impressions: day.impressions,
+        views: day.views, // v22+ successor to impressions
         profileViews: day.profileViews,
         engagement: 0, // account-level engagement lives on posts
       };

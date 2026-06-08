@@ -328,7 +328,7 @@ export default async function HotelDashboardPage({
           date: { gte: range.since, lte: range.until },
         },
         orderBy: { date: "asc" },
-        select: { date: true, followers: true, reach: true, impressions: true, profileViews: true },
+        select: { date: true, followers: true, reach: true, impressions: true, views: true, profileViews: true },
       }),
       agencyScoped(prisma.socialSnapshot).findFirst({
         where: { hotelClientId: hotel.id, date: { lt: range.since } },
@@ -494,7 +494,9 @@ export default async function HotelDashboardPage({
   const followerGrowth = currentFollowers - priorFollowers;
   const followerGrowthPct = priorFollowers > 0 ? followerGrowth / priorFollowers : null;
   const socialReach = socialSnaps.reduce((sum, s) => sum + s.reach, 0);
-  const socialImpressions = socialSnaps.reduce((sum, s) => sum + s.impressions, 0);
+  // "views" is the v22+ successor to account impressions; fall back to legacy
+  // impressions for historical rows synced before the metric switch.
+  const socialViews = socialSnaps.reduce((sum, s) => sum + (s.views || s.impressions), 0);
   const socialProfileViews = socialSnaps.reduce((sum, s) => sum + s.profileViews, 0);
   const postReachSum = postAgg._sum.reach ?? 0;
   const engagementRate = postReachSum > 0 ? (postAgg._sum.engagement ?? 0) / postReachSum : null;
@@ -1101,7 +1103,7 @@ export default async function HotelDashboardPage({
                 }`}
               />
               <KpiCard label="Reach" value={formatNumber(socialReach)} hint="Unique accounts" />
-              <KpiCard label="Impressions" value={formatNumber(socialImpressions)} />
+              <KpiCard label="Views" value={formatNumber(socialViews)} hint="Content plays & displays" />
               <KpiCard label="Profile views" value={formatNumber(socialProfileViews)} />
               <KpiCard
                 label="Engagement rate"

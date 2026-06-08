@@ -215,6 +215,8 @@ export type DailyAccountInsight = {
   date: string;
   reach: number;
   impressions: number;
+  /** "views" — v22+ successor to impressions (content plays/displays that day). */
+  views: number;
   profileViews: number;
   /** Daily follower_count metric when Meta returns it (new follows that day). */
   followerCount: number;
@@ -224,7 +226,47 @@ type InsightRow = {
   name?: string;
   period?: string;
   values?: { value?: number; end_time?: string }[];
+  /** total_value-shaped metrics (e.g. "views") return a single aggregate here. */
+  total_value?: { value?: number };
 };
+
+const DAY_MS_IG = 86_400_000;
+const ymdUtc = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * Per-day account "views" (the impressions successor). Unlike reach/profile_views,
+ * `views` is only returned as a `metric_type=total_value` aggregate — `period=day`
+ * alone yields nothing — so we fetch one total per single-day window and key it by
+ * date. Auth errors propagate; any other per-day error leaves that day at 0.
+ */
+async function getDailyViews(
+  accessToken: string,
+  igUserId: string,
+  range: { since: Date; until: Date },
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const startMs = Date.parse(`${ymdUtc(range.since)}T00:00:00.000Z`);
+  const endMs = range.until.getTime();
+  for (let t = startMs; t <= endMs; t += DAY_MS_IG) {
+    const dayStart = new Date(t);
+    const dayEnd = new Date(t + DAY_MS_IG);
+    try {
+      const res = await igGet<{ data?: InsightRow[] }>(`${igUserId}/insights`, accessToken, {
+        metric: "views",
+        period: "day",
+        metric_type: "total_value",
+        since: String(Math.floor(dayStart.getTime() / 1000)),
+        until: String(Math.floor(dayEnd.getTime() / 1000)),
+      });
+      const value = res.data?.[0]?.total_value?.value ?? 0;
+      if (value) out.set(ymdUtc(dayStart), value);
+    } catch (err) {
+      if (err instanceof InstagramAuthError) throw err;
+      // non-auth (metric churn / quirk) — leave this day at 0
+    }
+  }
+  return out;
+}
 
 // Newer Graph versions retire individual metrics (impressions is deprecated on
 // v22+). Rather than failing the whole sync, retry without the metric Meta
@@ -287,7 +329,7 @@ export async function getDailyAccountInsights(
   const ensure = (date: string): DailyAccountInsight => {
     let d = byDate.get(date);
     if (!d) {
-      d = { date, reach: 0, impressions: 0, profileViews: 0, followerCount: 0 };
+      d = { date, reach: 0, impressions: 0, views: 0, profileViews: 0, followerCount: 0 };
       byDate.set(date, d);
     }
     return d;
@@ -314,6 +356,11 @@ export async function getDailyAccountInsights(
       }
     }
   }
+
+  // "views" comes from a separate per-day total_value fetch (see getDailyViews).
+  const views = await getDailyViews(accessToken, igUserId, range);
+  for (const [date, value] of views) ensure(date).views = value;
+
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 

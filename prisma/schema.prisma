@@ -492,6 +492,9 @@ model SocialSnapshot {
   followers     Int      @default(0)
   reach         Int      @default(0)
   impressions   Int      @default(0)
+  // "views" — the v22+ successor to account impressions (content plays/displays
+  // across reels, posts, stories). impressions is retired and stays 0 on new rows.
+  views         Int      @default(0)
   profileViews  Int      @default(0)
   engagement    Int      @default(0)
 
