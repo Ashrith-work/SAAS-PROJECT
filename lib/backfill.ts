@@ -3,7 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
-import { getDailyInsights, MetaAuthError } from "@/lib/meta";
+import { getDailyInsights, getDailyCampaignInsights, MetaAuthError } from "@/lib/meta";
+import { refreshCampaignPerformance } from "@/lib/campaign-attribution";
 import { syncInstagramConnection } from "@/lib/instagram-sync";
 import { recordSyncFailure, resolveSyncFailures } from "@/lib/sync-failures";
 
@@ -36,6 +37,9 @@ export { recordSyncFailure } from "@/lib/sync-failures";
 
 const DAY_MS = 86_400_000;
 const CHUNK_DAYS = 90;
+// Campaign-level insights reject ranges longer than ~a month ("reduce the
+// amount of data"), so they're fetched in 30-day windows (vs 90 for account).
+const CAMPAIGN_CHUNK_DAYS = 30;
 const CHUNK_DELAY_MS = 1500;
 const MAX_GAP_DAYS = 90; // social repair cap — a 60-day token can't have left a longer real gap
 const HISTORY_DAYS = 365; // ads: how far back the first-connect import reaches
@@ -264,6 +268,81 @@ export async function queueBackfillJob(agencyId: string): Promise<string | null>
 
 // ── Backfill writers ──────────────────────────────────────────────────────────
 
+/** Splits [start, end] (inclusive, UTC dates) into <= `days`-long windows. */
+function splitWindows(start: Date, end: Date, days: number): { since: string; until: string }[] {
+  const out: { since: string; until: string }[] = [];
+  for (let t = start.getTime(); t <= end.getTime(); t += days * DAY_MS) {
+    const wEnd = Math.min(t + (days - 1) * DAY_MS, end.getTime());
+    out.push({ since: ymd(new Date(t)), until: ymd(new Date(wEnd)) });
+  }
+  return out;
+}
+
+/**
+ * Campaign-level companion to the account-level ad import. For the same gaps,
+ * fills AdCampaignSnapshot (30-day windows — Meta rejects longer campaign-insight
+ * ranges) then recomputes CampaignPerformance for the spanned dates, so the
+ * "Meta Campaign Breakdown" and "Campaign performance" sections populate as soon
+ * as an account is mapped. Self-contained: never throws; signals a dead token so
+ * the caller can stop. NEVER logs the token.
+ */
+async function backfillCampaigns(
+  agencyId: string,
+  hotelClientId: string,
+  accountId: string,
+  reveal: string,
+  gaps: AdGap[],
+): Promise<{ tokenDead: boolean }> {
+  let minStart: Date | null = null;
+  let maxEnd: Date | null = null;
+
+  for (const gap of gaps) {
+    for (const window of splitWindows(gap.start, gap.end, CAMPAIGN_CHUNK_DAYS)) {
+      try {
+        const rows = await getDailyCampaignInsights(reveal, accountId, window);
+        for (const row of rows) {
+          if (!row.date) continue;
+          const date = new Date(`${row.date}T00:00:00.000Z`);
+          const data = {
+            campaignName: row.campaignName,
+            spend: row.spend.toFixed(2),
+            impressions: row.impressions,
+            clicks: row.clicks,
+            conversions: row.conversions,
+            purchaseValue: row.purchaseValue.toFixed(2),
+          };
+          await prisma.adCampaignSnapshot.upsert({
+            where: {
+              hotelClientId_metaCampaignId_date: {
+                hotelClientId,
+                metaCampaignId: row.campaignId,
+                date,
+              },
+            },
+            create: { agencyId, hotelClientId, metaCampaignId: row.campaignId, date, ...data },
+            update: data,
+          });
+        }
+        await sleep(CHUNK_DELAY_MS);
+      } catch (err) {
+        if (err instanceof MetaAuthError) return { tokenDead: true };
+        // Non-auth (rate limit / transient) — skip this window, keep going.
+      }
+    }
+    if (minStart === null || gap.start < minStart) minStart = gap.start;
+    if (maxEnd === null || gap.end > maxEnd) maxEnd = gap.end;
+  }
+
+  if (minStart && maxEnd) {
+    try {
+      await refreshCampaignPerformance(agencyId, hotelClientId, minStart, maxEnd);
+    } catch {
+      // Attribution recompute is best-effort; the daily cron retries it.
+    }
+  }
+  return { tokenDead: false };
+}
+
 async function backfillAds(
   agencyId: string,
   accumulate: (days: number) => void,
@@ -361,6 +440,13 @@ async function backfillAds(
         }
         await logBackfill(agencyId, hotel.id, "ad", gap, "failed", message);
       }
+    }
+
+    // Campaign-level import for the same gaps (powers the campaign sections).
+    // Runs unless the account-level pass already found the token dead.
+    if (!tokenDead && gaps.length > 0) {
+      const camp = await backfillCampaigns(agencyId, hotel.id, accountId, secret.reveal(), gaps);
+      if (camp.tokenDead) tokenDead = true;
     }
 
     if (hotelOk) {

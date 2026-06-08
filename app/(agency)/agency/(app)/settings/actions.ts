@@ -7,6 +7,7 @@ import { agencyScoped } from "@/lib/tenant";
 import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
 import { queueBackfillJob } from "@/lib/backfill";
+import { syncHotelAds } from "@/lib/meta-sync";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
 // The MetaToken.tokenExpiresAt column is non-null, so we store this far-future
@@ -144,10 +145,20 @@ export async function mapAdAccount(
     data: { metaAdAccountId: adAccountId || null },
   });
 
-  // Mapping an ad account is what makes a hotel syncable, so kick off its
-  // 12-month history import right away (no-op without a connected token or
-  // when nothing is missing). Never blocks the mapping itself.
+  // Mapping an ad account is what makes a hotel syncable. Two-step so its
+  // dashboard fills in immediately AND completely:
+  //   1. A bounded inline sync of the last 30 days (account + campaign-level +
+  //      attribution) so the default dashboard view shows data the moment the
+  //      mapping returns — this is what makes selecting the account feel
+  //      "automatic". 30 days stays within Meta's campaign-insights window cap.
+  //   2. Queue the full 12-month history import (now campaign-aware too) for the
+  //      longer date ranges. Both are best-effort and never block the mapping.
   if (adAccountId) {
+    try {
+      await syncHotelAds(hotel.id, 30);
+    } catch {
+      // The history backfill + scheduled sync still cover the data if this hiccups.
+    }
     try {
       await queueBackfillJob(member.agencyId);
     } catch {
@@ -155,9 +166,10 @@ export async function mapAdAccount(
     }
   }
 
-  // The mapping is set per hotel on its Integrations page; also keep Settings
-  // fresh in case it's open.
+  // The mapping is set per hotel on its Integrations page; also refresh the
+  // hotel dashboard (where the campaign sections live) and Settings.
   revalidatePath(`/agency/hotel/${hotel.id}/integrations`);
+  revalidatePath(`/agency/hotel/${hotel.id}`);
   revalidatePath("/agency/settings");
   return { error: null, ok: true };
 }
