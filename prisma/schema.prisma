@@ -71,6 +71,16 @@ enum TokenAuditAction {
   failed_decrypt
 }
 
+// How an agency obtained/shared the setup guide PDF, for usage analytics.
+//   direct — downloaded the PDF file itself
+//   link   — copied the public /setup-guide link to share
+//   email  — opened an email pre-filled with the link
+enum GuideDownloadMethod {
+  direct
+  link
+  email
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,6 +127,7 @@ model Agency {
   syncFailures      SyncFailure[]
   adCampaignSnapshots  AdCampaignSnapshot[]
   campaignPerformances CampaignPerformance[]
+  guideDownloads       GuideDownload[]
 }
 
 model AgencyMember {
@@ -176,6 +187,7 @@ model HotelClient {
   tokenAuditLogs  TokenAuditLog[]
   adCampaignSnapshots  AdCampaignSnapshot[]
   campaignPerformances CampaignPerformance[]
+  guideDownloads       GuideDownload[]
 
   @@index([agencyId])
 }
@@ -705,4 +717,22 @@ model SyncFailure {
 
   @@index([agencyId])
   @@index([agencyId, resolvedAt])
+}
+
+// One row per time an agency downloads or shares the setup guide PDF, so usage
+// can be reported later. Multi-tenant: scoped by agencyId like every other table.
+// hotelClientId is nullable — the guide may be shared from an agency-wide surface
+// that isn't tied to a specific hotel.
+model GuideDownload {
+  id            String              @id @default(cuid())
+  agencyId      String
+  hotelClientId String?
+  method        GuideDownloadMethod @default(direct)
+  downloadedAt  DateTime            @default(now())
+
+  agency Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotel  HotelClient? @relation(fields: [hotelClientId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([agencyId, downloadedAt])
 }

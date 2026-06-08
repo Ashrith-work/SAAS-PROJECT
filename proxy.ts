@@ -13,6 +13,11 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Public setup guide for hotels & agencies (no login needed to read it) and
+  // the PDF download route. The /api/guide route resolves the agency from the
+  // session itself and simply skips analytics when there's no session.
+  "/setup-guide(.*)",
+  "/api/guide(.*)",
   // Public, UUID-addressed hotel report links. No login: access is gated by the
   // unguessable token (and an optional password) inside the route itself.
   "/share(.*)",
@@ -121,7 +126,7 @@ export default clerkMiddleware(async (auth, req) => {
 export const config = {
   matcher: [
     // Skip Next.js internals and static files, unless found in search params.
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|pdf)).*)",
     // Always run for API routes.
     "/(api|trpc)(.*)",
   ],

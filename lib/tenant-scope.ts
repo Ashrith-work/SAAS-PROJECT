@@ -136,4 +136,5 @@ export const MULTI_TENANT_MODELS = [
   "backfillJob",
   "backfillLog",
   "syncFailure",
+  "guideDownload",
 ] as const;

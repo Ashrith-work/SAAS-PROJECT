@@ -28,6 +28,7 @@ import { IntegrationStatusBadge } from "@/components/ui/IntegrationStatusBadge";
 import { TestConnection } from "../install/TestConnection";
 import { HotelAdAccountSelect } from "./HotelAdAccountSelect";
 import { InstagramActions } from "./InstagramActions";
+import { SendGuideModal } from "./SendGuideModal";
 import { GoogleAnalyticsConnect } from "./GoogleAnalyticsConnect";
 import { GoogleAnalyticsActions } from "./GoogleAnalyticsActions";
 import { getActiveBackfill } from "@/app/(agency)/agency/(app)/settings/backfill-actions";
@@ -129,6 +130,11 @@ export default async function HotelIntegrationsPage({
     "",
   );
   const snippet = `<script src="${appUrl}/t.js?id=${hotel.siteId}" async></script>`;
+  // Public URL for the setup-guide share modal (defaults to the prod domain so
+  // the copied link is always shareable even if the env var isn't set locally).
+  const guidePublicUrl = (
+    process.env.NEXT_PUBLIC_APP_URL || "https://www.hoteltrack.in"
+  ).replace(/\/$/, "");
 
   // ── Meta Ads (agency-wide EAA token) ───────────────────────────────────────
   const token = await agencyScoped(prisma.metaToken).findFirst({
@@ -260,6 +266,25 @@ export default async function HotelIntegrationsPage({
             integrations connected
           </p>
         </div>
+      </div>
+
+      {/* Help — share the public setup guide with the hotel */}
+      <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800 dark:bg-zinc-900/50">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1A56DB]/10 text-[#1A56DB]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+              <path d="M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <p className="text-sm font-semibold">New to HotelTrack setup?</p>
+            <p className="text-sm text-zinc-500">
+              Send {hotel.name} a step-by-step guide for installing the snippet
+              and connecting Instagram.
+            </p>
+          </div>
+        </div>
+        <SendGuideModal hotelId={hotel.id} publicUrl={guidePublicUrl} />
       </div>
 
       <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
