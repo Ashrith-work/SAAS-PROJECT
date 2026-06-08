@@ -25,14 +25,15 @@ import {
 import { DateRangeSelector } from "./DateRangeSelector";
 import { PostTypeFilter } from "./PostTypeFilter";
 import { ContentPerformanceTable } from "@/components/report/ContentPerformanceTable";
-import {
-  CampaignPerformanceTable,
-  type CampaignRow,
-} from "@/components/dashboard/CampaignPerformanceTable";
+import { type CampaignRow } from "@/components/dashboard/CampaignPerformanceTable";
 import {
   MetaCampaignBreakdownTable,
   type MetaCampaignRow,
 } from "@/components/dashboard/MetaCampaignBreakdownTable";
+import { KpiStrip, type KpiCardSpec } from "@/components/dashboard/mission/KpiStrip";
+import { MetaVsRealityHero } from "@/components/dashboard/mission/MetaVsRealityHero";
+import { ChannelBreakdown } from "@/components/dashboard/mission/ChannelBreakdown";
+import { CampaignGrid, type CampaignCard } from "@/components/dashboard/mission/CampaignGrid";
 import {
   ConversionJourneys,
   type ConversionJourney,
@@ -119,6 +120,7 @@ export default async function HotelDashboardPage({
       metaAdAccountId: true,
       snippetStatus: true,
       lastEventAt: true,
+      lastSyncedAt: true,
     },
   });
   if (!hotel) notFound();
@@ -325,6 +327,7 @@ export default async function HotelDashboardPage({
       date: { gte: range.since, lte: range.until },
     },
     select: {
+      date: true,
       metaCampaignId: true,
       campaignName: true,
       spend: true,
@@ -334,6 +337,28 @@ export default async function HotelDashboardPage({
       purchaseValue: true,
     },
   });
+
+  // ── Previous-period totals for the KPI strip's % change badges. Same tables,
+  //    a window of equal length immediately before the selected range. ──
+  const periodMs = range.until.getTime() - range.since.getTime();
+  const prevSince = new Date(range.since.getTime() - periodMs);
+  const prevUntil = range.since;
+  const [prevConversions, prevSpendAgg] = await Promise.all([
+    pixelMode
+      ? Promise.resolve([] as { conversionValue: import("@prisma/client").Prisma.Decimal | null }[])
+      : agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "conversion",
+            createdAt: { gte: prevSince, lt: prevUntil },
+          },
+          select: { conversionValue: true },
+        }),
+    agencyScoped(prisma.adSnapshot).aggregate({
+      where: { hotelClientId: hotel.id, date: { gte: prevSince, lt: prevUntil } },
+      _sum: { spend: true },
+    }),
+  ]);
 
   // ── Organic social (Instagram) — all scoped to this agency + hotel ──
   // `priorFollowerSnap` is the last reading BEFORE the range, so follower growth
@@ -679,6 +704,103 @@ export default async function HotelDashboardPage({
     metaRoas: r.spend > 0 ? r.revenue / r.spend : null,
   }));
 
+  // ── Mission-control derived metrics ──────────────────────────────────────
+  // Previous-period rollups for the delta badges.
+  const prevRevenue = prevConversions.reduce((s, e) => s + (e.conversionValue == null ? 0 : Number(e.conversionValue)), 0);
+  const prevBookings = prevConversions.length;
+  const prevSpend = Number(prevSpendAgg._sum.spend ?? 0);
+  const prevRoas = prevSpend > 0 ? prevRevenue / prevSpend : null;
+  const prevAdr = prevBookings > 0 ? prevRevenue / prevBookings : null;
+  const prevCpb = prevBookings > 0 ? prevSpend / prevBookings : null;
+  // Fractional change vs previous; null when there's no prior baseline.
+  const pctDelta = (cur: number | null, prev: number | null): number | null =>
+    prev == null || prev === 0 || cur == null ? null : (cur - prev) / prev;
+
+  const adr = kpis.bookings > 0 ? kpis.revenue / kpis.bookings : null; // avg booking value
+  const trueRoasColor =
+    kpis.roas == null ? "text-slate-900" : kpis.roas > 4 ? "text-emerald-600" : kpis.roas >= 2 ? "text-amber-600" : "text-red-600";
+
+  const kpiCards: KpiCardSpec[] = [
+    { label: "Revenue", value: formatCurrency(kpis.revenue), delta: pctDelta(kpis.revenue, prevRevenue) },
+    { label: "Ad spend", value: formatCurrency(ads.spend), delta: pctDelta(ads.spend, prevSpend), goodWhenUp: false },
+    {
+      label: "True ROAS",
+      value: formatMultiple(kpis.roas),
+      delta: pctDelta(kpis.roas, prevRoas),
+      valueClassName: trueRoasColor,
+      hint: "Real revenue ÷ spend",
+    },
+    { label: "Bookings", value: formatNumber(kpis.bookings), delta: pctDelta(kpis.bookings, prevBookings) },
+    { label: "ADR", value: adr == null ? "—" : formatCurrency(adr), delta: pctDelta(adr, prevAdr), hint: "Avg booking value" },
+    {
+      label: "Cost / booking",
+      value: kpis.costPerBooking == null ? "—" : formatCurrency(kpis.costPerBooking),
+      delta: pctDelta(kpis.costPerBooking, prevCpb),
+      goodWhenUp: false,
+    },
+  ];
+
+  // Meta-vs-reality hero (ad campaigns: Meta's claims vs verified bookings).
+  const metaVsReality = {
+    metaBookings: ads.bookingsFromAds,
+    metaRevenue: ads.metaReportedRevenue,
+    realBookings: matchedBookings,
+    realRevenue: campaignRealRevenue,
+  };
+
+  // Channel breakdown.
+  const unattributedRow = campaignRows.find((c) => c.campaignKey === UNATTRIBUTED_KEY);
+  const igOrganicBookings = contentPerf
+    .filter((c) => c.platform === "instagram" && c.contentType === "organic")
+    .reduce((s, c) => s + c.bookings, 0);
+  const channelData = {
+    paid: {
+      spend: campaignTotalSpend,
+      bookings: matchedBookings,
+      roas: campaignTotalSpend > 0 ? campaignRealRevenue / campaignTotalSpend : null,
+    },
+    instagram: { reach: socialReach, engagementRate, bookings: igOrganicBookings },
+    direct: { bookings: unattributedRow?.realBookings ?? 0, revenue: unattributedRow?.realRevenue ?? 0 },
+  };
+
+  // Per-campaign 7-day spend sparkline series, keyed by campaign id.
+  const last7 = Array.from({ length: 7 }, (_, i) =>
+    new Date(range.until.getTime() - (6 - i) * DAY_MS).toISOString().slice(0, 10),
+  );
+  const sparkByCampaign = new Map<string, Map<string, number>>();
+  for (const r of metaCampaignSnaps) {
+    const d = r.date.toISOString().slice(0, 10);
+    const m = sparkByCampaign.get(r.metaCampaignId) ?? new Map<string, number>();
+    m.set(d, (m.get(d) ?? 0) + Number(r.spend));
+    sparkByCampaign.set(r.metaCampaignId, m);
+  }
+  // Join verified campaign rows (by name) to the raw Meta rows (impressions/
+  // clicks/CTR/id/sparkline) for the card grid.
+  const metaByName = new Map(metaCampaignRows.map((m) => [m.campaignName.trim().toLowerCase(), m]));
+  const campaignCards: CampaignCard[] = matchedCampaignRows
+    .map((c): CampaignCard => {
+      const meta = metaByName.get(c.campaignName.trim().toLowerCase());
+      const id = meta?.campaignId ?? c.campaignKey;
+      const dayMap = meta ? sparkByCampaign.get(meta.campaignId) : undefined;
+      const spark = dayMap ? last7.map((d) => dayMap.get(d) ?? 0) : [];
+      return {
+        campaignKey: c.campaignKey,
+        campaignName: c.campaignName,
+        spend: c.spend,
+        realBookings: c.realBookings,
+        realRevenue: c.realRevenue,
+        realRoas: c.realRoas,
+        metaBookings: c.metaConversions,
+        metaRevenue: meta?.metaRoas != null ? meta.metaRoas * (meta.spend ?? 0) : 0,
+        impressions: meta?.impressions ?? 0,
+        clicks: meta?.clicks ?? 0,
+        ctr: meta?.ctr ?? 0,
+        variancePct: c.realBookings > 0 ? ((c.metaConversions - c.realBookings) / c.realBookings) * 100 : null,
+        spark,
+      };
+    })
+    .sort((a, b) => (b.realRoas ?? -1) - (a.realRoas ?? -1));
+
   // Serializable snapshot passed to the client report generator.
   const reportData: ReportData = {
     hotelName: hotel.name,
@@ -790,32 +912,39 @@ export default async function HotelDashboardPage({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <Link
-          href="/agency/hotels"
-          className="text-sm text-zinc-500 hover:underline"
-        >
+      {/* Header strip — hotel + last sync (left), period selector + actions (right) */}
+      <div className="space-y-4">
+        <Link href="/agency/hotels" className="text-sm text-slate-500 hover:underline">
           ← Hotel Clients
         </Link>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{hotel.name}</h1>
-            <p className="text-zinc-500">{hotel.websiteUrl}</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{hotel.name}</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {hotel.websiteUrl}
+              {hotel.lastSyncedAt && (
+                <span className="ml-2 text-slate-400">
+                  · Last synced{" "}
+                  {new Date(hotel.lastSyncedAt).toLocaleString("en-IN", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </span>
+              )}
+            </p>
           </div>
-          <div className="flex items-center gap-4">
-            {missingDays > 0 && (
-              <Link
-                href={`/agency/hotel/${hotel.id}/integrations`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                {missingDays} day{missingDays === 1 ? "" : "s"} of data missing — reconnect Meta to backfill
-              </Link>
-            )}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col items-end">
+              <DateRangeSelector
+                current={range.key}
+                fromInput={range.fromInput}
+                toInput={range.toInput}
+              />
+              <span className="mt-1 text-xs text-slate-400">vs previous period</span>
+            </div>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Manage Integrations
             </Link>
@@ -827,13 +956,22 @@ export default async function HotelDashboardPage({
             />
           </div>
         </div>
+        {missingDays > 0 && (
+          <Link
+            href={`/agency/hotel/${hotel.id}/integrations`}
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            {missingDays} day{missingDays === 1 ? "" : "s"} of data missing — reconnect Meta to backfill
+          </Link>
+        )}
       </div>
 
       {/* Integration health banner — only when something is broken or expired */}
       {integrationStatus.anyBrokenOrExpired && (
         <Link
           href={`/agency/hotel/${hotel.id}/integrations`}
-          className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
         >
           <span>
             <strong>An integration needs attention.</strong> A connection for this
@@ -843,36 +981,17 @@ export default async function HotelDashboardPage({
         </Link>
       )}
 
-      {/* Date range */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <DateRangeSelector
-          current={range.key}
-          fromInput={range.fromInput}
-          toInput={range.toInput}
-        />
-        <span className="text-sm text-zinc-500">{range.label}</span>
-      </div>
-
-      {/* Section 1 — KPI cards (attribution-dependent; hidden in pixel mode) */}
+      {/* Section 1 — Mission control: KPI strip, Meta-vs-reality hero, channels */}
       {!pixelMode && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <KpiCard label="Visits" value={formatNumber(kpis.visits)} />
-          <KpiCard label="Bookings" value={formatNumber(kpis.bookings)} />
-          <KpiCard label="Revenue attributed" value={formatCurrency(kpis.revenue)} />
-          <KpiCard
-            label="Cost / booking"
-            value={
-              kpis.costPerBooking == null
-                ? "—"
-                : formatCurrencyCents(kpis.costPerBooking)
-            }
-            hint="Ad spend ÷ bookings"
-          />
-          <KpiCard
-            label="Overall ROAS"
-            value={formatMultiple(kpis.roas)}
-            hint="Revenue ÷ ad spend"
-          />
+        <div className="space-y-6">
+          <KpiStrip cards={kpiCards} />
+          <MetaVsRealityHero data={metaVsReality} />
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Channel performance
+            </h2>
+            <ChannelBreakdown data={channelData} />
+          </div>
         </div>
       )}
 
@@ -1035,7 +1154,9 @@ export default async function HotelDashboardPage({
             </div>
           ) : (
             <>
-              <CampaignPerformanceTable rows={campaignRows} />
+              <div className="p-4">
+                <CampaignGrid cards={campaignCards} />
+              </div>
               <div className="grid grid-cols-1 gap-px border-t border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
                 <div className="bg-white p-4 dark:bg-zinc-950">
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">

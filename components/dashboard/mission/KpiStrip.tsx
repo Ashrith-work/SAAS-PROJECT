@@ -1,0 +1,57 @@
+// Mission-control KPI strip — 6 cards in one row, big number + small label +
+// % change vs the previous period. Light-mode only, pure presentation.
+
+export type KpiCardSpec = {
+  label: string;
+  /** Preformatted value (₹ / number / "3.2×" / "12%"). The number is the hero. */
+  value: string;
+  /** Fractional change vs previous period (0.12 = +12%). null hides the badge. */
+  delta: number | null;
+  /** Up is good (revenue, bookings). false for cost metrics where down is good. */
+  goodWhenUp?: boolean;
+  /** Override the big-number color (e.g. ROAS green/amber/red). */
+  valueClassName?: string;
+  hint?: string;
+};
+
+function DeltaBadge({ delta, goodWhenUp = true }: { delta: number; goodWhenUp?: boolean }) {
+  const up = delta > 0;
+  const flat = Math.abs(delta) < 0.0005;
+  const good = flat ? null : up === goodWhenUp;
+  const cls = flat
+    ? "bg-slate-100 text-slate-500"
+    : good
+      ? "bg-emerald-50 text-emerald-700"
+      : "bg-red-50 text-red-600";
+  const arrow = flat ? "→" : up ? "↑" : "↓";
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {arrow} {Math.abs(delta * 100).toFixed(1)}%
+    </span>
+  );
+}
+
+function KpiCard({ spec }: { spec: KpiCardSpec }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{spec.label}</p>
+        {spec.delta != null && <DeltaBadge delta={spec.delta} goodWhenUp={spec.goodWhenUp} />}
+      </div>
+      <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums lg:text-4xl ${spec.valueClassName ?? "text-slate-900"}`}>
+        {spec.value}
+      </p>
+      {spec.hint && <p className="mt-1 text-xs text-slate-400">{spec.hint}</p>}
+    </div>
+  );
+}
+
+export function KpiStrip({ cards }: { cards: KpiCardSpec[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {cards.map((c) => (
+        <KpiCard key={c.label} spec={c} />
+      ))}
+    </div>
+  );
+}
