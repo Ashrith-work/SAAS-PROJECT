@@ -211,13 +211,28 @@ export async function syncInstagramConnection(
     const authFailed = err instanceof InstagramAuthError;
     const message = err instanceof Error ? err.message : "Unknown Instagram sync error.";
 
-    // Mark the connection broken + surface it (UI banner, SyncFailure, email).
-    await prisma.instagramConnection.update({
-      where: { id: conn.id },
-      data: { status: "error", errorMessage: message },
-    });
-    await recordSyncFailure(conn.agencyId, conn.hotelClientId, "instagram", message);
-    await notifyAgencySyncFailure(conn.agencyId, conn.hotelClientId, message);
+    if (authFailed) {
+      // ONLY a genuine token failure (401 / Graph code 190 / 102) means the
+      // user must reconnect. Mark the connection broken + surface it (UI badge
+      // flips to "Token Expired — Reconnect Needed", SyncFailure, email).
+      await prisma.instagramConnection.update({
+        where: { id: conn.id },
+        data: { status: "error", errorMessage: message },
+      });
+      await recordSyncFailure(conn.agencyId, conn.hotelClientId, "instagram", message);
+      await notifyAgencySyncFailure(conn.agencyId, conn.hotelClientId, message);
+    } else {
+      // Any other error (invalid metric, rate limit, transient outage) is NOT a
+      // token problem — keep the connection ACTIVE so we don't falsely tell the
+      // user to reconnect. Record the message + log it; the next run retries.
+      await prisma.instagramConnection.update({
+        where: { id: conn.id },
+        data: { status: "active", errorMessage: message },
+      });
+      console.error(
+        `[IG-SYNC] non-auth error on connection ${conn.id} (status kept active): ${message}`,
+      );
+    }
 
     return { ok: false, authFailed, error: message };
   }

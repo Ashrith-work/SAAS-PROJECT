@@ -43,11 +43,13 @@ export class InstagramApiError extends Error {
 type GraphError = { error?: { message?: string; type?: string; code?: number } };
 
 function classify(status: number, err: GraphError["error"]): Error {
-  // Only 190 (invalid/expired token) and 102 (session expired) mean the token
-  // is dead — permission errors also arrive as OAuthException but must not
-  // mark the connection expired (same rule as lib/meta.ts).
-  if (err?.code === 190 || err?.code === 102) {
-    return new InstagramAuthError(err.message || undefined);
+  // The token is dead ONLY for a 401 Unauthorized or the token-specific Graph
+  // codes 190 (invalid/expired) and 102 (session expired). Everything else —
+  // permission errors (also OAuthException), invalid metric (#100), rate limits
+  // (#4/#17/#613), outages — is a normal API error that must NOT mark the
+  // connection expired (same rule as lib/meta.ts).
+  if (status === 401 || err?.code === 190 || err?.code === 102) {
+    return new InstagramAuthError(err?.message || undefined);
   }
   return new InstagramApiError(err?.message || `Instagram API request failed (HTTP ${status}).`);
 }
@@ -244,11 +246,14 @@ async function insightsWithFallback(
     } catch (err) {
       if (err instanceof InstagramAuthError) throw err;
       const message = err instanceof Error ? err.message : "";
-      // "(#100) metric[N] must be one of the following values: …" — drop the
-      // metric Meta named (or the first one) and retry with the rest.
-      const rejected = current.find((m) => message.includes(m));
       if (current.length <= 1 || !message.includes("metric")) throw err;
-      current = current.filter((m) => m !== (rejected ?? current[0]));
+      // "(#100) metric[N] must be one of the following values: <valid list>" —
+      // the message lists the VALID metric names, so the REJECTED metric is the
+      // one we sent that is NOT mentioned (e.g. a deprecated "impressions").
+      // Drop that one and retry. (Falls back to the first metric if every one we
+      // sent happens to appear in the message text.)
+      const rejected = current.find((m) => !message.includes(m)) ?? current[0];
+      current = current.filter((m) => m !== rejected);
     }
   }
   return [];
@@ -266,7 +271,10 @@ export async function getDailyAccountInsights(
   const rows = await insightsWithFallback(
     accessToken,
     igUserId,
-    ["reach", "impressions", "profile_views", "follower_count"],
+    // Valid current account/day metrics only. "impressions" was retired on
+    // v22+ (replaced by "views") and is no longer accepted here — requesting it
+    // was what triggered the "metric must be one of …" sync failure.
+    ["reach", "profile_views", "follower_count"],
     {
       period: "day",
       since: String(Math.floor(range.since.getTime() / 1000)),
@@ -392,11 +400,15 @@ export async function getMediaInsights(
   mediaId: string,
 ): Promise<MediaInsights> {
   const out: MediaInsights = { reach: 0, impressions: 0, saved: 0, engagement: 0 };
+  // Valid current post metrics. "views" replaced "impressions" and
+  // "total_interactions" replaced "engagement" on v22+; "saved" is still the
+  // media-level save metric. Degrades through smaller sets if a version rejects
+  // one, and parsing accepts both the old and new names for forward/back compat.
   const metricSets = [
-    ["reach", "impressions", "saved", "engagement"],
-    ["reach", "impressions", "saved", "total_interactions"],
-    ["reach", "saved", "total_interactions"],
+    ["reach", "views", "saved", "total_interactions"],
+    ["reach", "views", "saved"],
     ["reach", "saved"],
+    ["reach"],
   ];
 
   for (const metrics of metricSets) {
@@ -410,10 +422,13 @@ export async function getMediaInsights(
           case "reach":
             out.reach = value;
             break;
+          case "views":
           case "impressions":
+            // "views" is the modern impressions-equivalent for a post.
             out.impressions = value;
             break;
           case "saved":
+          case "saves":
             out.saved = value;
             break;
           case "engagement":
