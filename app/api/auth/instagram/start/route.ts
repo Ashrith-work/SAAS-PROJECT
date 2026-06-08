@@ -39,10 +39,31 @@ export async function GET(request: Request) {
   try {
     authorizeUrl = buildAuthorizeUrl(state);
   } catch (err) {
+    console.error("[IG-OAUTH] start: buildAuthorizeUrl FAILED:", err instanceof Error ? err.message : err);
     return Response.json(
       { error: err instanceof Error ? err.message : "Instagram Login is not configured." },
       { status: 500 },
     );
+  }
+
+  // Log the OAuth params prod is actually sending (all PUBLIC — client_id,
+  // redirect_uri, scope). The redirect_uri here MUST exactly match a "Valid
+  // OAuth Redirect URI" in the Meta/Instagram app, or Instagram rejects the
+  // authorize request on its own page and never calls our callback back.
+  try {
+    const au = new URL(authorizeUrl);
+    console.log(
+      "[IG-OAUTH] start → redirecting to Instagram:",
+      JSON.stringify({
+        authorizeHost: au.host,
+        client_id: au.searchParams.get("client_id"),
+        redirect_uri: au.searchParams.get("redirect_uri"),
+        scope: au.searchParams.get("scope"),
+        hotelClientId,
+      }),
+    );
+  } catch {
+    // logging must never block the redirect
   }
 
   redirect(authorizeUrl);
