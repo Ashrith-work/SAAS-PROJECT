@@ -28,6 +28,10 @@ import { IntegrationCard } from "@/components/ui/IntegrationCard";
 import { IntegrationStatusBadge } from "@/components/ui/IntegrationStatusBadge";
 import { TestConnection } from "../install/TestConnection";
 import { HotelAdAccountSelect } from "./HotelAdAccountSelect";
+import { ConnectionHistory } from "./ConnectionHistory";
+import { archivedAccountSummaries } from "@/lib/meta-archive";
+import { BudgetTracking } from "./BudgetTracking";
+import { getBudgetStatus, rupeesFromPaise } from "@/lib/budget";
 import { InstagramActions } from "./InstagramActions";
 import { SendGuideModal } from "./SendGuideModal";
 import { GoogleAnalyticsConnect } from "./GoogleAnalyticsConnect";
@@ -111,9 +115,22 @@ export default async function HotelIntegrationsPage({
       snippetStatus: true,
       lastEventAt: true,
       metaAdAccountId: true,
+      previousAdAccountIds: true,
+      budgetTrackingEnabled: true,
+      monthlyAdBudget: true,
+      budgetResetDay: true,
     },
   });
   if (!hotel) notFound();
+
+  // Budget status (null when tracking is off / no budget set).
+  const budgetStatus = await getBudgetStatus({
+    id: hotel.id,
+    agencyId: member.agencyId,
+    budgetTrackingEnabled: hotel.budgetTrackingEnabled,
+    monthlyAdBudget: hotel.monthlyAdBudget,
+    budgetResetDay: hotel.budgetResetDay,
+  });
 
   const pixelMode = isPixelMode();
   const planAllowsGa4 = planHasGa4(member.agency.plan);
@@ -171,6 +188,19 @@ export default async function HotelIntegrationsPage({
       }
     }
   }
+
+  // ── Connection History: archived data from previously-mapped ad accounts ───
+  const accountName = (accId: string): string | null =>
+    adAccounts.find((a) => a.id === accId)?.name ?? null;
+  const historySummaries =
+    hotel.previousAdAccountIds.length > 0
+      ? await archivedAccountSummaries(member.agencyId, hotel.id, hotel.previousAdAccountIds)
+      : [];
+  const connectionHistory = historySummaries
+    // Newest previous account first (previousAdAccountIds is oldest→newest).
+    .slice()
+    .reverse()
+    .map((s) => ({ ...s, name: accountName(s.accountId) }));
 
   // ── Instagram (per-hotel IGAA connection) ──────────────────────────────────
   const ig = await agencyScoped(prisma.instagramConnection).findFirst({
@@ -364,10 +394,17 @@ export default async function HotelIntegrationsPage({
             </p>
             <HotelAdAccountSelect
               hotelId={hotel.id}
+              hotelName={hotel.name}
               accounts={adAccounts}
               currentAdAccountId={hotel.metaAdAccountId}
             />
             {metaLoadError && <p className="text-sm text-danger">{metaLoadError}</p>}
+            <ConnectionHistory
+              hotelId={hotel.id}
+              currentAdAccountId={hotel.metaAdAccountId}
+              currentAccountName={hotel.metaAdAccountId ? accountName(hotel.metaAdAccountId) : null}
+              previous={connectionHistory}
+            />
             <p className="text-xs text-ink-tertiary">
               Manage the Meta token (replace / disconnect) on{" "}
               <Link href="/agency/settings" className="underline">
@@ -377,6 +414,45 @@ export default async function HotelIntegrationsPage({
             </p>
           </div>
         )}
+      </IntegrationCard>
+
+      {/* ── Ad Budget Tracking ───────────────────────────────────────────── */}
+      <IntegrationCard
+        icon={<span className="text-base font-bold text-brand">₹</span>}
+        title="Ad Budget Tracking"
+        subtitle="Set a monthly ad budget and get alerted at 80%, 90%, and 100%."
+        badge={
+          <IntegrationStatusBadge
+            tone={hotel.budgetTrackingEnabled ? "green" : "gray"}
+            label={hotel.budgetTrackingEnabled ? "Tracking on" : "Off"}
+          />
+        }
+      >
+        <BudgetTracking
+          hotelId={hotel.id}
+          enabled={hotel.budgetTrackingEnabled}
+          budgetRupees={hotel.monthlyAdBudget != null ? rupeesFromPaise(hotel.monthlyAdBudget) : null}
+          resetDay={hotel.budgetResetDay}
+          status={
+            budgetStatus
+              ? {
+                  spendPaise: budgetStatus.spendPaise,
+                  budgetPaise: budgetStatus.budgetPaise,
+                  pct: budgetStatus.pct,
+                  state: budgetStatus.state,
+                  nextThreshold: budgetStatus.nextThreshold,
+                  remainingToNextPaise: budgetStatus.remainingToNextPaise,
+                }
+              : null
+          }
+        />
+        <p className="mt-3 text-xs text-ink-tertiary">
+          Alerts go to the channels configured in{" "}
+          <Link href="/agency/settings" className="underline">
+            Settings → Notifications
+          </Link>
+          .
+        </p>
       </IntegrationCard>
 
       {/* ── Card 2 — Instagram (IGAA via Instagram Login) ────────────────── */}

@@ -60,6 +60,7 @@ enum AlertType {
   snippet_error
   meta_token_expiry
   weekly_summary
+  budget_threshold
 }
 
 enum TokenAuditAction {
@@ -102,6 +103,15 @@ model Agency {
   // Set by a super admin to suspend the agency, independent of Razorpay billing.
   // When set, access to the agency dashboard is blocked (see the agency layout).
   suspendedAt        DateTime?
+  // ── Budget-alert notification settings (see lib/budget-alerts.ts) ──
+  // One Slack Incoming Webhook per agency; all budget alerts post to that one
+  // channel. Email alerts go to alertEmailAddress (defaults to the owner email).
+  slackWebhookUrl    String?
+  slackEnabled       Boolean   @default(false)
+  slackLastTestAt    DateTime?
+  slackLastTestStatus String? // "success" | an error message (for the UI)
+  alertEmailAddress  String?
+  emailAlertsEnabled Boolean   @default(false)
   createdAt          DateTime @default(now())
 
   members           AgencyMember[]
@@ -130,6 +140,8 @@ model Agency {
   adCampaignSnapshots  AdCampaignSnapshot[]
   campaignPerformances CampaignPerformance[]
   guideDownloads       GuideDownload[]
+  hotelShareAccesses   HotelShareAccess[]
+  budgetAlerts         BudgetAlert[]
 }
 
 model AgencyMember {
@@ -166,10 +178,35 @@ model HotelClient {
   // Meta ad account (act_<id>) mapped to this hotel on /agency/settings, so its
   // dashboard can pull ad spend/ROI for the right account. Nullable until mapped.
   metaAdAccountId    String?
+  // ── Monthly ad-budget tracking (see lib/budget.ts) ──
+  // monthlyAdBudget is stored in PAISE (₹2,00,000 = 20000000) so spend↔budget
+  // maths stays integer. budgetResetDay (1–28) is the day of month the budget
+  // window restarts on. Threshold alerts (80/90/100%) fire once per BudgetAlert.
+  monthlyAdBudget        Int?
+  budgetTrackingEnabled  Boolean        @default(false)
+  budgetResetDay         Int            @default(1)
+  // Ad accounts previously mapped to this hotel (oldest→newest), recorded when
+  // the agency switches the hotel to a DIFFERENT account. Their old AdSnapshot/
+  // campaign data is archived (kept, hidden) and listed in Connection History.
+  // AGENCY-ONLY — never exposed on hotel-facing views.
+  previousAdAccountIds String[]       @default([])
+  // When the CURRENT Meta ad account was mapped to this hotel. Drives the
+  // "sync in progress" fresh-start state right after an account change.
+  metaAccountConnectedAt DateTime?
   lastEventAt        DateTime?
   // When the Meta ad sync (/api/meta/sync) last wrote AdSnapshots for this hotel.
   // Null until the first successful sync. Surfaced as "last sync" on the dashboard.
   lastSyncedAt       DateTime?
+  // ── Hotel-owner share link (public, read-only dashboard at /h/<shareToken>) ──
+  // A persistent, unguessable 256-bit token (crypto.randomBytes(32).hex). Null
+  // until the agency generates one. Regenerating overwrites it (the old URL dies);
+  // revoking flips shareTokenRevoked so the URL 404s without discarding the token.
+  // showAdSpendToHotel gates whether spend/True-ROAS figures are revealed to the
+  // hotel — default OFF, because most agencies hide their ad spend from clients.
+  shareToken          String?         @unique
+  shareTokenCreatedAt DateTime?
+  shareTokenRevoked   Boolean         @default(false)
+  showAdSpendToHotel  Boolean         @default(false)
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -192,8 +229,29 @@ model HotelClient {
   adCampaignSnapshots  AdCampaignSnapshot[]
   campaignPerformances CampaignPerformance[]
   guideDownloads       GuideDownload[]
+  shareAccesses        HotelShareAccess[]
+  budgetAlerts         BudgetAlert[]
 
   @@index([agencyId])
+}
+
+// Audit trail for every view of a hotel's public /h/<shareToken> dashboard, so
+// the agency can see "your hotel viewed the dashboard 4 times this week". The
+// visitor IP is stored ONLY as a salted SHA-256 hash (ipHash) — never the raw
+// address — for privacy. Multi-tenant: carries agencyId like every other table.
+model HotelShareAccess {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  accessedAt    DateTime @default(now())
+  ipHash        String? // salted SHA-256 of the client IP; never the raw IP
+  userAgent     String?
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([hotelClientId, accessedAt]) // "views in last 30 days" + "last viewed"
 }
 
 model ContentPiece {
@@ -316,13 +374,24 @@ model AdSnapshot {
   pixelPurchases Int
   pixelLeads     Int
   pixelPageViews Int
+  // ── Ad-account-change archiving (see lib/meta-archive.ts) ──
+  // When an agency re-maps a hotel to a DIFFERENT Meta ad account, the old
+  // account's rows are archived (not deleted) so the dashboard shows only the
+  // new account's data. Dashboard reads filter archived = false by default.
+  archived       Boolean   @default(false)
+  archivedAt     DateTime?
+  archivedReason String? // "account_changed" | "manual"
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
-  @@unique([hotelClientId, date]) // one snapshot per hotel per day
+  // One snapshot per hotel per AD ACCOUNT per day. metaAccountId is part of the
+  // key so an archived old-account row and a fresh new-account row can coexist
+  // for the same date (the old data is kept, just hidden).
+  @@unique([hotelClientId, metaAccountId, date])
   @@index([agencyId])
   @@index([hotelClientId])
+  @@index([hotelClientId, archived]) // dashboard reads filter on archived
 }
 
 // Campaign-level Meta insights — one row per hotel per campaign per day
@@ -332,6 +401,10 @@ model AdCampaignSnapshot {
   id             String   @id @default(cuid())
   agencyId       String
   hotelClientId  String
+  // Which Meta ad account this campaign belongs to. Nullable for rows written
+  // before account-change archiving existed (backfilled by the migration from
+  // the hotel's then-current mapping). Used to archive/restore by account.
+  metaAccountId  String?
   metaCampaignId String
   campaignName   String
   date           DateTime @db.Date
@@ -342,6 +415,10 @@ model AdCampaignSnapshot {
   conversions    Int
   // Meta-reported purchase value for this campaign-day.
   purchaseValue  Decimal  @db.Decimal(12, 2)
+  // Account-change archiving (see lib/meta-archive.ts + AdSnapshot above).
+  archived       Boolean   @default(false)
+  archivedAt     DateTime?
+  archivedReason String?
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
@@ -349,6 +426,7 @@ model AdCampaignSnapshot {
   @@unique([hotelClientId, metaCampaignId, date]) // idempotent re-sync per campaign-day
   @@index([agencyId])
   @@index([hotelClientId, date])
+  @@index([hotelClientId, archived])
 }
 
 // Materialized campaign↔booking attribution, refreshed after every Meta sync
@@ -374,14 +452,49 @@ model CampaignPerformance {
   // ((realBookings − metaReportedConversions) / metaReportedConversions) × 100.
   // Null when Meta reported zero conversions.
   variancePct             Float?
+  // Which Meta ad account these numbers came from (nullable; backfilled by the
+  // migration). Lets the materialized attribution be archived/restored per
+  // account on an account change, alongside AdSnapshot/AdCampaignSnapshot.
+  metaAccountId           String?
+  archived                Boolean   @default(false)
+  archivedAt              DateTime?
+  archivedReason          String?
   computedAt              DateTime @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
-  @@unique([hotelClientId, date, campaignKey])
+  // metaAccountId is part of the key so an archived old-account row and a fresh
+  // new-account row with the same campaign name on the same date don't collide
+  // (campaignKey is a name, unlike AdCampaignSnapshot's globally-unique id).
+  @@unique([hotelClientId, date, campaignKey, metaAccountId], map: "CampaignPerformance_perAccount_key")
   @@index([agencyId])
   @@index([hotelClientId, date])
+  @@index([hotelClientId, archived])
+}
+
+// One row per (hotel, threshold, budget-month) the moment a monthly ad-budget
+// threshold (80/90/100%) is first crossed — the dedup guard so each threshold
+// alerts at most once per month. notificationsSent records which of the three
+// channels (in-app / email / slack) delivered. Multi-tenant: carries agencyId.
+model BudgetAlert {
+  id                String   @id @default(cuid())
+  agencyId          String
+  hotelClientId     String
+  threshold         Int // 80 | 90 | 100
+  monthKey          String // budget-month start, "YYYY-MM"
+  spendAtTrigger    Int // paise
+  budgetAtTrigger   Int // paise
+  triggeredAt       DateTime  @default(now())
+  acknowledgedAt    DateTime?
+  notificationsSent Json // { inApp: bool, email: bool, slack: bool }
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, threshold, monthKey]) // fire once per threshold per month
+  @@index([agencyId])
+  @@index([hotelClientId])
 }
 
 model CouponRedemption {

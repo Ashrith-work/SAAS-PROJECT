@@ -8,6 +8,7 @@ import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { validateToken } from "@/lib/meta";
 import { queueBackfillJob } from "@/lib/backfill";
 import { syncHotelAds } from "@/lib/meta-sync";
+import { archiveOnAccountChange } from "@/lib/meta-archive";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
 // The MetaToken.tokenExpiresAt column is non-null, so we store this far-future
@@ -114,6 +115,38 @@ export async function disconnectMetaToken(): Promise<void> {
   revalidatePath("/agency/settings");
 }
 
+export type NotificationState = { error: string | null; ok: boolean };
+
+/**
+ * Saves the agency's budget-alert notification settings (email recipient + Slack
+ * webhook + the two enable toggles). The Slack webhook is also saved here; the
+ * "Test connection" button additionally verifies it via /api/agency/slack/test.
+ */
+export async function saveNotificationSettings(
+  _prev: NotificationState,
+  formData: FormData,
+): Promise<NotificationState> {
+  const member = await getCurrentMember();
+  if (!member) return { error: "Your session has expired — please sign in again.", ok: false };
+
+  const alertEmailAddress = ((formData.get("alertEmailAddress") as string | null) ?? "").trim() || null;
+  const emailAlertsEnabled = formData.get("emailAlertsEnabled") === "on";
+  const slackEnabled = formData.get("slackEnabled") === "on";
+  const slackWebhookUrl = ((formData.get("slackWebhookUrl") as string | null) ?? "").trim() || null;
+
+  if (alertEmailAddress && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmailAddress)) {
+    return { error: "That alert email address doesn't look valid.", ok: false };
+  }
+
+  await agencyScoped(prisma.agency).update({
+    where: { id: member.agencyId },
+    data: { alertEmailAddress, emailAlertsEnabled, slackEnabled, slackWebhookUrl },
+  });
+
+  revalidatePath("/agency/settings");
+  return { error: null, ok: true };
+}
+
 export type MapAccountState = { error: string | null; ok: boolean };
 
 /**
@@ -136,13 +169,48 @@ export async function mapAdAccount(
   // Multi-tenant guard: never trust a client-supplied hotel id.
   const hotel = await agencyScoped(prisma.hotelClient).findFirst({
     where: { id: hotelId },
-    select: { id: true },
+    select: { id: true, metaAdAccountId: true, previousAdAccountIds: true },
   });
   if (!hotel) return { error: "That hotel client wasn't found for your agency.", ok: false };
 
+  const newId = adAccountId || null;
+  const oldId = hotel.metaAdAccountId;
+  const accountChanged = newId !== oldId;
+  // A switch between two DIFFERENT real accounts (not first-time mapping, not
+  // unmapping, not a same-account re-save) triggers archiving of the old data.
+  const switchedAccounts = accountChanged && !!oldId && !!newId;
+
+  let previousAdAccountIds = hotel.previousAdAccountIds;
+  if (switchedAccounts) {
+    // Archive the old account's rows + restore any prior data for the new one.
+    // Best-effort: a hiccup here must not block re-mapping the account.
+    try {
+      await archiveOnAccountChange({
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        oldAccountId: oldId!,
+        newAccountId: newId!,
+      });
+    } catch (err) {
+      console.error("[META-RECONNECT] archive failed for hotel", hotel.id, err);
+    }
+    // Record the old account in history (dedup); drop the new one if it was a
+    // previous account being reconnected (its data is live again now).
+    previousAdAccountIds = [...new Set([...previousAdAccountIds, oldId!])].filter(
+      (id) => id !== newId,
+    );
+  }
+
   await agencyScoped(prisma.hotelClient).update({
     where: { id: hotel.id },
-    data: { metaAdAccountId: adAccountId || null },
+    data: {
+      metaAdAccountId: newId,
+      previousAdAccountIds,
+      // Stamp the connection time only when the mapped account actually changes
+      // to a real account — a same-account re-save must not reset the
+      // "sync in progress" fresh-start window.
+      ...(newId && accountChanged ? { metaAccountConnectedAt: new Date() } : {}),
+    },
   });
 
   // Mapping an ad account is what makes a hotel syncable. Two-step so its

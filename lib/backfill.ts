@@ -158,20 +158,22 @@ export function chunkRanges(gap: Gap, newestFirst = false): { since: string; unt
 
 async function lastAdDate(agencyId: string, hotelClientId: string): Promise<Date | null> {
   const row = await prisma.adSnapshot.findFirst({
-    where: { agencyId, hotelClientId },
+    // Only the current account's (non-archived) data defines what's already
+    // synced — after an account change we must backfill the new account's history.
+    where: { agencyId, hotelClientId, archived: false },
     orderBy: { date: "desc" },
     select: { date: true },
   });
   return row?.date ?? null;
 }
 
-/** Earliest + latest stored AdSnapshot dates for a hotel (null when none). */
+/** Earliest + latest stored (non-archived) AdSnapshot dates for a hotel. */
 async function adDateBounds(
   agencyId: string,
   hotelClientId: string,
 ): Promise<{ first: Date | null; last: Date | null }> {
   const agg = await prisma.adSnapshot.aggregate({
-    where: { agencyId, hotelClientId },
+    where: { agencyId, hotelClientId, archived: false },
     _min: { date: true },
     _max: { date: true },
   });
@@ -304,6 +306,7 @@ async function backfillCampaigns(
           if (!row.date) continue;
           const date = new Date(`${row.date}T00:00:00.000Z`);
           const data = {
+            metaAccountId: accountId,
             campaignName: row.campaignName,
             spend: row.spend.toFixed(2),
             impressions: row.impressions,
@@ -413,7 +416,13 @@ async function backfillAds(
               pixelPageViews: row.pixelPageViews,
             };
             await prisma.adSnapshot.upsert({
-              where: { hotelClientId_date: { hotelClientId: hotel.id, date } },
+              where: {
+                hotelClientId_metaAccountId_date: {
+                  hotelClientId: hotel.id,
+                  metaAccountId: accountId,
+                  date,
+                },
+              },
               create: { agencyId, hotelClientId: hotel.id, date, ...data },
               update: data,
             });

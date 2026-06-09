@@ -101,7 +101,13 @@ export async function syncHotelAds(
         pixelPageViews: row.pixelPageViews,
       };
       await prisma.adSnapshot.upsert({
-        where: { hotelClientId_date: { hotelClientId: hotel.id, date } },
+        where: {
+          hotelClientId_metaAccountId_date: {
+            hotelClientId: hotel.id,
+            metaAccountId: hotel.metaAdAccountId,
+            date,
+          },
+        },
         create: { agencyId: hotel.agencyId, hotelClientId: hotel.id, date, ...data },
         update: data,
       });
@@ -118,6 +124,7 @@ export async function syncHotelAds(
     for (const row of campaignRows) {
       const date = new Date(`${row.date}T00:00:00.000Z`);
       const data = {
+        metaAccountId: hotel.metaAdAccountId,
         campaignName: row.campaignName,
         spend: row.spend.toFixed(2),
         impressions: row.impressions,

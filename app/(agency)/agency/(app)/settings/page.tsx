@@ -9,6 +9,19 @@ import { MetaTokenForm } from "./MetaTokenForm";
 import { disconnectMetaToken } from "./actions";
 import { getActiveBackfill } from "./backfill-actions";
 import { BackfillProgress } from "./BackfillProgress";
+import { NotificationSettings } from "./NotificationSettings";
+
+const DAY_MS = 86_400_000;
+
+// Server-side relative time (avoids Date.now() in a client render).
+function relativeAgo(d: Date, now: Date): string {
+  const mins = Math.floor((now.getTime() - d.getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+  return `${Math.floor(hrs / 24)} day${Math.floor(hrs / 24) === 1 ? "" : "s"} ago`;
+}
 
 function formatExpiry(d: Date): string {
   // The save action stores a year-2999 sentinel for non-expiring tokens.
@@ -21,6 +34,26 @@ export default async function SettingsPage() {
   if (!member) redirect("/agency/onboarding");
 
   const backfillJob = await getActiveBackfill();
+
+  // Notification settings (budget alerts: email + Slack).
+  const notif = await agencyScoped(prisma.agency).findFirst({
+    select: {
+      email: true,
+      alertEmailAddress: true,
+      emailAlertsEnabled: true,
+      slackEnabled: true,
+      slackWebhookUrl: true,
+      slackLastTestAt: true,
+      slackLastTestStatus: true,
+    },
+  });
+  const now = new Date();
+  const lastTest =
+    notif?.slackLastTestAt && notif.slackLastTestStatus
+      ? notif.slackLastTestStatus === "success"
+        ? { ok: true, label: `Success — ${relativeAgo(notif.slackLastTestAt, now)}` }
+        : { ok: false, label: `${notif.slackLastTestStatus} (${relativeAgo(notif.slackLastTestAt, now)})` }
+      : null;
 
   // Multi-tenant: agencyScoped restricts to this agency's Meta connection.
   const token = await agencyScoped(prisma.metaToken).findFirst({
@@ -160,6 +193,26 @@ export default async function SettingsPage() {
           </p>
         </section>
       )}
+
+      {/* ── Notifications (budget alerts via email + Slack) ───────────────── */}
+      <section className="rounded-xl border border-line p-6">
+        <h2 className="font-medium">Notifications</h2>
+        <p className="mt-1 text-sm text-ink-tertiary">
+          Where to send ad-budget alerts when a hotel crosses 80%, 90%, or 100% of
+          its monthly budget. Set per-hotel budgets on each hotel&apos;s Integrations
+          page.
+        </p>
+        <div className="mt-5">
+          <NotificationSettings
+            ownerEmail={notif?.email ?? ""}
+            alertEmailAddress={notif?.alertEmailAddress ?? ""}
+            emailAlertsEnabled={notif?.emailAlertsEnabled ?? false}
+            slackEnabled={notif?.slackEnabled ?? false}
+            slackWebhookUrl={notif?.slackWebhookUrl ?? ""}
+            lastTest={lastTest}
+          />
+        </div>
+      </section>
     </div>
   );
 }

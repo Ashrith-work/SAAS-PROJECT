@@ -291,9 +291,18 @@ export async function refreshCampaignPerformance(
   const dayStart = new Date(`${ymd(since)}T00:00:00.000Z`);
   const dayEnd = new Date(`${ymd(until)}T23:59:59.999Z`);
 
+  // The ad account currently mapped to this hotel — stamped onto the rows we
+  // write so the materialized attribution can be archived/restored by account.
+  const hotel = await prisma.hotelClient.findUnique({
+    where: { id: hotelClientId },
+    select: { metaAdAccountId: true },
+  });
+  const metaAccountId = hotel?.metaAdAccountId ?? null;
+
   const [snapRows, conversionRows, visitRows] = await Promise.all([
     prisma.adCampaignSnapshot.findMany({
-      where: { agencyId, hotelClientId, date: { gte: dayStart, lte: dayEnd } },
+      // Only the CURRENT account's (non-archived) campaign-days feed attribution.
+      where: { agencyId, hotelClientId, archived: false, date: { gte: dayStart, lte: dayEnd } },
       select: {
         date: true,
         metaCampaignId: true,
@@ -362,13 +371,16 @@ export async function refreshCampaignPerformance(
   // Year-long backfills replace thousands of rows — Prisma's default 5s
   // transaction timeout is too tight for that, so give it room explicitly.
   await prisma.$transaction([
+    // Replace only the ACTIVE rows in the window — archived old-account rows are
+    // left untouched (they're hidden from the dashboard and recoverable).
     prisma.campaignPerformance.deleteMany({
-      where: { agencyId, hotelClientId, date: { gte: dayStart, lte: dayEnd } },
+      where: { agencyId, hotelClientId, archived: false, date: { gte: dayStart, lte: dayEnd } },
     }),
     prisma.campaignPerformance.createMany({
       data: rows.map((r) => ({
         agencyId,
         hotelClientId,
+        metaAccountId,
         date: new Date(`${r.date}T00:00:00.000Z`),
         campaignKey: r.campaignKey,
         campaignName: r.campaignName,

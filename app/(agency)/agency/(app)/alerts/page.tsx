@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   snippet_error: "Snippet error",
   meta_token_expiry: "Meta token expiry",
   weekly_summary: "Weekly summary",
+  budget_threshold: "Budget alert",
 };
 
 const SEVERITY_CLS: Record<string, string> = {

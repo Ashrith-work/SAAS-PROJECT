@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       },
     }),
     agencyScoped(prisma.adSnapshot).findMany({
-      where: { hotelClientId: hotel.id, date: { gte: range.since, lte: range.until } },
+      where: { hotelClientId: hotel.id, archived: false, date: { gte: range.since, lte: range.until } },
       orderBy: { date: "asc" },
       select: { date: true, spend: true, conversions: true, roas: true },
     }),

@@ -514,7 +514,7 @@ async function checkWeeklySummary(
     }),
     prisma.adSnapshot.groupBy({
       by: ["hotelClientId"],
-      where: { agencyId: agency.id, date: { gte: weekAgo } },
+      where: { agencyId: agency.id, archived: false, date: { gte: weekAgo } },
       _sum: { spend: true },
     }),
   ]);

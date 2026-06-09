@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       _sum: { conversionValue: true },
     }),
     agencyScoped(prisma.adSnapshot).aggregate({
-      where: { date: { gte: since } },
+      where: { archived: false, date: { gte: since } },
       _sum: { spend: true },
     }),
     // Agency is the tenant root — findFirst is scoped to the caller's own id.

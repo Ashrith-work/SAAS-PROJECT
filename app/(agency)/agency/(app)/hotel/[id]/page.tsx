@@ -55,7 +55,10 @@ import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
 import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
-import { ShareLinkManager } from "./ShareLinkManager";
+import { HotelShareManager } from "./HotelShareManager";
+import { hotelShareUrl } from "@/lib/hotel-share";
+import { getBudgetStatus } from "@/lib/budget";
+import { BudgetStatusCard } from "@/components/dashboard/BudgetStatusCard";
 import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 
@@ -160,10 +163,19 @@ export default async function HotelDashboardPage({
       id: true,
       name: true,
       websiteUrl: true,
+      contactEmail: true,
       metaAdAccountId: true,
+      metaAccountConnectedAt: true,
+      budgetTrackingEnabled: true,
+      monthlyAdBudget: true,
+      budgetResetDay: true,
       snippetStatus: true,
       lastEventAt: true,
       lastSyncedAt: true,
+      shareToken: true,
+      shareTokenCreatedAt: true,
+      shareTokenRevoked: true,
+      showAdSpendToHotel: true,
     },
   });
   if (!hotel) notFound();
@@ -183,32 +195,55 @@ export default async function HotelDashboardPage({
       ? 0
       : await missingAdDays(member.agencyId, hotel.id);
 
-  // Latest non-revoked public share link for this hotel (may be expired — the
-  // manager shows that so the agency can regenerate). Scoped to this agency.
-  const shareLinkRow = await agencyScoped(prisma.shareLink).findFirst({
-    where: { hotelClientId: hotel.id, revokedAt: null },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      token: true,
-      passwordHash: true,
-      expiresAt: true,
-      viewCount: true,
-      lastViewedAt: true,
-    },
+  // "Fresh start" after an ad-account change: the new account is mapped (within
+  // the last 24h) but no non-archived AdSnapshot has landed yet. Show a calm
+  // "sync in progress" note instead of an empty/zero Paid Ads section.
+  const liveAdSnapshotCount = hotel.metaAdAccountId
+    ? await agencyScoped(prisma.adSnapshot).count({
+        where: { hotelClientId: hotel.id, archived: false },
+      })
+    : 0;
+  const metaFreshStart =
+    !!hotel.metaAdAccountId &&
+    liveAdSnapshotCount === 0 &&
+    hotel.metaAccountConnectedAt != null &&
+    Date.now() - hotel.metaAccountConnectedAt.getTime() < DAY_MS;
+
+  // Budget status for the dashboard card (null when tracking is off → card hidden).
+  const budgetStatus = await getBudgetStatus({
+    id: hotel.id,
+    agencyId: member.agencyId,
+    budgetTrackingEnabled: hotel.budgetTrackingEnabled,
+    monthlyAdBudget: hotel.monthlyAdBudget,
+    budgetResetDay: hotel.budgetResetDay,
   });
-  const activeLink = shareLinkRow
-    ? {
-        id: shareLinkRow.id,
-        token: shareLinkRow.token,
-        hasPassword: shareLinkRow.passwordHash != null,
-        expiresAt: shareLinkRow.expiresAt.toISOString(),
-        expired: shareLinkRow.expiresAt < new Date(),
-        viewCount: shareLinkRow.viewCount,
-        lastViewedAt: shareLinkRow.lastViewedAt?.toISOString() ?? null,
-      }
-    : null;
-  const shareBaseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+
+  // Hotel-owner share link + its access audit trail (last viewed / views in the
+  // last 30 days), so the agency can see engagement and get a nudge to follow up
+  // when the hotel hasn't looked in a while. All scoped to this agency.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * DAY_MS);
+  const [lastAccess, shareViews30d, shareViewsTotal] = await Promise.all([
+    agencyScoped(prisma.hotelShareAccess).findFirst({
+      where: { hotelClientId: hotel.id },
+      orderBy: { accessedAt: "desc" },
+      select: { accessedAt: true },
+    }),
+    agencyScoped(prisma.hotelShareAccess).count({
+      where: { hotelClientId: hotel.id, accessedAt: { gte: thirtyDaysAgo } },
+    }),
+    agencyScoped(prisma.hotelShareAccess).count({
+      where: { hotelClientId: hotel.id },
+    }),
+  ]);
+  const shareUrl = hotel.shareToken ? hotelShareUrl(hotel.shareToken) : null;
+  const shareAccess = {
+    lastViewedAt: lastAccess?.accessedAt.toISOString() ?? null,
+    daysSinceLastView: lastAccess
+      ? Math.floor((Date.now() - lastAccess.accessedAt.getTime()) / DAY_MS)
+      : null,
+    views30d: shareViews30d,
+    totalViews: shareViewsTotal,
+  };
 
   const sp = await searchParams;
   const one = (v: string | string[] | undefined) =>
@@ -261,6 +296,7 @@ export default async function HotelDashboardPage({
     agencyScoped(prisma.adSnapshot).findMany({
       where: {
         hotelClientId: hotel.id,
+        archived: false,
         date: { gte: range.since, lte: range.until },
       },
       orderBy: { date: "asc" },
@@ -296,6 +332,7 @@ export default async function HotelDashboardPage({
         agencyScoped(prisma.campaignPerformance).findMany({
           where: {
             hotelClientId: hotel.id,
+            archived: false,
             date: { gte: range.since, lte: range.until },
           },
           select: {
@@ -310,6 +347,7 @@ export default async function HotelDashboardPage({
         agencyScoped(prisma.adCampaignSnapshot).findMany({
           where: {
             hotelClientId: hotel.id,
+            archived: false,
             date: { gte: range.since, lte: range.until },
           },
           select: {
@@ -418,6 +456,7 @@ export default async function HotelDashboardPage({
   const metaCampaignSnaps = await agencyScoped(prisma.adCampaignSnapshot).findMany({
     where: {
       hotelClientId: hotel.id,
+      archived: false,
       date: { gte: range.since, lte: range.until },
     },
     select: {
@@ -449,7 +488,7 @@ export default async function HotelDashboardPage({
           select: { conversionValue: true },
         }),
     agencyScoped(prisma.adSnapshot).aggregate({
-      where: { hotelClientId: hotel.id, date: { gte: prevSince, lt: prevUntil } },
+      where: { hotelClientId: hotel.id, archived: false, date: { gte: prevSince, lt: prevUntil } },
       _sum: { spend: true },
     }),
   ]);
@@ -1253,6 +1292,20 @@ export default async function HotelDashboardPage({
         </Link>
       )}
 
+      {/* Budget Status card (only when budget tracking is enabled) */}
+      {budgetStatus && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <BudgetStatusCard
+            status={{
+              spendPaise: budgetStatus.spendPaise,
+              budgetPaise: budgetStatus.budgetPaise,
+              pct: budgetStatus.pct,
+              state: budgetStatus.state,
+            }}
+          />
+        </div>
+      )}
+
       {/* Section 1 — Mission control: KPI strip, Meta-vs-reality hero, channels */}
       {!pixelMode && (
         <div className="space-y-6">
@@ -1281,6 +1334,15 @@ export default async function HotelDashboardPage({
             : "No Meta ad account mapped — map one in Settings to sync ad data."
         }
       >
+        {metaFreshStart && (
+          <div className="border-b border-line bg-info/10 px-4 py-3 text-sm text-ink-secondary">
+            <p className="font-medium text-ink">Meta sync in progress.</p>
+            <p className="mt-0.5">
+              Data from your new ad account will appear within 24 hours, after the
+              next sync at 2am UTC.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-4">
           <div className="bg-card p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
@@ -1862,15 +1924,21 @@ export default async function HotelDashboardPage({
         )}
       </SectionCard>
 
-      {/* Shareable read-only link for the hotel owner */}
+      {/* Shareable read-only dashboard link for the hotel owner */}
       <SectionCard
-        title="Share with the hotel"
-        subtitle="A private, read-only link the hotel owner can open on their phone — no login required."
+        title="Share with hotel"
+        subtitle="A private, read-only dashboard the hotel owner can open on any browser — no login required. They only ever see this hotel's data."
       >
-        <ShareLinkManager
+        <HotelShareManager
           hotelId={hotel.id}
-          shareBaseUrl={shareBaseUrl}
-          link={activeLink}
+          hotelName={hotel.name}
+          agencyName={member.agency.name}
+          contactEmail={hotel.contactEmail}
+          shareUrl={shareUrl}
+          createdAt={hotel.shareTokenCreatedAt?.toISOString() ?? null}
+          revoked={hotel.shareTokenRevoked}
+          showAdSpend={hotel.showAdSpendToHotel}
+          access={shareAccess}
         />
       </SectionCard>
     </div>

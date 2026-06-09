@@ -21,6 +21,10 @@ const isPublicRoute = createRouteMatcher([
   // Public, UUID-addressed hotel report links. No login: access is gated by the
   // unguessable token (and an optional password) inside the route itself.
   "/share(.*)",
+  // Public, token-addressed hotel-owner dashboard (/h/<shareToken>). No login:
+  // access is gated entirely by the unguessable 256-bit token inside the route,
+  // which also enforces hotel-level data isolation.
+  "/h(.*)",
   // The tracking endpoints are called cross-origin by the snippet on hotel
   // websites with no auth — they must stay public (scoped by the public siteId).
   "/api/track(.*)",
@@ -40,6 +44,8 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks/razorpay(.*)",
   // Renewal-reminder cron, gated by CRON_SECRET inside the route.
   "/api/billing/renewal-reminders(.*)",
+  // Daily budget-threshold alert cron, gated by CRON_SECRET inside the route.
+  "/api/budget/check(.*)",
 ]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);

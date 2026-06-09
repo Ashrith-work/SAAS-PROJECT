@@ -164,11 +164,11 @@ export default async function AgencyDashboardPage() {
           _sum: { conversionValue: true },
         }),
     agencyScoped(prisma.adSnapshot).aggregate({
-      where: { date: { gte: since } },
+      where: { archived: false, date: { gte: since } },
       _sum: { spend: true },
     }),
     agencyScoped(prisma.adSnapshot).aggregate({
-      where: { date: { gte: priorSince, lt: since } },
+      where: { archived: false, date: { gte: priorSince, lt: since } },
       _sum: { spend: true },
     }),
     agencyScoped(prisma.hotelClient).findMany({
