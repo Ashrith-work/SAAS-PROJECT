@@ -29,6 +29,11 @@ const SECRET_SOURCES = {
   meta_ads: { table: "MetaToken", column: "encryptedToken" },
   instagram: { table: "InstagramConnection", column: "encryptedToken" },
   ga_credentials: { table: "GoogleAnalyticsConnection", column: "encryptedCredentials" },
+  // GA4 OAuth: two ciphertext columns on one row (access + refresh tokens).
+  // NOTE: if TOKEN_SECRET_ACCESS=definer is ever enabled, add GA4Connection's
+  // columns to the app_read_encrypted_secret() function too.
+  ga4_access: { table: "Ga4Connection", column: "accessToken" },
+  ga4_refresh: { table: "Ga4Connection", column: "refreshToken" },
 } as const;
 
 export type SecretKind = keyof typeof SECRET_SOURCES;

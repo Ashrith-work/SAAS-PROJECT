@@ -53,12 +53,14 @@ import {
 } from "@/lib/campaign-attribution";
 import { SpendChart } from "@/components/report/SpendChart";
 import { FollowerChart } from "@/components/report/FollowerChart";
-import { SourcePieChart, type SourceSlice } from "@/components/report/SourcePieChart";
+import { type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
 import { HotelShareManager } from "./HotelShareManager";
 import { hotelShareUrl } from "@/lib/hotel-share";
 import { getBudgetStatus } from "@/lib/budget";
 import { BudgetStatusCard } from "@/components/dashboard/BudgetStatusCard";
+import { loadGa4Dashboard } from "@/lib/ga4-dashboard";
+import { Ga4WebsiteTraffic } from "@/components/dashboard/Ga4WebsiteTraffic";
 import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 
@@ -691,8 +693,30 @@ export default async function HotelDashboardPage({
     typeof hotelTrackVisitsAgg === "number" ? hotelTrackVisitsAgg : 0;
   const contentSharePct =
     gaTotals.sessions > 0 ? hotelTrackTaggedVisits / gaTotals.sessions : null;
-  const gaLastUpdated = gaConnection?.lastSyncedAt ?? null;
-  const hasGaData = gaSnaps.length > 0 || gaSources.length > 0;
+
+  // ── Website Traffic (GA4 OAuth) section + cross-validation ──
+  // Total distinct snippet visit-sessions over the range (null in pixel mode),
+  // for the GA4-vs-HotelTrack validation card.
+  const trackedSessions = pixelMode
+    ? null
+    : (
+        await agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "visit",
+            createdAt: { gte: range.since, lte: range.until },
+          },
+          select: { sessionId: true },
+          distinct: ["sessionId"],
+        })
+      ).length;
+  const ga4Dashboard = await loadGa4Dashboard({
+    agencyId: member.agencyId,
+    hotelId: hotel.id,
+    since: range.since,
+    until: range.until,
+    trackedSessions,
+  });
 
   const hasSocialData =
     socialSnaps.length > 0 || topPosts.length > 0 || recentStories.length > 0;
@@ -1840,89 +1864,8 @@ export default async function HotelDashboardPage({
         )}
       </SectionCard>
 
-      {/* Section 6 — Total Website Performance (Google Analytics 4) */}
-      <SectionCard
-        title="Total website performance (from Google Analytics)"
-        subtitle={
-          gaConnection?.propertyId
-            ? `GA4 property ${gaConnection.propertyId}`
-            : "Pulls every visit, not just the UTM-tagged ones — connect GA in Setup."
-        }
-      >
-        {!gaConnected ? (
-          <div className="px-4 py-8 text-center">
-            <p className="text-sm text-ink-tertiary">
-              No Google Analytics data yet.
-            </p>
-            <Link
-              href={`/agency/hotel/${hotel.id}/integrations`}
-              className="mt-2 inline-block text-sm font-medium text-ink-secondary underline"
-            >
-              Connect this hotel&apos;s GA4 in Setup →
-            </Link>
-          </div>
-        ) : !hasGaData ? (
-          <div className="px-4 py-8 text-center">
-            <p className="text-sm text-ink-tertiary">
-              GA connected — run a sync from Setup to pull metrics for this date
-              range.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-5 p-4">
-            <p className="text-xs text-ink-tertiary">
-              {gaLastUpdated
-                ? `Last updated ${new Date(gaLastUpdated).toLocaleString()} · `
-                : ""}
-              Refreshes daily via /api/ga/sync.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <KpiCard label="Total users" value={formatNumber(gaTotals.totalUsers)} />
-              <KpiCard label="Sessions" value={formatNumber(gaTotals.sessions)} />
-              <KpiCard label="New users" value={formatNumber(gaTotals.newUsers)} />
-              <KpiCard
-                label="Bounce rate"
-                value={formatPercent(gaBounceRate)}
-                hint="Weighted by sessions"
-              />
-              <KpiCard
-                label="Avg session"
-                value={`${Math.round(gaAvgSessionDuration)}s`}
-                hint="Duration"
-              />
-              <KpiCard
-                label="Conversions"
-                value={formatNumber(gaTotals.conversions)}
-              />
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
-                Traffic by source
-              </p>
-              <SourcePieChart data={gaSourceSlices} />
-            </div>
-
-            {!pixelMode && (
-              <div className="rounded-lg border-l-4 border-info bg-info/10 p-4 text-sm text-ink-secondary">
-                <p className="font-medium">
-                  Of {formatNumber(gaTotals.sessions)} total website visits,{" "}
-                  {formatNumber(hotelTrackTaggedVisits)} came from our content
-                  {contentSharePct != null && (
-                    <> ({formatPercent(contentSharePct)})</>
-                  )}
-                  .
-                </p>
-                <p className="mt-1 text-xs text-ink-tertiary">
-                  Comparing HotelTrack&apos;s UTM-tagged snippet visits against
-                  GA&apos;s total sessions for this date range.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </SectionCard>
+      {/* Section 6 — Website Traffic (Google Analytics 4, OAuth) */}
+      <Ga4WebsiteTraffic data={ga4Dashboard} hotelId={hotel.id} />
 
       {/* Shareable read-only dashboard link for the hotel owner */}
       <SectionCard

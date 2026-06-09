@@ -24,6 +24,10 @@
     {
       "path": "/api/budget/check",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/ga4/sync",
+      "schedule": "30 4 * * *"
     }
   ]
 }

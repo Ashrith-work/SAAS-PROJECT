@@ -4,8 +4,8 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { isPixelMode } from "@/lib/tracking-mode";
-import { planHasGa4 } from "@/lib/plans";
 import { getTokenForApiCall } from "@/lib/token-access";
+import { listProperties } from "@/lib/ga4";
 import { formatNumber } from "@/lib/format";
 import { getAdAccounts, MetaAuthError, type AdAccount } from "@/lib/meta";
 import {
@@ -13,7 +13,6 @@ import {
   snippetTone,
   metaState,
   instagramState,
-  gaState,
   tokenTone,
   gaTone,
   summarize,
@@ -34,8 +33,7 @@ import { BudgetTracking } from "./BudgetTracking";
 import { getBudgetStatus, rupeesFromPaise } from "@/lib/budget";
 import { InstagramActions } from "./InstagramActions";
 import { SendGuideModal } from "./SendGuideModal";
-import { GoogleAnalyticsConnect } from "./GoogleAnalyticsConnect";
-import { GoogleAnalyticsActions } from "./GoogleAnalyticsActions";
+import { Ga4Card, type Ga4CardStatus } from "./Ga4Card";
 import { getActiveBackfill } from "@/app/(agency)/agency/(app)/settings/backfill-actions";
 import { BackfillProgress } from "@/app/(agency)/agency/(app)/settings/BackfillProgress";
 
@@ -73,6 +71,17 @@ const IG_ERROR_MESSAGES: Record<string, string> = {
     "Instagram access was declined. Click “Log in with Instagram” to try again.",
   exchange_failed:
     "Instagram sign-in didn't complete — the token exchange failed. Please try again in a moment.",
+};
+
+// User-facing messages for the ?ga4_error= codes set by the GA4 OAuth callback.
+const GA4_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Google access was declined. Click “Connect GA4” to try again.",
+  exchange_failed:
+    "Google sign-in didn't complete — the token exchange failed. Please try again in a moment.",
+  no_property:
+    "That Google account has no GA4 property. Sign in with an account that can access your GA4 property.",
+  no_refresh:
+    "Google didn't return a refresh token. Remove HotelTrack from your Google account's third-party access, then reconnect.",
 };
 
 // Small lettered/icon glyphs for each card (kept inline to avoid an icon dep).
@@ -133,7 +142,6 @@ export default async function HotelIntegrationsPage({
   });
 
   const pixelMode = isPixelMode();
-  const planAllowsGa4 = planHasGa4(member.agency.plan);
   const now = new Date();
 
   // OAuth round-trip feedback (?ig_connected=success / ?ig_error=…).
@@ -141,6 +149,14 @@ export default async function HotelIntegrationsPage({
   const igErrorCode = typeof sp.ig_error === "string" ? sp.ig_error : null;
   const igErrorBanner = igErrorCode
     ? IG_ERROR_MESSAGES[igErrorCode] ?? "Instagram connection failed. Please try again."
+    : null;
+
+  // GA4 OAuth round-trip feedback (?ga4_connected / ?ga4_error / ?ga4_select).
+  const ga4ConnectedBanner = sp.ga4_connected === "success";
+  const ga4SelectBanner = sp.ga4_select === "1";
+  const ga4ErrorCode = typeof sp.ga4_error === "string" ? sp.ga4_error : null;
+  const ga4ErrorBanner = ga4ErrorCode
+    ? GA4_ERROR_MESSAGES[ga4ErrorCode] ?? "GA4 connection failed. Please try again."
     : null;
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://your-domain.com").replace(
@@ -249,21 +265,47 @@ export default async function HotelIntegrationsPage({
       ])
     : [null, null, []];
 
-  // ── Google Analytics 4 (per-hotel) ─────────────────────────────────────────
-  const ga = await agencyScoped(prisma.googleAnalyticsConnection).findFirst({
+  // ── Google Analytics 4 (per-hotel, OAuth) ──────────────────────────────────
+  const ga4 = await agencyScoped(prisma.ga4Connection).findFirst({
     where: { hotelClientId: hotel.id },
-    select: { status: true, propertyId: true, lastSyncedAt: true },
+    select: { id: true, status: true, propertyId: true, propertyName: true, lastSyncedAt: true, lastSyncError: true },
   });
-  const gaSt: GaState = gaState(ga, planAllowsGa4);
+  const ga4Status: Ga4CardStatus = !ga4
+    ? "none"
+    : ga4.status === "TOKEN_EXPIRED" || ga4.status === "REVOKED"
+      ? "token_expired"
+      : ga4.status === "ERROR"
+        ? "error"
+        : ga4.propertyId === ""
+          ? "needs_property"
+          : "active";
+  // When the user has multiple GA4 properties, list them for the picker (uses
+  // the stored access token, read + decrypted out of band).
+  let ga4Properties: { propertyId: string; displayName: string }[] = [];
+  if (ga4Status === "needs_property" && ga4) {
+    try {
+      const tok = await getTokenForApiCall("ga4_access", ga4.id, {
+        agencyId: member.agencyId,
+        hotelClientId: hotel.id,
+        source: "page:integrations-ga4-picker",
+      });
+      ga4Properties = (await listProperties(tok.reveal())).map((p) => ({ propertyId: p.propertyId, displayName: p.displayName }));
+    } catch (err) {
+      console.error("[GA4-OAUTH] property list for picker failed:", err instanceof Error ? err.message : err);
+    }
+  }
+  // Map GA4 status into the integration-summary's GaState (ungated).
+  const gaSummaryState: GaState =
+    ga4Status === "active" ? "connected" : ga4Status === "none" ? "not_connected" : "broken";
 
   // ── Summary ────────────────────────────────────────────────────────────────
   const summary = summarize({
     snippet: snippetState(hotel.snippetStatus, hotel.lastEventAt),
     meta: metaSt,
     instagram: igSt,
-    ga: gaSt,
+    ga: gaSummaryState,
     snippetApplies: !pixelMode,
-    planAllowsGa4,
+    planAllowsGa4: true, // GA4 (OAuth) is a standard integration, not plan-gated
   });
   const snippetSt = summary.snippet;
 
@@ -331,6 +373,22 @@ export default async function HotelIntegrationsPage({
       {igErrorBanner && (
         <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-4 text-sm text-ink-secondary">
           {igErrorBanner}
+        </div>
+      )}
+      {ga4ConnectedBanner && (
+        <div className="rounded-lg border-l-4 border-success bg-success/10 p-4 text-sm text-ink-secondary">
+          Google Analytics connected. Click <strong>Sync now</strong> on the GA4
+          card to pull the last 30 days.
+        </div>
+      )}
+      {ga4SelectBanner && (
+        <div className="rounded-lg border-l-4 border-info bg-info/10 p-4 text-sm text-ink-secondary">
+          Almost there — choose which GA4 property to use on the GA4 card below.
+        </div>
+      )}
+      {ga4ErrorBanner && (
+        <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-4 text-sm text-ink-secondary">
+          {ga4ErrorBanner}
         </div>
       )}
 
@@ -683,49 +741,22 @@ export default async function HotelIntegrationsPage({
         )}
       </IntegrationCard>
 
-      {/* ── Card 4 — Google Analytics 4 ───────────────────────────────────── */}
+      {/* ── Card 4 — Google Analytics 4 (OAuth) ───────────────────────────── */}
       <IntegrationCard
         icon={<span className="text-xs font-bold text-warning">GA</span>}
         title="Google Analytics 4"
-        subtitle="Total website performance and source-by-source traffic mix."
-        badge={<IntegrationStatusBadge tone={gaTone(gaSt)} label={GA_LABELS[gaSt]} />}
+        subtitle="Traffic sources, Google Ads, geographic breakdown"
+        badge={<IntegrationStatusBadge tone={gaTone(gaSummaryState)} label={GA_LABELS[gaSummaryState]} />}
       >
-        {gaSt === "gated" ? (
-          <div className="rounded-lg border border-line bg-card p-6 text-center">
-            <p className="text-sm font-medium">GA4 is a Growth feature</p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-ink-tertiary">
-              Connect Google Analytics 4 to see every visit (not just UTM-tagged
-              ones) and a full source breakdown. Upgrade your plan to enable it.
-            </p>
-            <Link
-              href="/agency/billing"
-              className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
-            >
-              Upgrade to Growth to enable GA4 →
-            </Link>
-          </div>
-        ) : gaSt === "connected" ? (
-          <div className="space-y-4">
-            <p className="text-sm text-ink-secondary">
-              Property <code>{ga?.propertyId}</code>
-              {ga?.lastSyncedAt
-                ? ` · last synced ${fmtDate(ga.lastSyncedAt)}`
-                : " · not synced yet — run a sync to pull metrics"}
-            </p>
-            <GoogleAnalyticsActions hotelId={hotel.id} />
-          </div>
-        ) : gaSt === "broken" ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
-              Service account no longer has access to property{" "}
-              <code>{ga?.propertyId}</code>. Re-share the property with the service
-              account (Viewer role) in GA Admin, or upload a fresh key below.
-            </div>
-            <GoogleAnalyticsConnect hotelId={hotel.id} />
-          </div>
-        ) : (
-          <GoogleAnalyticsConnect hotelId={hotel.id} />
-        )}
+        <Ga4Card
+          hotelId={hotel.id}
+          status={ga4Status}
+          propertyName={ga4?.propertyName ?? null}
+          propertyId={ga4?.propertyId ?? null}
+          lastSyncedAt={ga4?.lastSyncedAt?.toISOString() ?? null}
+          lastSyncError={ga4?.lastSyncError ?? null}
+          properties={ga4Properties}
+        />
       </IntegrationCard>
     </div>
   );

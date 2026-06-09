@@ -142,6 +142,8 @@ model Agency {
   guideDownloads       GuideDownload[]
   hotelShareAccesses   HotelShareAccess[]
   budgetAlerts         BudgetAlert[]
+  ga4Connections       Ga4Connection[]
+  ga4Snapshots         Ga4Snapshot[]
 }
 
 model AgencyMember {
@@ -231,6 +233,8 @@ model HotelClient {
   guideDownloads       GuideDownload[]
   shareAccesses        HotelShareAccess[]
   budgetAlerts         BudgetAlert[]
+  ga4Connection        Ga4Connection?
+  ga4Snapshots         Ga4Snapshot[]
 
   @@index([agencyId])
 }
@@ -834,6 +838,88 @@ model GaSourceBreakdown {
   @@unique([hotelClientId, date, source]) // one row per hotel per day per source
   @@index([agencyId])
   @@index([hotelClientId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GA4 via OAuth — the user-consent successor to the service-account
+// GoogleAnalyticsConnection above (which is retired/unused). The agency clicks
+// "Connect GA4", consents on Google, and we store encrypted access+refresh
+// tokens. Daily sync (lib/ga4-sync.ts) pulls a richer set than the old flow:
+// traffic, acquisition channels, Google Ads, geography, device, landing pages.
+//
+// SECURITY: accessToken/refreshToken hold AES-256-GCM ciphertext (never
+// plaintext); they're stripped from query results by the prisma scrub
+// extension and read only via getTokenForApiCall (see lib/token-access.ts).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum GA4Status {
+  ACTIVE
+  TOKEN_EXPIRED
+  ERROR
+  REVOKED
+}
+
+model Ga4Connection {
+  id              String    @id @default(cuid())
+  hotelClientId   String    @unique // one GA4 connection per hotel
+  agencyId        String
+  propertyId      String // GA4 numeric property id, e.g. "123456789" ("" until picked)
+  propertyName    String?
+  accessToken     String    @db.Text // AES-256-GCM ciphertext. NEVER log or expose.
+  refreshToken    String    @db.Text // AES-256-GCM ciphertext. NEVER log or expose.
+  tokenExpiresAt  DateTime
+  scope           String
+  status          GA4Status @default(ACTIVE)
+  lastSyncedAt    DateTime?
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+}
+
+model Ga4Snapshot {
+  id                 String   @id @default(cuid())
+  hotelClientId      String
+  agencyId           String
+  date               DateTime @db.Date
+  // Traffic
+  sessions           Int      @default(0)
+  users              Int      @default(0)
+  newUsers           Int      @default(0)
+  pageViews          Int      @default(0)
+  bounceRate         Float    @default(0) // 0..1
+  avgSessionDuration Int      @default(0) // seconds
+  // Acquisition (sessionDefaultChannelGroup)
+  organicSessions    Int      @default(0)
+  paidSessions       Int      @default(0)
+  socialSessions     Int      @default(0)
+  directSessions     Int      @default(0)
+  referralSessions   Int      @default(0)
+  // Google Ads (google / cpc). Nullable: only present when ads run.
+  googleAdsClicks      Int?
+  googleAdsImpressions Int?
+  googleAdsCost        Int? // paise
+  googleAdsConversions Int?
+  // Geographic — [{ name, sessions }, …] top 5
+  topCountries    Json
+  topCities       Json
+  // Device
+  mobileSessions  Int      @default(0)
+  desktopSessions Int      @default(0)
+  tabletSessions  Int      @default(0)
+  // Landing pages — [{ path, sessions }, …] top 10
+  topLandingPages Json
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, date])
+  @@index([hotelClientId, date])
+  @@index([agencyId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

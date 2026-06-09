@@ -42,6 +42,12 @@ function createPrismaClient() {
           return scrub(await query(args), "encryptedCredentials");
         },
       },
+      ga4Connection: {
+        async $allOperations({ args, query }) {
+          // Two ciphertext columns on this model — strip both.
+          return scrub(scrub(await query(args), "accessToken"), "refreshToken");
+        },
+      },
     },
   });
 }

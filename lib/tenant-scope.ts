@@ -141,4 +141,6 @@ export const MULTI_TENANT_MODELS = [
   "guideDownload",
   "hotelShareAccess",
   "budgetAlert",
+  "ga4Connection",
+  "ga4Snapshot",
 ] as const;

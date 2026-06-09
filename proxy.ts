@@ -46,6 +46,11 @@ const isPublicRoute = createRouteMatcher([
   "/api/billing/renewal-reminders(.*)",
   // Daily budget-threshold alert cron, gated by CRON_SECRET inside the route.
   "/api/budget/check(.*)",
+  // Daily GA4 (OAuth) sync cron, gated by CRON_SECRET inside the route.
+  "/api/ga4/sync(.*)",
+  // GA4 OAuth callback: the browser arrives from accounts.google.com; the signed
+  // 10-minute state token (bound to agency + hotel) is the auth.
+  "/api/auth/ga4/callback(.*)",
 ]);
 const isAgencyRoute = createRouteMatcher(["/agency(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/agency/onboarding(.*)"]);
