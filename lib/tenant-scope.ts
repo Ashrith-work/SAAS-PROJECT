@@ -119,6 +119,7 @@ export const MULTI_TENANT_MODELS = [
   "hotelClient",
   "contentPiece",
   "trackingEvent",
+  "touchpoint",
   "metaToken",
   "adSnapshot",
   "couponRedemption",

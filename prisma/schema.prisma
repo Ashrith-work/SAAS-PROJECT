@@ -108,6 +108,7 @@ model Agency {
   hotelClients      HotelClient[]
   contentPieces     ContentPiece[]
   trackingEvents    TrackingEvent[]
+  touchpoints       Touchpoint[]
   metaTokens        MetaToken[]
   adSnapshots       AdSnapshot[]
   couponRedemptions CouponRedemption[]
@@ -173,6 +174,7 @@ model HotelClient {
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   contentPieces  ContentPiece[]
   trackingEvents TrackingEvent[]
+  touchpoints    Touchpoint[]
   adSnapshots    AdSnapshot[]
   reports         Report[]
   alerts          Alert[]
@@ -232,16 +234,53 @@ model TrackingEvent {
   pageUrl         String
   conversionValue Decimal?  @db.Decimal(12, 2)
   sessionId       String
+  // Persistent per-browser id from the snippet's _ht_vid cookie (30-day sliding).
+  // Nullable: pre-multi-touch rows and old snippet payloads have none.
+  visitorId       String?
   deviceType      String
   createdAt       DateTime  @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  // Touchpoints captured for a conversion event (multi-touch journey).
+  touchpoints Touchpoint[]
 
   @@index([agencyId])
   @@index([hotelClientId])
   @@index([hotelClientId, eventType, createdAt]) // funnel queries over time
   @@index([sessionId]) // stitch a visit to its later conversion
+}
+
+// One row per touchpoint in a visitor's journey, captured by the snippet's
+// _ht_journey cookie and flushed on conversion. Linked to the conversion's
+// TrackingEvent via conversionId. Multi-tenant (agencyId, RLS) like every table.
+model Touchpoint {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  // Persistent visitor id (snippet _ht_vid). Groups touchpoints across sessions.
+  visitorId     String
+  // The conversion this journey belongs to. Null only transiently; set at flush.
+  conversionId  String?
+  // 1-based order within the journey (1 = first touch).
+  position      Int
+  timestamp     DateTime
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  referrer      String?
+  landingPage   String?
+  createdAt     DateTime @default(now())
+
+  agency      Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient   @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  conversion  TrackingEvent? @relation(fields: [conversionId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+  @@index([visitorId])
+  @@index([conversionId])
 }
 
 model MetaToken {

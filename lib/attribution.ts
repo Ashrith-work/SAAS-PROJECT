@@ -288,6 +288,175 @@ export type InfluencerRow = {
   costPerBooking: number | null;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 5 — Multi-touch attribution models
+//
+// HotelTrack's flagship lens: split credit for a booking across the FULL visitor
+// journey (the ordered touchpoints captured by the snippet), under one of three
+// models. Pure functions — the dashboard page assembles the touchpoint lists
+// (real Touchpoint rows, or synthesized from TrackingEvent history for legacy
+// conversions) and the per-source visitor/spend maps, then calls in here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AttributionModel = "first" | "last" | "position";
+
+/** One touch in a journey. `source` is the raw utm_source (null = direct). */
+export type TouchpointInput = { position: number; source: string | null };
+
+/** source -> fractional credit for a single conversion; values sum to ~1. */
+export type CreditMap = Record<string, number>;
+
+export type ChannelRow = {
+  source: string;
+  /** Distinct visitors whose journey touched this source (model-independent). */
+  visitorsBrought: number;
+  /** Credited bookings ÷ visitors brought (shifts with the model). */
+  conversionRate: number;
+  /** Credited bookings — fractional under the position-based model. */
+  bookings: number;
+  /** Booking value credited to this source under the model. */
+  revenue: number;
+  /** Credited revenue ÷ this source's ad spend; null when spend is unknown. */
+  trueRoas: number | null;
+};
+
+export const ATTRIBUTION_MODELS: {
+  id: AttributionModel;
+  name: string;
+  lens: string;
+  question: string;
+}[] = [
+  { id: "first", name: "Awareness View", lens: "First-Touch", question: "Which channels create demand?" },
+  { id: "last", name: "Sales View", lens: "Last-Touch", question: "Which channels close bookings?" },
+  { id: "position", name: "Strategic View", lens: "Position-Based", question: "Balanced view across the journey" },
+];
+
+const DIRECT = "Direct";
+
+/** Normalize a utm_source: empty / "(none)" / "direct" all collapse to "Direct". */
+export function normSource(source: string | null | undefined): string {
+  const s = (source ?? "").trim();
+  if (!s || s.toLowerCase() === "(none)" || s.toLowerCase() === "direct") return DIRECT;
+  return s;
+}
+
+function ordered(touchpoints: TouchpointInput[]): string[] {
+  return [...touchpoints]
+    .sort((a, b) => a.position - b.position)
+    .map((t) => normSource(t.source));
+}
+
+/** 100% credit to the first touch. */
+export function firstTouchCredit(touchpoints: TouchpointInput[]): CreditMap {
+  const srcs = ordered(touchpoints);
+  return srcs.length ? { [srcs[0]]: 1 } : {};
+}
+
+/** 100% credit to the last touch. */
+export function lastTouchCredit(touchpoints: TouchpointInput[]): CreditMap {
+  const srcs = ordered(touchpoints);
+  return srcs.length ? { [srcs[srcs.length - 1]]: 1 } : {};
+}
+
+/**
+ * Position-based U-shaped:
+ *   1 touch  → 100% first
+ *   2 touches → 50% first, 50% last
+ *   3+ touches → 40% first, 40% last, 20% split evenly across the middle
+ * Credit for a repeated source accumulates.
+ */
+export function uShapedCredit(touchpoints: TouchpointInput[]): CreditMap {
+  const srcs = ordered(touchpoints);
+  const n = srcs.length;
+  const out: CreditMap = {};
+  const add = (s: string, w: number) => {
+    out[s] = (out[s] ?? 0) + w;
+  };
+  if (n === 0) return out;
+  if (n === 1) {
+    add(srcs[0], 1);
+    return out;
+  }
+  if (n === 2) {
+    add(srcs[0], 0.5);
+    add(srcs[1], 0.5);
+    return out;
+  }
+  add(srcs[0], 0.4);
+  add(srcs[n - 1], 0.4);
+  const middle = 0.2 / (n - 2);
+  for (let i = 1; i < n - 1; i++) add(srcs[i], middle);
+  return out;
+}
+
+/** Dispatch to the credit function for a given model. */
+export function creditForModel(
+  model: AttributionModel,
+  touchpoints: TouchpointInput[],
+): CreditMap {
+  if (model === "last") return lastTouchCredit(touchpoints);
+  if (model === "position") return uShapedCredit(touchpoints);
+  return firstTouchCredit(touchpoints);
+}
+
+export type ConversionForAttribution = {
+  touchpoints: TouchpointInput[];
+  value: number;
+};
+
+/**
+ * Aggregate per-source channel performance under a model. `visitorsBySource`
+ * and `spendBySource` are model-independent inputs the caller builds from the
+ * (agency-scoped) visit + spend data; sources use the same normalized labels as
+ * normSource(). Bookings/revenue are credit-weighted, so they shift per model.
+ */
+export function computeChannelPerformance(
+  model: AttributionModel,
+  conversions: ConversionForAttribution[],
+  visitorsBySource: Record<string, number>,
+  spendBySource: Record<string, number>,
+): ChannelRow[] {
+  const bookings: CreditMap = {};
+  const revenue: CreditMap = {};
+  const sources = new Set<string>();
+
+  for (const s of Object.keys(visitorsBySource)) sources.add(s);
+  for (const s of Object.keys(spendBySource)) sources.add(s);
+
+  for (const c of conversions) {
+    const credit = creditForModel(model, c.touchpoints);
+    for (const [src, w] of Object.entries(credit)) {
+      bookings[src] = (bookings[src] ?? 0) + w;
+      revenue[src] = (revenue[src] ?? 0) + w * c.value;
+      sources.add(src);
+    }
+  }
+
+  return [...sources]
+    .map((source): ChannelRow => {
+      const visitors = visitorsBySource[source] ?? 0;
+      const bk = bookings[source] ?? 0;
+      const rev = revenue[source] ?? 0;
+      const spend = spendBySource[source] ?? 0;
+      return {
+        source,
+        visitorsBrought: visitors,
+        conversionRate: visitors > 0 ? bk / visitors : 0,
+        bookings: bk,
+        revenue: rev,
+        trueRoas: spend > 0 ? rev / spend : null,
+      };
+    })
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+/** Credit map as integer percentages (for the drill-down "credit by model"). */
+export function creditPercents(credit: CreditMap): { source: string; pct: number }[] {
+  return Object.entries(credit)
+    .map(([source, w]) => ({ source, pct: Math.round(w * 100) }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
 export function computeInfluencerImpact(
   content: ContentInput[],
   redemptions: RedemptionInput[],

@@ -82,8 +82,45 @@ export async function POST(request: Request) {
     if (Number.isFinite(n) && n >= 0) conversionValue = n.toFixed(2);
   }
 
+  const visitorId = str(body.visitorId);
+
+  // Multi-touch journey: only on conversion, only a well-formed array. Cap at 20
+  // touches, coerce/clip each field, parse the timestamp. Parsed defensively so a
+  // malformed journey can never block the conversion write below.
+  type TouchRow = {
+    position: number;
+    timestamp: Date;
+    utmSource: string | null;
+    utmMedium: string | null;
+    utmCampaign: string | null;
+    utmContent: string | null;
+    referrer: string | null;
+    landingPage: string | null;
+  };
+  let touches: TouchRow[] = [];
+  if (type === "conversion" && Array.isArray(body.journey)) {
+    try {
+      touches = body.journey.slice(0, 20).map((raw, i): TouchRow => {
+        const tp = (raw ?? {}) as Record<string, unknown>;
+        const tsNum = Number(tp.ts);
+        return {
+          position: i + 1,
+          timestamp: Number.isFinite(tsNum) ? new Date(tsNum) : new Date(),
+          utmSource: str(tp.utm_source),
+          utmMedium: str(tp.utm_medium),
+          utmCampaign: str(tp.utm_campaign),
+          utmContent: str(tp.utm_content),
+          referrer: str(tp.referrer),
+          landingPage: str(tp.landing_page),
+        };
+      });
+    } catch {
+      touches = [];
+    }
+  }
+
   try {
-    await prisma.trackingEvent.create({
+    const ev = await prisma.trackingEvent.create({
       data: {
         agencyId: hotel.agencyId,
         hotelClientId: hotel.id,
@@ -96,9 +133,32 @@ export async function POST(request: Request) {
         pageUrl: str(body.pageUrl) ?? "",
         conversionValue,
         sessionId: str(body.sessionId) ?? "",
+        visitorId,
         deviceType: str(body.deviceType) ?? "unknown",
       },
+      select: { id: true },
     });
+
+    // Persist the journey as Touchpoint rows linked to this conversion. Same
+    // base client + explicit agencyId as the event above (tenant-safe).
+    if (touches.length > 0) {
+      await prisma.touchpoint.createMany({
+        data: touches.map((t) => ({
+          agencyId: hotel.agencyId,
+          hotelClientId: hotel.id,
+          visitorId: visitorId ?? "",
+          conversionId: ev.id,
+          position: t.position,
+          timestamp: t.timestamp,
+          utmSource: t.utmSource,
+          utmMedium: t.utmMedium,
+          utmCampaign: t.utmCampaign,
+          utmContent: t.utmContent,
+          referrer: t.referrer,
+          landingPage: t.landingPage,
+        })),
+      });
+    }
 
     // Always refresh last activity; flip the snippet to "live" on the first event.
     await prisma.hotelClient.update({

@@ -27,7 +27,33 @@ export type ConversionJourney = {
   /** Final attribution */
   attributedTo: string;
   attributionReason: string;
+  // ── Multi-touch attribution (added by the upgrade) ──
+  /** Ordered journey sources (normalized; "Direct" for direct/untagged). */
+  touchpoints?: { position: number; source: string }[];
+  /** True when there were no captured Touchpoint rows (legacy / single-touch). */
+  isSingleTouch?: boolean;
+  /** Per-model credit split, as integer percentages by source. */
+  modelCredits?: {
+    first: { source: string; pct: number }[];
+    last: { source: string; pct: number }[];
+    position: { source: string; pct: number }[];
+  };
 };
+
+function prettySource(s: string): string {
+  if (!s || s === "Direct") return "Direct";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const ORDINAL = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
+function ordinal(pos: number): string {
+  return ORDINAL[pos - 1] ?? `${pos}th`;
+}
+
+function creditLine(pcts: { source: string; pct: number }[]): string {
+  if (!pcts.length) return "—";
+  return pcts.map((p) => `${prettySource(p.source)} ${p.pct}%`).join(", ");
+}
 
 function pathOf(url: string): string {
   try {
@@ -110,7 +136,17 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
-              <h3 className="text-lg font-semibold text-ink">Visitor journey</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-ink">Visitor journey</h3>
+                {open.isSingleTouch && (
+                  <span
+                    title="Recorded before multi-touch capture — credited as a single touch."
+                    className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning"
+                  >
+                    Single-touch data
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setOpenId(null)}
@@ -122,6 +158,57 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
             </div>
 
             <dl className="mt-4 space-y-4 text-sm">
+              {open.touchpoints && open.touchpoints.length > 0 && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                    Journey ·{" "}
+                    {open.touchpoints.length}{" "}
+                    touch{open.touchpoints.length === 1 ? "" : "es"}
+                  </dt>
+                  <dd className="mt-2">
+                    <ol className="space-y-1">
+                      {open.touchpoints.map((t, i) => (
+                        <li key={t.position}>
+                          <span className="text-ink-tertiary">{ordinal(i + 1)} touch:</span>{" "}
+                          <span className="font-medium text-ink">{prettySource(t.source)}</span>
+                          <span className="block pl-1 text-ink-disabled">↓</span>
+                        </li>
+                      ))}
+                      <li>
+                        <span className="font-semibold text-success">Booked</span>
+                        {open.conversionValue != null && (
+                          <span className="text-ink-secondary">
+                            {" "}— {formatCurrency(open.conversionValue)}
+                          </span>
+                        )}
+                      </li>
+                    </ol>
+                  </dd>
+                </div>
+              )}
+
+              {open.modelCredits && (
+                <div className="rounded-lg bg-card p-3">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                    Credit by model
+                  </dt>
+                  <dd className="mt-1.5 space-y-1">
+                    <p>
+                      <span className="font-medium text-ink-secondary">First-Touch:</span>{" "}
+                      {creditLine(open.modelCredits.first)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-ink-secondary">Last-Touch:</span>{" "}
+                      {creditLine(open.modelCredits.last)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-ink-secondary">Strategic (Position):</span>{" "}
+                      {creditLine(open.modelCredits.position)}
+                    </p>
+                  </dd>
+                </div>
+              )}
+
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   First touch

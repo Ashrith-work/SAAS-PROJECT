@@ -69,16 +69,61 @@
     if (!sid) { sid = uid(); setCookie("_ht_sid", sid, null); }
     converted = getCookie("_ht_conv") === sid;
 
+    // Persistent visitor id — survives across sessions for multi-touch grouping.
+    // 30-day SLIDING window: re-stamped on every load so an active visitor never
+    // expires mid-journey.
+    var vid = getCookie("_ht_vid") || uid();
+    setCookie("_ht_vid", vid, 30);
+
+    // Multi-touch journey: append one touchpoint per page load that carries new
+    // info (a UTM, or an external referrer, or the very first touch), de-duping
+    // consecutive identical touches. Capped at 20 (oldest drop off). Cookie uses
+    // the same 30-day sliding window. Still UTM + page/referrer only — no PII.
+    var JKEY = "_ht_journey", JMAX = 20;
+    function clip(s, n) { return s == null ? null : String(s).slice(0, n); }
+    function hostOf(u) { try { return new URL(u).host; } catch (e) { return ""; } }
+    function buildTouch() {
+      var u = urlUtms() || {};
+      return {
+        ts: Date.now(),
+        utm_source: u.utm_source || null, utm_medium: u.utm_medium || null,
+        utm_campaign: u.utm_campaign || null, utm_content: u.utm_content || null,
+        referrer: clip(document.referrer || null, 200),
+        landing_page: clip(location.href, 200)
+      };
+    }
+    function sameTouch(a, b) {
+      return !!a && !!b && a.utm_source === b.utm_source && a.utm_medium === b.utm_medium &&
+        a.utm_campaign === b.utm_campaign && a.utm_content === b.utm_content && a.referrer === b.referrer;
+    }
+    var journey = parse(getCookie(JKEY) || "");
+    if (!(journey instanceof Array)) journey = [];
+    var tp = buildTouch();
+    var hasUtm = !!(tp.utm_source || tp.utm_medium || tp.utm_campaign || tp.utm_content);
+    var extRef = !!(tp.referrer && hostOf(tp.referrer) && hostOf(tp.referrer) !== location.host);
+    var lastTp = journey.length ? journey[journey.length - 1] : null;
+    if ((hasUtm || extRef || journey.length === 0) && !sameTouch(tp, lastTp)) {
+      journey.push(tp);
+      if (journey.length > JMAX) journey = journey.slice(journey.length - JMAX);
+    }
+    setCookie(JKEY, JSON.stringify(journey), 30); // sliding 30-day expiry
+
     // Send an event (sendBeacon -> simple request, no preflight; fetch fallback).
     function send(type, value) {
       var payload = {
-        siteId: siteId, type: type,
+        siteId: siteId, type: type, visitorId: vid,
         utmSource: attr.utm_source || null, utmMedium: attr.utm_medium || null,
         utmCampaign: attr.utm_campaign || null, utmContent: attr.utm_content || null,
         utmTerm: attr.utm_term || null,
         pageUrl: location.href, sessionId: sid, deviceType: device(),
         value: value == null ? null : value
       };
+      // On conversion, attach the whole journey (re-read for the freshest copy
+      // in case more touches accumulated across page loads this session).
+      if (type === "conversion") {
+        var j = parse(getCookie(JKEY) || "");
+        payload.journey = (j instanceof Array) ? j : journey;
+      }
       var url = base + "/api/track/event", data = JSON.stringify(payload);
       try {
         if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([data], { type: "text/plain;charset=UTF-8" }));

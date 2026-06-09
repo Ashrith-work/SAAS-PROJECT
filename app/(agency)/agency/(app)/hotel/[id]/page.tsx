@@ -5,15 +5,22 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import {
   computeAdsSummary,
+  computeChannelPerformance,
   computeContentPerformance,
   computeInfluencerImpact,
   computeKpis,
+  creditForModel,
+  creditPercents,
+  normSource,
   resolveRange,
   trueRoi,
   type AdSnapshotInput,
+  type AttributionModel,
+  type ChannelRow,
   type ContentInput,
   type EventInput,
   type RedemptionInput,
+  type TouchpointInput,
 } from "@/lib/attribution";
 import {
   formatCurrency,
@@ -32,7 +39,7 @@ import {
 } from "@/components/dashboard/MetaCampaignBreakdownTable";
 import { KpiStrip, type KpiCardSpec } from "@/components/dashboard/mission/KpiStrip";
 import { MetaVsRealityHero } from "@/components/dashboard/mission/MetaVsRealityHero";
-import { ChannelBreakdown } from "@/components/dashboard/mission/ChannelBreakdown";
+import { AttributionPanel } from "@/components/dashboard/mission/AttributionPanel";
 import { CampaignGrid, type CampaignCard } from "@/components/dashboard/mission/CampaignGrid";
 import {
   ConversionJourneys,
@@ -241,8 +248,14 @@ export default async function HotelDashboardPage({
   // Materialized per-day rows (refreshed by the Meta sync) + the raw events
   // needed for the per-conversion journey drill-down. Hidden in pixel mode
   // (no snippet events to attribute). All queries agency-scoped.
-  const [campaignPerfRows, campaignSnapRows, recentConversionRows] = pixelMode
-    ? [[], [], []]
+  const [
+    campaignPerfRows,
+    campaignSnapRows,
+    recentConversionRows,
+    attrConvRows,
+    visitorSourceRows,
+  ] = pixelMode
+    ? [[], [], [], [], []]
     : await Promise.all([
         agencyScoped(prisma.campaignPerformance).findMany({
           where: {
@@ -290,17 +303,54 @@ export default async function HotelDashboardPage({
             createdAt: true,
           },
         }),
-      ]);
-  // The journeys need each conversion session's visit history (30 days back,
-  // matching the snippet's first-touch cookie window).
-  const journeySessionIds = [...new Set(recentConversionRows.map((c) => c.sessionId))];
-  const journeyVisitRows =
-    journeySessionIds.length > 0
-      ? await agencyScoped(prisma.trackingEvent).findMany({
+        // ALL in-range conversions (capped) for the multi-touch channel table —
+        // distinct from the 15-row drill-down above.
+        agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "conversion",
+            createdAt: { gte: range.since, lte: range.until },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 2000,
+          select: {
+            id: true,
+            sessionId: true,
+            visitorId: true,
+            utmSource: true,
+            conversionValue: true,
+            createdAt: true,
+          },
+        }),
+        // Distinct (source, session) pairs over in-range VISITS — the "visitors
+        // brought" denominator for the channel table's conversion rate.
+        agencyScoped(prisma.trackingEvent).groupBy({
+          by: ["utmSource", "sessionId"],
           where: {
             hotelClientId: hotel.id,
             eventType: "visit",
-            sessionId: { in: journeySessionIds },
+            createdAt: { gte: range.since, lte: range.until },
+          },
+        }),
+      ]);
+  // Visit history for every in-range conversion session (30 days back, matching
+  // the snippet's cookie window) — feeds the campaign-attribution drill-down AND
+  // the multi-touch touchpoint synthesis for legacy conversions. Plus the real
+  // Touchpoint rows captured for new conversions.
+  const convSessionIds = [
+    ...new Set([
+      ...recentConversionRows.map((c) => c.sessionId),
+      ...attrConvRows.map((c) => c.sessionId),
+    ]),
+  ];
+  const attrConvIds = attrConvRows.map((c) => c.id);
+  const [journeyVisitRows, attrTouchpointRows] = await Promise.all([
+    convSessionIds.length > 0
+      ? agencyScoped(prisma.trackingEvent).findMany({
+          where: {
+            hotelClientId: hotel.id,
+            eventType: "visit",
+            sessionId: { in: convSessionIds },
             createdAt: {
               gte: new Date(range.since.getTime() - 30 * DAY_MS),
               lte: range.until,
@@ -316,7 +366,15 @@ export default async function HotelDashboardPage({
             createdAt: true,
           },
         })
-      : [];
+      : Promise.resolve([]),
+    attrConvIds.length > 0
+      ? agencyScoped(prisma.touchpoint).findMany({
+          where: { conversionId: { in: attrConvIds } },
+          orderBy: [{ conversionId: "asc" }, { position: "asc" }],
+          select: { conversionId: true, position: true, utmSource: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   // ── Meta Campaign Breakdown: raw per-campaign numbers straight from Meta
   //    (AdCampaignSnapshot), with NO snippet/UTM matching. Independent of the
@@ -612,6 +670,93 @@ export default async function HotelDashboardPage({
   const matchedBookings = matchedCampaignRows.reduce((s, r) => s + r.realBookings, 0);
   const totalTrackedConversions = kpis.bookings;
 
+  // ── Multi-touch attribution ──────────────────────────────────────────────
+  // For every in-range conversion build an ordered touchpoint list: the real
+  // Touchpoint rows when present, else synthesized from the session's visit
+  // history + the conversion's own source (legacy "single-touch" data). Then
+  // precompute all three models server-side so the dashboard toggle is instant.
+  const realTpByConv = new Map<string, { position: number; source: string | null }[]>();
+  for (const t of attrTouchpointRows) {
+    if (!t.conversionId) continue;
+    const list = realTpByConv.get(t.conversionId) ?? [];
+    list.push({ position: t.position, source: t.utmSource });
+    realTpByConv.set(t.conversionId, list);
+  }
+  const visitsBySession = new Map<string, typeof journeyVisitRows>();
+  for (const v of journeyVisitRows) {
+    const list = visitsBySession.get(v.sessionId) ?? [];
+    list.push(v);
+    visitsBySession.set(v.sessionId, list);
+  }
+  type ConvAttr = {
+    id: string;
+    value: number;
+    touchpoints: TouchpointInput[];
+    isSingleTouch: boolean;
+  };
+  const convAttr: ConvAttr[] = attrConvRows.map((c): ConvAttr => {
+    const value = c.conversionValue == null ? 0 : Number(c.conversionValue);
+    const real = realTpByConv.get(c.id);
+    if (real && real.length > 0) {
+      return {
+        id: c.id,
+        value,
+        touchpoints: real.map((t) => ({ position: t.position, source: t.source })),
+        isSingleTouch: false,
+      };
+    }
+    // Synthesize from prior visits in the session + the conversion's own source.
+    const visits = (visitsBySession.get(c.sessionId) ?? []).filter(
+      (v) => v.createdAt <= c.createdAt,
+    );
+    const sources: string[] = [];
+    for (const v of visits) {
+      const s = normSource(v.utmSource);
+      if (sources.length === 0 || sources[sources.length - 1] !== s) sources.push(s);
+    }
+    const convSrc = normSource(c.utmSource);
+    if (sources.length === 0 || sources[sources.length - 1] !== convSrc) sources.push(convSrc);
+    return {
+      id: c.id,
+      value,
+      touchpoints: sources.map((s, i) => ({ position: i + 1, source: s })),
+      isSingleTouch: true,
+    };
+  });
+  const attrByConvId = new Map<string, ConvAttr>(convAttr.map((c) => [c.id, c]));
+
+  // "Visitors brought" denominator: distinct sessions per normalized source.
+  const visitorsBySource: Record<string, number> = {};
+  {
+    const setBySource = new Map<string, Set<string>>();
+    for (const r of visitorSourceRows as {
+      utmSource: string | null;
+      sessionId: string;
+    }[]) {
+      const s = normSource(r.utmSource);
+      const set = setBySource.get(s) ?? new Set<string>();
+      set.add(r.sessionId);
+      setBySource.set(s, set);
+    }
+    for (const [s, set] of setBySource) visitorsBySource[s] = set.size;
+  }
+
+  // Per-source ad spend (v1): all matched Meta campaign spend maps to the
+  // documented paid source ("facebook" per the setup guide). Sources without
+  // known spend show True ROAS "—". A per-source spend join is a follow-up.
+  const spendBySource: Record<string, number> =
+    campaignTotalSpend > 0 ? { [normSource("facebook")]: campaignTotalSpend } : {};
+
+  const conversionsForAttr = convAttr.map((c) => ({
+    touchpoints: c.touchpoints,
+    value: c.value,
+  }));
+  const channelByModel: Record<AttributionModel, ChannelRow[]> = {
+    first: computeChannelPerformance("first", conversionsForAttr, visitorsBySource, spendBySource),
+    last: computeChannelPerformance("last", conversionsForAttr, visitorsBySource, spendBySource),
+    position: computeChannelPerformance("position", conversionsForAttr, visitorsBySource, spendBySource),
+  };
+
   // ── Per-conversion journeys (the drill-down proof artifact) ──
   const journeyCampaignDays: CampaignDay[] = campaignSnapRows.map((s) => ({
     date: s.date.toISOString().slice(0, 10),
@@ -665,6 +810,22 @@ export default async function HotelDashboardPage({
         : null,
       attributedTo: a.campaignName,
       attributionReason: a.reason,
+      ...(() => {
+        const ma = attrByConvId.get(conv.id);
+        if (!ma) return {};
+        return {
+          touchpoints: ma.touchpoints.map((t) => ({
+            position: t.position,
+            source: normSource(t.source),
+          })),
+          isSingleTouch: ma.isSingleTouch,
+          modelCredits: {
+            first: creditPercents(creditForModel("first", ma.touchpoints)),
+            last: creditPercents(creditForModel("last", ma.touchpoints)),
+            position: creditPercents(creditForModel("position", ma.touchpoints)),
+          },
+        };
+      })(),
     };
   });
 
@@ -773,21 +934,6 @@ export default async function HotelDashboardPage({
     metaRevenue: ads.metaReportedRevenue,
     realBookings: matchedBookings,
     realRevenue: campaignRealRevenue,
-  };
-
-  // Channel breakdown.
-  const unattributedRow = campaignRows.find((c) => c.campaignKey === UNATTRIBUTED_KEY);
-  const igOrganicBookings = contentPerf
-    .filter((c) => c.platform === "instagram" && c.contentType === "organic")
-    .reduce((s, c) => s + c.bookings, 0);
-  const channelData = {
-    paid: {
-      spend: campaignTotalSpend,
-      bookings: matchedBookings,
-      roas: campaignTotalSpend > 0 ? campaignRealRevenue / campaignTotalSpend : null,
-    },
-    instagram: { reach: socialReach, engagementRate, bookings: igOrganicBookings },
-    direct: { bookings: unattributedRow?.realBookings ?? 0, revenue: unattributedRow?.realRevenue ?? 0 },
   };
 
   // Per-campaign 7-day spend sparkline series, keyed by campaign id.
@@ -1013,12 +1159,7 @@ export default async function HotelDashboardPage({
         <div className="space-y-6">
           <KpiStrip cards={kpiCards} />
           <MetaVsRealityHero data={metaVsReality} />
-          <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-tertiary">
-              Channel performance
-            </h2>
-            <ChannelBreakdown data={channelData} />
-          </div>
+          <AttributionPanel byModel={channelByModel} />
         </div>
       )}
 
