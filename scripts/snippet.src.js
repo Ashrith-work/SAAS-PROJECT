@@ -135,18 +135,57 @@
     // 5. Every page load fires a "visit".
     send("visit");
 
-    // 8. Read a booking value from page data only (configured selector, or a
-    // [data-ht-value] element as a convention). No personal data is read.
-    function readValue() {
+    // 8. Read the booking value from page data only — never names, emails, or
+    // form contents. Three strategies, tried in order; the first that yields a
+    // positive number wins. Returns null if all fail (the conversion still fires).
+    function parseAmount(raw) {
+      if (raw == null) return null;
+      var cleaned = String(raw).replace(/[^0-9.]/g, "");
+      if (!cleaned) return null;
+      var n = parseFloat(cleaned);
+      return isFinite(n) && n > 0 ? n : null;
+    }
+    // Strategy B: scan visible page text for a booking total. Prefer a labelled
+    // amount ("Total: ₹12,345", "Amount paid ₹…"); otherwise fall back to the
+    // largest ₹ figure on the page (a booking total is almost always the biggest).
+    function valueFromText() {
       try {
+        var text = document.body ? (document.body.innerText || document.body.textContent || "") : "";
+        if (!text) return null;
+        var labelled = text.match(
+          /(?:grand\s*total|total\s*amount|amount\s*paid|you\s*paid|booking\s*total|total|amount)\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i
+        );
+        if (labelled) { var la = parseAmount(labelled[1]); if (la != null) return la; }
+        var amounts = [], re = /₹\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g, m;
+        while ((m = re.exec(text))) { var v = parseAmount(m[1]); if (v != null) amounts.push(v); }
+        if (amounts.length) return Math.max.apply(null, amounts);
+      } catch (e) {}
+      return null;
+    }
+    function extractBookingValue() {
+      try {
+        // Strategy A — data attribute (configured selector, or [data-ht-value]).
+        // Cleanest + most reliable; recommended in the install guide.
         var sel = cfg && cfg.valueSelector;
         var el = sel ? document.querySelector(sel) : document.querySelector("[data-ht-value]");
-        if (!el) return null;
-        var raw = el.getAttribute && el.getAttribute("data-ht-value");
-        if (raw == null) raw = el.textContent || "";
-        var n = parseFloat(String(raw).replace(/[^0-9.]/g, ""));
-        return isFinite(n) ? n : null;
-      } catch (e) { return null; }
+        if (el) {
+          var raw = el.getAttribute && el.getAttribute("data-ht-value");
+          if (raw == null) raw = el.textContent || "";
+          var a = parseAmount(raw);
+          if (a != null) return a;
+        }
+        // Strategy B — regex over page text.
+        var b = valueFromText();
+        if (b != null) return b;
+        // Strategy C — a thank-you URL parameter (amount/total/value/price/booking_value).
+        var q = new URLSearchParams(location.search);
+        var keys = ["amount", "total", "value", "price", "booking_value"];
+        for (var i = 0; i < keys.length; i++) {
+          var c = parseAmount(q.get(keys[i]));
+          if (c != null) return c;
+        }
+      } catch (e) {}
+      return null;
     }
 
     // 7. Fire a conversion at most once per session.
@@ -155,7 +194,7 @@
       converted = true;
       setCookie("_ht_conv", sid, null);
       if (observer) { try { observer.disconnect(); } catch (e) {} }
-      send("conversion", readValue());
+      send("conversion", extractBookingValue());
     }
 
     // 6. Conversion detection.

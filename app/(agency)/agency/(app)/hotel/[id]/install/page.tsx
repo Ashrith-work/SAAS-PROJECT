@@ -160,6 +160,29 @@ export default async function HotelInstallPage({
         </p>
       </section>
 
+      {/* ── Revenue capture helper ───────────────────────────────────────── */}
+      <section className="rounded-xl border-l-4 border-info bg-info/10 p-6">
+        <h2 className="font-semibold text-ink">Capture booking revenue (recommended)</h2>
+        <p className="mt-1 text-sm text-ink-secondary">
+          For the most accurate revenue tracking, mark the booking total on your
+          confirmation page with a <code className="text-codeink">data-ht-value</code>{" "}
+          attribute. The snippet reads it the moment a booking confirms — no
+          personal data is touched.
+        </p>
+        <div className="mt-4 flex items-start gap-2">
+          <code className="block flex-1 overflow-x-auto rounded-lg bg-code px-4 py-3 text-sm text-codeink">
+            {`<span data-ht-value="YOUR_BOOKING_AMOUNT">₹X,XXX</span>`}
+          </code>
+          <CopyButton text={`<span data-ht-value="YOUR_BOOKING_AMOUNT">₹X,XXX</span>`} />
+        </div>
+        <p className="mt-2 text-xs text-ink-tertiary">
+          Replace <code>YOUR_BOOKING_AMOUNT</code> with the variable your booking
+          system uses for the total (digits only, e.g. <code>15000</code>). If you
+          can&apos;t add this, HotelTrack still tries to read the total from the
+          page text or a <code>?amount=</code> URL parameter automatically.
+        </p>
+      </section>
+
       {/* ── Platform guide (with tabs) ───────────────────────────────────── */}
       <section className="rounded-xl border border-line p-6">
         <h2 className="font-semibold">Step-by-step guide</h2>

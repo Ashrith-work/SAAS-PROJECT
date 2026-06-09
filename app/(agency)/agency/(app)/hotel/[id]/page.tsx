@@ -85,6 +85,42 @@ function KpiCard({
   );
 }
 
+const GENDER_LABEL: Record<string, string> = { F: "Women", M: "Men", U: "Unknown" };
+
+// Follower-demographics mini-card: a breakdown's dimensions as share-of-total.
+function DemographicCard({
+  title,
+  rows,
+  genderLabels,
+}: {
+  title: string;
+  rows: { dimension: string; value: number }[];
+  genderLabels?: boolean;
+}) {
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  return (
+    <div className="rounded-xl border border-line bg-card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{title}</p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-tertiary">—</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {rows.map((r) => {
+            const label = genderLabels ? (GENDER_LABEL[r.dimension] ?? r.dimension) : r.dimension;
+            const pct = total > 0 ? (r.value / total) * 100 : 0;
+            return (
+              <li key={r.dimension} className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-ink-secondary">{label}</span>
+                <span className="tabular-nums text-ink-tertiary">{pct.toFixed(0)}%</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SectionCard({
   title,
   subtitle,
@@ -422,7 +458,7 @@ export default async function HotelDashboardPage({
   // `priorFollowerSnap` is the last reading BEFORE the range, so follower growth
   // can be measured against the prior period. Post metrics drive engagement rate
   // (account-level engagement isn't synced), and the top-posts table.
-  const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg] =
+  const [socialAccount, socialSnaps, priorFollowerSnap, topPosts, postAgg, postTypeAgg, audienceRows] =
     await Promise.all([
       agencyScoped(prisma.instagramConnection).findFirst({
         where: { hotelClientId: hotel.id, tokenType: "igaa_direct" },
@@ -434,7 +470,15 @@ export default async function HotelDashboardPage({
           date: { gte: range.since, lte: range.until },
         },
         orderBy: { date: "asc" },
-        select: { date: true, followers: true, reach: true, impressions: true, views: true, profileViews: true },
+        select: {
+          date: true,
+          followers: true,
+          reach: true,
+          impressions: true,
+          views: true,
+          profileViews: true,
+          websiteClicks: true,
+        },
       }),
       agencyScoped(prisma.socialSnapshot).findFirst({
         where: { hotelClientId: hotel.id, date: { lt: range.since } },
@@ -460,6 +504,8 @@ export default async function HotelDashboardPage({
           comments: true,
           engagement: true,
           saves: true,
+          shares: true,
+          videoViews: true,
         },
       }),
       agencyScoped(prisma.postSnapshot).aggregate({
@@ -467,7 +513,30 @@ export default async function HotelDashboardPage({
           hotelClientId: hotel.id,
           postedAt: { gte: range.since, lte: range.until },
         },
-        _sum: { engagement: true, reach: true },
+        _sum: {
+          engagement: true,
+          reach: true,
+          likes: true,
+          comments: true,
+          saves: true,
+          shares: true,
+        },
+      }),
+      // Per-post-type performance (for "top performing post type").
+      agencyScoped(prisma.postSnapshot).groupBy({
+        by: ["mediaType"],
+        where: {
+          hotelClientId: hotel.id,
+          postedAt: { gte: range.since, lte: range.until },
+        },
+        _sum: { engagement: true, reach: true, likes: true, comments: true, saves: true, shares: true },
+        _count: { _all: true },
+      }),
+      // Follower demographics (best-effort; empty for <100-follower accounts).
+      agencyScoped(prisma.instagramAudience).findMany({
+        where: { hotelClientId: hotel.id },
+        orderBy: { value: "desc" },
+        select: { breakdown: true, dimension: true, value: true },
       }),
     ]);
 
@@ -604,8 +673,38 @@ export default async function HotelDashboardPage({
   // impressions for historical rows synced before the metric switch.
   const socialViews = socialSnaps.reduce((sum, s) => sum + (s.views || s.impressions), 0);
   const socialProfileViews = socialSnaps.reduce((sum, s) => sum + s.profileViews, 0);
+  const socialWebsiteClicks = socialSnaps.reduce((sum, s) => sum + s.websiteClicks, 0);
   const postReachSum = postAgg._sum.reach ?? 0;
-  const engagementRate = postReachSum > 0 ? (postAgg._sum.engagement ?? 0) / postReachSum : null;
+  // Engagement rate = (likes + comments + saves + shares) / reach.
+  const totalInteractions =
+    (postAgg._sum.likes ?? 0) +
+    (postAgg._sum.comments ?? 0) +
+    (postAgg._sum.saves ?? 0) +
+    (postAgg._sum.shares ?? 0);
+  const engagementRate = postReachSum > 0 ? totalInteractions / postReachSum : null;
+  // Save-to-reach ratio — proxy for "compelling content".
+  const saveToReach = postReachSum > 0 ? (postAgg._sum.saves ?? 0) / postReachSum : null;
+  // Profile-visit conversion — profile views ÷ views (did content drive interest).
+  const profileVisitConversion = socialViews > 0 ? socialProfileViews / socialViews : null;
+  // Top performing post type by engagement rate (interactions ÷ reach), needs a
+  // little reach to be meaningful.
+  const postTypePerf = postTypeAgg
+    .filter((g) => g.mediaType && (g._sum.reach ?? 0) >= 50)
+    .map((g) => {
+      const reach = g._sum.reach ?? 0;
+      const interactions =
+        (g._sum.likes ?? 0) + (g._sum.comments ?? 0) + (g._sum.saves ?? 0) + (g._sum.shares ?? 0);
+      return { type: g.mediaType as string, rate: reach > 0 ? interactions / reach : 0, count: g._count._all };
+    })
+    .sort((a, b) => b.rate - a.rate);
+  const topPostType = postTypePerf[0] ?? null;
+  // Demographics grouped by breakdown (top dimensions per breakdown).
+  const audienceByBreakdown = {
+    country: audienceRows.filter((r) => r.breakdown === "country").slice(0, 5),
+    age: audienceRows.filter((r) => r.breakdown === "age").sort((a, b) => a.dimension.localeCompare(b.dimension)),
+    gender: audienceRows.filter((r) => r.breakdown === "gender"),
+  };
+  const hasAudience = audienceRows.length > 0;
   const socialLastUpdated = socialAccount?.lastSyncedAt ?? null;
 
   // ── Normalise Prisma Decimals -> plain numbers for the pure helpers ──
@@ -1478,9 +1577,24 @@ export default async function HotelDashboardPage({
               <KpiCard label="Views" value={formatNumber(socialViews)} hint="Content plays & displays" />
               <KpiCard label="Profile views" value={formatNumber(socialProfileViews)} />
               <KpiCard
+                label="Website clicks"
+                value={formatNumber(socialWebsiteClicks)}
+                hint="Link-in-bio taps"
+              />
+              <KpiCard
                 label="Engagement rate"
                 value={engagementRate == null ? "—" : formatPercent(engagementRate)}
-                hint="Engagement ÷ reach"
+                hint="(likes + comments + saves + shares) ÷ reach"
+              />
+              <KpiCard
+                label="Save-to-reach"
+                value={saveToReach == null ? "—" : formatPercent(saveToReach)}
+                hint="Saves ÷ reach — content that resonates"
+              />
+              <KpiCard
+                label="Profile-visit conv."
+                value={profileVisitConversion == null ? "—" : formatPercent(profileVisitConversion)}
+                hint="Profile views ÷ views"
               />
               <KpiCard
                 label="Story completion"
@@ -1488,6 +1602,39 @@ export default async function HotelDashboardPage({
                 hint="(impressions − exits) ÷ impressions"
               />
             </div>
+
+            {/* Within-API limits notice — sets expectations on what Meta exposes. */}
+            <div className="rounded-lg border-l-4 border-info bg-info/10 p-3 text-xs text-ink-secondary">
+              <span className="font-semibold text-ink">Note:</span> Some Instagram
+              metrics like video retention time and skip rate are only available
+              in the Instagram app itself — Meta does not expose these through
+              their API. For weekly retention reports, hotels can screenshot these
+              from the Instagram app and share with their agency.
+            </div>
+
+            {topPostType && (
+              <div className="rounded-lg border border-line bg-card px-4 py-3 text-sm">
+                <span className="text-ink-tertiary">Top performing post type: </span>
+                <span className="font-semibold capitalize text-ink">{topPostType.type}</span>
+                <span className="text-ink-tertiary">
+                  {" "}— {formatPercent(topPostType.rate)} engagement rate across{" "}
+                  {topPostType.count} post{topPostType.count === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
+
+            {hasAudience && (
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                  Follower demographics
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <DemographicCard title="Top countries" rows={audienceByBreakdown.country} />
+                  <DemographicCard title="Age range" rows={audienceByBreakdown.age} />
+                  <DemographicCard title="Gender" rows={audienceByBreakdown.gender} genderLabels />
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
@@ -1519,6 +1666,8 @@ export default async function HotelDashboardPage({
                         <th className="px-4 py-2 text-right font-medium">Comments</th>
                         <th className="px-4 py-2 text-right font-medium">Engagement</th>
                         <th className="px-4 py-2 text-right font-medium">Saves</th>
+                        <th className="px-4 py-2 text-right font-medium">Shares</th>
+                        <th className="px-4 py-2 text-right font-medium">Plays</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1557,6 +1706,12 @@ export default async function HotelDashboardPage({
                             {formatNumber(p.engagement)}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.saves)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.shares)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {p.mediaType === "reels" || p.videoViews > 0
+                              ? formatNumber(p.videoViews)
+                              : "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

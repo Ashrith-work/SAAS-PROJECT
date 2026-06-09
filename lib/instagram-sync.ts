@@ -5,6 +5,7 @@ import { getTokenForApiCall } from "@/lib/token-access";
 import type { SecretToken } from "@/lib/encryption";
 import {
   getDailyAccountInsights,
+  getFollowerDemographics,
   getMediaInsights,
   getProfile,
   getRecentMedia,
@@ -132,6 +133,7 @@ export async function syncInstagramConnection(
         impressions: day.impressions,
         views: day.views, // v22+ successor to impressions
         profileViews: day.profileViews,
+        websiteClicks: day.websiteClicks,
         engagement: 0, // account-level engagement lives on posts
       };
       await prisma.socialSnapshot.upsert({
@@ -160,7 +162,7 @@ export async function syncInstagramConnection(
       // Insights are fetched only for NEW media (API budget); likes/comments
       // and caption refresh on every run for all listed media.
       const isNew = !known.has(m.mediaId);
-      let insights = { reach: 0, impressions: 0, saved: 0, engagement: 0 };
+      let insights = { reach: 0, impressions: 0, saved: 0, engagement: 0, shares: 0, plays: 0 };
       if (isNew) {
         if (postsSynced > 0 && perRequestDelayMs > 0) await sleep(perRequestDelayMs);
         insights = await getMediaInsights(token.reveal(), m.mediaId);
@@ -186,8 +188,8 @@ export async function syncInstagramConnection(
           reach: insights.reach,
           saves: insights.saved,
           engagement: insights.engagement || m.likes + m.comments,
-          shares: 0,
-          videoViews: 0,
+          shares: insights.shares,
+          videoViews: insights.plays,
         },
         update: isNew
           ? {
@@ -196,10 +198,42 @@ export async function syncInstagramConnection(
               reach: insights.reach,
               saves: insights.saved,
               engagement: insights.engagement || m.likes + m.comments,
+              shares: insights.shares,
+              videoViews: insights.plays,
             }
           : base,
       });
       postsSynced += 1;
+    }
+
+    // ── Follower demographics → InstagramAudience (best-effort) ────────────
+    // Only available for 100+ follower accounts; a non-auth failure here must
+    // never fail the sync, so it's isolated. Auth errors still propagate.
+    try {
+      const audience = await getFollowerDemographics(token.reveal(), conn.igUserId);
+      for (const row of audience) {
+        await prisma.instagramAudience.upsert({
+          where: {
+            hotelClientId_breakdown_dimension: {
+              hotelClientId: conn.hotelClientId,
+              breakdown: row.breakdown,
+              dimension: row.dimension,
+            },
+          },
+          create: {
+            agencyId: conn.agencyId,
+            hotelClientId: conn.hotelClientId,
+            breakdown: row.breakdown,
+            dimension: row.dimension,
+            value: row.value,
+            syncedAt: new Date(),
+          },
+          update: { value: row.value, syncedAt: new Date() },
+        });
+      }
+    } catch (err) {
+      if (err instanceof InstagramAuthError) throw err;
+      // demographics are optional — ignore non-auth failures
     }
 
     await prisma.instagramConnection.update({

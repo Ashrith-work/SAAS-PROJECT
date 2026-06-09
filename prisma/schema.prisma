@@ -119,6 +119,7 @@ model Agency {
   socialSnapshots   SocialSnapshot[]
   postSnapshots     PostSnapshot[]
   storySnapshots    StorySnapshot[]
+  instagramAudience InstagramAudience[]
   gaConnections     GoogleAnalyticsConnection[]
   gaSnapshots       GaSnapshot[]
   gaSourceBreakdowns GaSourceBreakdown[]
@@ -183,6 +184,7 @@ model HotelClient {
   socialSnapshots SocialSnapshot[]
   postSnapshots   PostSnapshot[]
   storySnapshots  StorySnapshot[]
+  instagramAudience InstagramAudience[]
   gaConnections   GoogleAnalyticsConnection[]
   gaSnapshots     GaSnapshot[]
   gaSourceBreakdowns GaSourceBreakdown[]
@@ -547,12 +549,38 @@ model SocialSnapshot {
   // across reels, posts, stories). impressions is retired and stays 0 on new rows.
   views         Int      @default(0)
   profileViews  Int      @default(0)
+  // Daily "website_clicks" account metric (link-in-bio / website button taps).
+  // Dropped gracefully by the sync if a Graph version no longer accepts it.
+  websiteClicks Int      @default(0)
   engagement    Int      @default(0)
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
   @@unique([hotelClientId, date]) // one snapshot per hotel per day
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+// Follower demographics from the Instagram Graph `follower_demographics` insight
+// (breakdown by country / age / gender). One row per (hotel, breakdown,
+// dimension), refreshed each sync. Best-effort: the API only returns these for
+// accounts with 100+ followers, so this table may legitimately be empty.
+model InstagramAudience {
+  id            String   @id @default(cuid())
+  agencyId      String
+  hotelClientId String
+  // "country" | "age" | "gender"
+  breakdown     String
+  // The dimension value, e.g. "IN", "25-34", "F".
+  dimension     String
+  value         Int      @default(0)
+  syncedAt      DateTime @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelClientId, breakdown, dimension])
   @@index([agencyId])
   @@index([hotelClientId])
 }

@@ -198,7 +198,7 @@ export default async function HotelIntegrationsPage({
         }),
         agencyScoped(prisma.socialSnapshot).aggregate({
           where: { hotelClientId: hotel.id, date: { gte: since30 } },
-          _sum: { reach: true, impressions: true, profileViews: true },
+          _sum: { reach: true, impressions: true, profileViews: true, websiteClicks: true },
         }),
         agencyScoped(prisma.postSnapshot).findMany({
           where: { hotelClientId: hotel.id },
@@ -213,6 +213,7 @@ export default async function HotelIntegrationsPage({
             reach: true,
             engagement: true,
             saves: true,
+            shares: true,
           },
         }),
       ])
@@ -425,6 +426,17 @@ export default async function HotelIntegrationsPage({
                 label="Profile views · 30d"
                 value={formatNumber(reachAgg?._sum.profileViews ?? 0)}
               />
+              <Stat
+                label="Website clicks · 30d"
+                value={formatNumber(reachAgg?._sum.websiteClicks ?? 0)}
+              />
+            </div>
+
+            <div className="rounded-lg border-l-4 border-info bg-info/10 p-3 text-xs text-ink-secondary">
+              <span className="font-semibold text-ink">Note:</span> Video retention
+              time and skip rate are only available in the Instagram app itself —
+              Meta does not expose these through their API. Hotels can screenshot
+              those from the app and share them for weekly retention reports.
             </div>
 
             <InstagramActions hotelId={hotel.id} />
@@ -446,6 +458,7 @@ export default async function HotelIntegrationsPage({
                         <th className="px-3 py-2 text-right font-medium">Reach</th>
                         <th className="px-3 py-2 text-right font-medium">Engagement</th>
                         <th className="px-3 py-2 text-right font-medium">Saves</th>
+                        <th className="px-3 py-2 text-right font-medium">Shares</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -480,6 +493,9 @@ export default async function HotelIntegrationsPage({
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">
                             {formatNumber(p.saves)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {formatNumber(p.shares)}
                           </td>
                         </tr>
                       ))}
@@ -558,6 +574,21 @@ export default async function HotelIntegrationsPage({
                 Last event received: {fmtDate(hotel.lastEventAt)}
               </p>
             )}
+
+            <div className="rounded-lg border-l-4 border-info bg-info/10 p-3 text-xs text-ink-secondary">
+              <p className="font-semibold text-ink">Capture booking revenue</p>
+              <p className="mt-1">
+                For accurate revenue, add this to your booking confirmation page
+                total:
+              </p>
+              <code className="mt-1.5 block overflow-x-auto rounded bg-code px-2 py-1.5 text-codeink">
+                {`<span data-ht-value="YOUR_BOOKING_AMOUNT">₹X,XXX</span>`}
+              </code>
+              <p className="mt-1.5">
+                Replace <code>YOUR_BOOKING_AMOUNT</code> with the variable your
+                booking system uses for the total.
+              </p>
+            </div>
 
             <TestConnection hotelId={hotel.id} />
 

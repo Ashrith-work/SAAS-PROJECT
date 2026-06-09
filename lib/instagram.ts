@@ -218,6 +218,8 @@ export type DailyAccountInsight = {
   /** "views" — v22+ successor to impressions (content plays/displays that day). */
   views: number;
   profileViews: number;
+  /** Daily website_clicks (link-in-bio taps). Dropped if a version rejects it. */
+  websiteClicks: number;
   /** Daily follower_count metric when Meta returns it (new follows that day). */
   followerCount: number;
 };
@@ -313,10 +315,11 @@ export async function getDailyAccountInsights(
   const rows = await insightsWithFallback(
     accessToken,
     igUserId,
-    // Valid current account/day metrics only. "impressions" was retired on
-    // v22+ (replaced by "views") and is no longer accepted here — requesting it
-    // was what triggered the "metric must be one of …" sync failure.
-    ["reach", "profile_views", "follower_count"],
+    // Valid current account/day metrics. "impressions" was retired on v22+
+    // (replaced by "views") and is no longer accepted here. "website_clicks" is
+    // requested too; insightsWithFallback drops it gracefully if a version no
+    // longer accepts it, so the rest still land.
+    ["reach", "profile_views", "follower_count", "website_clicks"],
     {
       period: "day",
       since: String(Math.floor(range.since.getTime() / 1000)),
@@ -329,7 +332,7 @@ export async function getDailyAccountInsights(
   const ensure = (date: string): DailyAccountInsight => {
     let d = byDate.get(date);
     if (!d) {
-      d = { date, reach: 0, impressions: 0, views: 0, profileViews: 0, followerCount: 0 };
+      d = { date, reach: 0, impressions: 0, views: 0, profileViews: 0, websiteClicks: 0, followerCount: 0 };
       byDate.set(date, d);
     }
     return d;
@@ -349,6 +352,9 @@ export async function getDailyAccountInsights(
           break;
         case "profile_views":
           ensure(date).profileViews = value;
+          break;
+        case "website_clicks":
+          ensure(date).websiteClicks = value;
           break;
         case "follower_count":
           ensure(date).followerCount = value;
@@ -434,6 +440,9 @@ export type MediaInsights = {
   impressions: number;
   saved: number;
   engagement: number;
+  shares: number;
+  /** Reel plays (total play count). 0 for non-reels or when unavailable. */
+  plays: number;
 };
 
 /**
@@ -446,12 +455,15 @@ export async function getMediaInsights(
   accessToken: string,
   mediaId: string,
 ): Promise<MediaInsights> {
-  const out: MediaInsights = { reach: 0, impressions: 0, saved: 0, engagement: 0 };
+  const out: MediaInsights = { reach: 0, impressions: 0, saved: 0, engagement: 0, shares: 0, plays: 0 };
   // Valid current post metrics. "views" replaced "impressions" and
   // "total_interactions" replaced "engagement" on v22+; "saved" is still the
-  // media-level save metric. Degrades through smaller sets if a version rejects
-  // one, and parsing accepts both the old and new names for forward/back compat.
+  // media-level save metric. "shares" and "plays" (reels) are requested too and
+  // degrade out of the set if a version rejects them. Parsing accepts both old
+  // and new names, and reads total_value-shaped metrics as well as period values.
   const metricSets = [
+    ["reach", "views", "saved", "total_interactions", "shares", "plays"],
+    ["reach", "views", "saved", "total_interactions", "shares"],
     ["reach", "views", "saved", "total_interactions"],
     ["reach", "views", "saved"],
     ["reach", "saved"],
@@ -464,7 +476,7 @@ export async function getMediaInsights(
         metric: metrics.join(","),
       });
       for (const row of res.data ?? []) {
-        const value = row.values?.[0]?.value ?? 0;
+        const value = row.values?.[0]?.value ?? row.total_value?.value ?? 0;
         switch (row.name) {
           case "reach":
             out.reach = value;
@@ -482,6 +494,13 @@ export async function getMediaInsights(
           case "total_interactions":
             out.engagement = value;
             break;
+          case "shares":
+            out.shares = value;
+            break;
+          case "plays":
+          case "ig_reels_aggregated_all_plays_count":
+            out.plays = value;
+            break;
         }
       }
       return out;
@@ -489,6 +508,66 @@ export async function getMediaInsights(
       if (err instanceof InstagramAuthError) throw err;
       const message = err instanceof Error ? err.message : "";
       if (!message.includes("metric")) return out; // per-post quirk — keep zeros
+    }
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Follower demographics
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AudienceRow = {
+  breakdown: "country" | "age" | "gender";
+  /** e.g. "IN", "25-34", "F". */
+  dimension: string;
+  value: number;
+};
+
+type DemographicResponse = {
+  data?: {
+    name?: string;
+    total_value?: {
+      breakdowns?: {
+        dimension_keys?: string[];
+        results?: { dimension_values?: string[]; value?: number }[];
+      }[];
+    };
+  }[];
+};
+
+/**
+ * Follower demographics via the Graph `follower_demographics` insight
+ * (metric_type=total_value, period=lifetime), one call per breakdown
+ * (country / age / gender). BEST-EFFORT: the API only returns these for accounts
+ * with 100+ followers and the exact shape varies by version, so any non-auth
+ * failure for a breakdown is skipped (returns what did succeed). Auth errors
+ * propagate so the sync can flag an expired token. Never throws on data quirks.
+ */
+export async function getFollowerDemographics(
+  accessToken: string,
+  igUserId: string,
+): Promise<AudienceRow[]> {
+  const breakdowns: AudienceRow["breakdown"][] = ["country", "age", "gender"];
+  const out: AudienceRow[] = [];
+  for (const breakdown of breakdowns) {
+    try {
+      const res = await igGet<DemographicResponse>(`${igUserId}/insights`, accessToken, {
+        metric: "follower_demographics",
+        period: "lifetime",
+        metric_type: "total_value",
+        timeframe: "this_month",
+        breakdown,
+      });
+      const results = res.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+      for (const r of results) {
+        const dim = r.dimension_values?.[0];
+        const val = typeof r.value === "number" ? r.value : 0;
+        if (dim && val > 0) out.push({ breakdown, dimension: dim, value: val });
+      }
+    } catch (err) {
+      if (err instanceof InstagramAuthError) throw err;
+      // <100 followers / metric churn / version quirk — skip this breakdown.
     }
   }
   return out;

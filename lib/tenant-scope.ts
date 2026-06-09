@@ -130,6 +130,7 @@ export const MULTI_TENANT_MODELS = [
   "socialSnapshot",
   "postSnapshot",
   "storySnapshot",
+  "instagramAudience",
   "googleAnalyticsConnection",
   "gaSnapshot",
   "gaSourceBreakdown",
