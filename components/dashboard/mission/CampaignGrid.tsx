@@ -29,15 +29,15 @@ export type CampaignCard = {
 
 type Status = { label: string; cls: string };
 function statusOf(c: CampaignCard): Status {
-  if (c.realRoas != null && c.realRoas > 4) return { label: "Winning ★", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
-  if (c.realRoas != null && c.realRoas < 2 && c.spend > 0) return { label: "Losing", cls: "bg-red-50 text-red-600 ring-red-200" };
-  return { label: "Test", cls: "bg-amber-50 text-amber-700 ring-amber-200" };
+  if (c.realRoas != null && c.realRoas > 4) return { label: "Winning ★", cls: "bg-success/15 text-success ring-success/30" };
+  if (c.realRoas != null && c.realRoas < 2 && c.spend > 0) return { label: "Losing", cls: "bg-danger/15 text-danger ring-danger/30" };
+  return { label: "Test", cls: "bg-warning/15 text-warning ring-warning/30" };
 }
 function roasColor(roas: number | null): string {
-  if (roas == null) return "text-slate-400";
-  if (roas > 4) return "text-emerald-600";
-  if (roas >= 2) return "text-amber-600";
-  return "text-red-600";
+  if (roas == null) return "text-ink-disabled";
+  if (roas > 4) return "text-success";
+  if (roas >= 2) return "text-warning";
+  return "text-danger";
 }
 
 export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
@@ -46,11 +46,11 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
 
   if (cards.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 px-6 py-14 text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#1A56DB]/10 text-2xl">📈</div>
-        <p className="text-sm font-semibold text-slate-900">No campaign attribution yet</p>
-        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-          Add <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">utm_campaign</code> tags to your Meta
+      <div className="rounded-2xl border border-dashed border-line-strong bg-card/50 px-6 py-14 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-2xl">📈</div>
+        <p className="text-sm font-semibold text-ink">No campaign attribution yet</p>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-ink-tertiary">
+          Add <code className="rounded bg-elevated px-1 py-0.5 text-xs text-codeink">utm_campaign</code> tags to your Meta
           ads to start matching real bookings to the campaigns that drove them.
         </p>
       </div>
@@ -67,10 +67,10 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
               key={c.campaignKey}
               type="button"
               onClick={() => setOpenKey(c.campaignKey)}
-              className="group rounded-2xl border border-slate-200 bg-white p-5 text-left transition-shadow hover:shadow-md"
+              className="group rounded-2xl border border-line bg-card p-5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong"
             >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{c.campaignName}</h3>
+                <h3 className="line-clamp-2 text-sm font-semibold text-ink">{c.campaignName}</h3>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${st.cls}`}>
                   {st.label}
                 </span>
@@ -78,7 +78,7 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
 
               <div className="mt-4 flex items-end justify-between">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">True ROAS</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">True ROAS</p>
                   <p className={`text-4xl font-semibold tracking-tight tabular-nums ${roasColor(c.realRoas)}`}>
                     {formatMultiple(c.realRoas)}
                   </p>
@@ -86,14 +86,14 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
                 <Sparkline values={c.spark} />
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Spend</p>
-                  <p className="text-sm font-semibold tabular-nums text-slate-900">{formatCurrency(c.spend)}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">Spend</p>
+                  <p className="text-sm font-semibold tabular-nums text-ink">{formatCurrency(c.spend)}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Real bookings</p>
-                  <p className="text-sm font-semibold tabular-nums text-slate-900">{formatNumber(c.realBookings)}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">Real bookings</p>
+                  <p className="text-sm font-semibold tabular-nums text-ink">{formatNumber(c.realBookings)}</p>
                 </div>
               </div>
             </button>
@@ -103,16 +103,16 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setOpenKey(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-elevated p-6 shadow-[0_10px_40px_rgba(0,0,0,0.5)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">{open.campaignName}</h3>
+                <h3 className="text-lg font-semibold text-ink">{open.campaignName}</h3>
                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusOf(open).cls}`}>
                   {statusOf(open).label}
                 </span>
@@ -120,15 +120,15 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
               <button
                 type="button"
                 onClick={() => setOpenKey(null)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100"
+                className="rounded p-1 text-ink-tertiary hover:bg-card"
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-center">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">True ROAS</p>
+            <div className="mt-5 rounded-2xl bg-card p-4 text-center">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">True ROAS</p>
               <p className={`text-5xl font-semibold tracking-tight tabular-nums ${roasColor(open.realRoas)}`}>
                 {formatMultiple(open.realRoas)}
               </p>
@@ -150,13 +150,13 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
                     : `${open.variancePct > 0 ? "+" : ""}${Math.round(open.variancePct)}%`
                 }
                 valueClass={
-                  open.variancePct != null && open.variancePct > 50 ? "text-red-600" : "text-slate-900"
+                  open.variancePct != null && open.variancePct > 50 ? "text-danger" : "text-ink"
                 }
               />
             </dl>
 
             <div className="mt-5">
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">Last 7 days spend</p>
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">Last 7 days spend</p>
               <Sparkline values={open.spark} width={300} height={48} className="h-12" />
             </div>
           </div>
@@ -166,10 +166,10 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
   );
 }
 
-function Detail({ label, value, valueClass = "text-slate-900" }: { label: string; value: string; valueClass?: string }) {
+function Detail({ label, value, valueClass = "text-ink" }: { label: string; value: string; valueClass?: string }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</dt>
       <dd className={`mt-0.5 text-base font-semibold tabular-nums ${valueClass}`}>{value}</dd>
     </div>
   );

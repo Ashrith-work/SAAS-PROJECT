@@ -17,16 +17,16 @@ export function IntegrationCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+    <section className="rounded-xl border border-line bg-card p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-elevated">
             {icon}
           </div>
           <div>
-            <h2 className="font-semibold leading-tight">{title}</h2>
+            <h2 className="font-semibold leading-tight text-ink">{title}</h2>
             {subtitle && (
-              <p className="mt-0.5 text-sm text-zinc-500">{subtitle}</p>
+              <p className="mt-0.5 text-sm text-ink-tertiary">{subtitle}</p>
             )}
           </div>
         </div>

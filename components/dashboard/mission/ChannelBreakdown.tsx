@@ -12,8 +12,8 @@ export type ChannelData = {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums text-slate-900">{value}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
+      <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums text-ink">{value}</p>
     </div>
   );
 }
@@ -30,10 +30,10 @@ function ChannelCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md`}>
+    <div className={`rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong`}>
       <div className="mb-4 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
-        <h3 className="text-sm font-semibold text-slate-900">{name}</h3>
+        <h3 className="text-sm font-semibold text-ink">{name}</h3>
         <span className={`ml-auto h-1.5 w-10 rounded-full ${tint}`} />
       </div>
       <div className="grid grid-cols-3 gap-3">{children}</div>
@@ -44,7 +44,7 @@ function ChannelCard({
 export function ChannelBreakdown({ data }: { data: ChannelData }) {
   return (
     <div className="grid gap-3 lg:grid-cols-3">
-      <ChannelCard name="Paid Ads" dot="bg-[#1A56DB]" tint="bg-[#1A56DB]/20">
+      <ChannelCard name="Paid Ads" dot="bg-brand" tint="bg-brand/30">
         <Metric label="Spend" value={formatCurrency(data.paid.spend)} />
         <Metric label="Bookings" value={formatNumber(data.paid.bookings)} />
         <Metric label="True ROAS" value={formatMultiple(data.paid.roas)} />
@@ -59,7 +59,7 @@ export function ChannelBreakdown({ data }: { data: ChannelData }) {
         <Metric label="Bookings" value={formatNumber(data.instagram.bookings)} />
       </ChannelCard>
 
-      <ChannelCard name="Direct / Website" dot="bg-slate-500" tint="bg-slate-400/30">
+      <ChannelCard name="Direct / Website" dot="bg-ink-tertiary" tint="bg-ink-tertiary/30">
         <Metric label="Bookings" value={formatNumber(data.direct.bookings)} />
         <Metric label="Revenue" value={formatCurrency(data.direct.revenue)} />
         <Metric label="Share" value="—" />

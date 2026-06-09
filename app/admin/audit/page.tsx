@@ -19,12 +19,12 @@ const ACTIONS = [
 ] as const;
 
 const ACTION_CLS: Record<string, string> = {
-  failed_decrypt: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  created: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  decrypted: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  refreshed: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  rotated: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  deleted: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
+  failed_decrypt: "bg-danger/15 text-danger",
+  created: "bg-success/15 text-success",
+  decrypted: "bg-info/15 text-info",
+  refreshed: "bg-info/15 text-info",
+  rotated: "bg-warning/15 text-warning",
+  deleted: "bg-elevated text-ink-tertiary",
 };
 
 function fmt(d: Date): string {
@@ -91,11 +91,11 @@ export default async function AuditLogPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Token audit log</h1>
-        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Token audit log</h1>
+        <p className="mt-1 text-ink-secondary">
           Every encrypt / decrypt of a stored secret across all agencies.
           {failedCount > 0 && (
-            <span className="ml-1 font-medium text-red-600 dark:text-red-400">
+            <span className="ml-1 font-medium text-danger">
               {failedCount} failed decryption{failedCount === 1 ? "" : "s"} in the last 24h.
             </span>
           )}
@@ -105,11 +105,11 @@ export default async function AuditLogPage({
       {/* Filters */}
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-zinc-500">Agency</span>
+          <span className="mb-1 block text-xs font-medium text-ink-tertiary">Agency</span>
           <select
             name="agency"
             defaultValue={fAgency}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm text-ink"
           >
             <option value="">All agencies</option>
             {agencies.map((a) => (
@@ -120,11 +120,11 @@ export default async function AuditLogPage({
           </select>
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-zinc-500">Action</span>
+          <span className="mb-1 block text-xs font-medium text-ink-tertiary">Action</span>
           <select
             name="action"
             defaultValue={fAction}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm text-ink"
           >
             <option value="">All actions</option>
             {ACTIONS.map((a) => (
@@ -136,20 +136,20 @@ export default async function AuditLogPage({
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
         >
           Filter
         </button>
       </form>
 
       {logs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
-          <p className="text-zinc-600 dark:text-zinc-400">No audit entries match these filters.</p>
+        <div className="rounded-xl border border-dashed border-line-strong p-12 text-center">
+          <p className="text-ink-secondary">No audit entries match these filters.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-line bg-card">
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+            <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
               <tr>
                 <th className="px-3 py-2 font-medium">Time</th>
                 <th className="px-3 py-2 font-medium">Agency</th>
@@ -164,15 +164,15 @@ export default async function AuditLogPage({
               {logs.map((l) => (
                 <tr
                   key={l.id}
-                  className={`border-t border-zinc-100 dark:border-zinc-800 ${
-                    !l.success ? "bg-red-50/50 dark:bg-red-900/10" : ""
+                  className={`border-t border-line ${
+                    !l.success ? "bg-danger/10" : ""
                   }`}
                 >
-                  <td className="whitespace-nowrap px-3 py-2 text-zinc-500">{fmt(l.createdAt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-ink-tertiary">{fmt(l.createdAt)}</td>
                   <td className="px-3 py-2">
                     {l.agency.name}
                     {l.hotelClient?.name && (
-                      <span className="block text-xs text-zinc-500">{l.hotelClient.name}</span>
+                      <span className="block text-xs text-ink-tertiary">{l.hotelClient.name}</span>
                     )}
                   </td>
                   <td className="px-3 py-2">{l.tokenType}</td>
@@ -185,21 +185,21 @@ export default async function AuditLogPage({
                       {l.action}
                     </span>
                     {!l.success && (
-                      <span className="ml-1 text-xs font-medium text-red-600">failed</span>
+                      <span className="ml-1 text-xs font-medium text-danger">failed</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <span className="block text-xs text-zinc-700 dark:text-zinc-300">
+                    <span className="block text-xs text-ink-secondary">
                       {l.actorId ?? "system"}
                     </span>
-                    <span className="block text-xs text-zinc-400">{l.source ?? "—"}</span>
+                    <span className="block text-xs text-ink-disabled">{l.source ?? "—"}</span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs text-zinc-500">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-ink-tertiary">
                     {l.ipAddress ?? "—"}
                   </td>
-                  <td className="px-3 py-2 text-xs text-zinc-500">
+                  <td className="px-3 py-2 text-xs text-ink-tertiary">
                     {l.errorReason ? (
-                      <span className="text-red-600 dark:text-red-400">{l.errorReason}</span>
+                      <span className="text-danger">{l.errorReason}</span>
                     ) : (
                       <span className="block max-w-xs truncate" title={l.userAgent ?? ""}>
                         {l.userAgent ?? "—"}

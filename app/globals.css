@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ──────────────────────────────────────────────────────────────────────────
+   HotelTrack dark theme — SINGLE SOURCE OF TRUTH for color.
+   We ship one coherent dark theme (no light/dark toggle). Every color the app
+   uses should come from a token below; avoid hardcoded hex in components.
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+   Tailwind v4 generates utilities from each --color-* name, e.g.
+   --color-card  ->  bg-card / text-card / border-card / ring-card
+   The default Tailwind palette (gray/blue/emerald/amber/red…) still exists, so
+   existing dark classes keep working while we migrate.
+   ────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Surfaces */
+  --color-page: #0a0e1a; /* very dark navy, slightly warmer than black */
+  --color-card: #111827; /* default card — one step up from the page */
+  --color-elevated: #1f2937; /* modals / popovers / hover — one more step */
+  --color-code: #030712; /* code blocks — almost black, max contrast */
+
+  /* Borders & dividers */
+  --color-line: #1f2937; /* default subtle border */
+  --color-line-strong: #374151; /* stronger border / focus ring */
+
+  /* Text (never pure white) */
+  --color-ink: #f9fafb; /* primary */
+  --color-ink-secondary: #d1d5db; /* secondary / body */
+  --color-ink-tertiary: #9ca3af; /* labels / captions */
+  --color-ink-disabled: #6b7280; /* disabled */
+  --color-codeink: #93c5fd; /* code text — light blue */
+
+  /* Brand & semantic accents (brightened for dark backgrounds) */
+  --color-brand: #3b82f6;
+  --color-brand-hover: #2563eb;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #3b82f6;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #0a0e1a;
+  --foreground: #f9fafb;
+  color-scheme: dark;
+}
+
+html {
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Translucent callout backgrounds use opacity modifiers on the semantic tokens:
+   bg-info/10 + border-l-4 border-info, bg-warning/10 + border-warning, etc.
+   No bespoke utilities needed — Tailwind generates the /10 variants. */
+
+/* Native form controls + selects render dark (date pickers, option lists, the
+   calendar icon, autofill). Without this they flash white on dark pages. */
+input,
+textarea,
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+/* Subtle dark scrollbars so they don't read as bright light-mode tracks. */
+* {
+  scrollbar-color: #374151 transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
 }

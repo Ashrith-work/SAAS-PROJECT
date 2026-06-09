@@ -19,7 +19,7 @@ export default async function NewHotelPage() {
 
   return (
     <div className="max-w-xl">
-      <Link href="/agency/hotels" className="text-sm text-zinc-500 hover:underline">
+      <Link href="/agency/hotels" className="text-sm text-ink-tertiary hover:underline">
         ← Hotel Clients
       </Link>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">
@@ -28,17 +28,17 @@ export default async function NewHotelPage() {
 
       {atLimit ? (
         <>
-          <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-6 dark:border-amber-800/60 dark:bg-amber-900/20">
-            <h2 className="font-medium text-amber-900 dark:text-amber-200">
+          <div className="mt-6 rounded-xl border-l-4 border-warning bg-warning/10 p-6">
+            <h2 className="font-medium text-warning">
               You&apos;ve reached your plan limit
             </h2>
-            <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+            <p className="mt-1 text-sm text-ink-secondary">
               Your {getPlan(member.agency.plan).name} plan includes up to {limit}{" "}
               hotel clients ({count}/{limit} used). Upgrade to add more.
             </p>
             <Link
               href="/agency/billing"
-              className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
             >
               View plans →
             </Link>
@@ -51,7 +51,7 @@ export default async function NewHotelPage() {
         </>
       ) : (
         <>
-          <p className="mt-1 mb-6 text-sm text-zinc-500">
+          <p className="mt-1 mb-6 text-sm text-ink-tertiary">
             We&apos;ll generate a unique tracking snippet for this hotel after
             you save.
             {Number.isFinite(limit) && ` (${count}/${limit} hotels used)`}

@@ -48,7 +48,7 @@ function IntegrationDots({
   return (
     <Link
       href={`/agency/hotel/${hotelId}/integrations`}
-      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-elevated"
       title="Manage integrations"
     >
       {dots.map((d, i) => (
@@ -90,7 +90,7 @@ export default async function HotelsPage() {
           <ExportMenu basePath="/api/hotels/export" />
           <Link
             href="/agency/hotels/new"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Add Hotel Client
           </Link>
@@ -98,24 +98,24 @@ export default async function HotelsPage() {
       </div>
 
       {hotels.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
-          <p className="text-zinc-600 dark:text-zinc-400">No hotel clients yet.</p>
+        <div className="rounded-xl border border-dashed border-line p-12 text-center">
+          <p className="text-ink-tertiary">No hotel clients yet.</p>
           <Link
             href="/agency/hotels/new"
-            className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Add your first hotel client
           </Link>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+        <div className="overflow-hidden rounded-xl border border-line">
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+            <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
               <tr>
                 <th className="px-4 py-3 font-medium">Hotel</th>
                 <th className="px-4 py-3 font-medium">
                   Integrations
-                  <span className="ml-1 font-normal normal-case text-zinc-400">
+                  <span className="ml-1 font-normal normal-case text-ink-disabled">
                     (snippet · Meta · GA4)
                   </span>
                 </th>
@@ -127,7 +127,7 @@ export default async function HotelsPage() {
               {hotels.map((h) => (
                 <tr
                   key={h.id}
-                  className="border-t border-zinc-100 dark:border-zinc-800"
+                  className="border-t border-line"
                 >
                   <td className="px-4 py-3">
                     <Link
@@ -136,7 +136,7 @@ export default async function HotelsPage() {
                     >
                       {h.name}
                     </Link>
-                    <div className="text-xs text-zinc-500">{h.websiteUrl}</div>
+                    <div className="text-xs text-ink-tertiary">{h.websiteUrl}</div>
                   </td>
                   <td className="px-4 py-3">
                     {states.get(h.id) && (
@@ -150,7 +150,7 @@ export default async function HotelsPage() {
                   <td className="px-4 py-3">
                     <SnippetStatusBadge status={h.snippetStatus} />
                   </td>
-                  <td className="px-4 py-3 text-zinc-500">
+                  <td className="px-4 py-3 text-ink-tertiary">
                     {formatLastEvent(h.lastEventAt)}
                   </td>
                 </tr>

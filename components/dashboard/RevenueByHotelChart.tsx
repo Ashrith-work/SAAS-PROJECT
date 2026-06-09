@@ -25,7 +25,7 @@ export function RevenueByHotelChart({
 }) {
   if (data.length === 0 || data.every((d) => d.revenue === 0)) {
     return (
-      <p className="py-12 text-center text-sm text-zinc-500">
+      <p className="py-12 text-center text-sm text-ink-tertiary">
         No hotel revenue in this window yet.
       </p>
     );
@@ -41,28 +41,28 @@ export function RevenueByHotelChart({
           layout="vertical"
           margin={{ top: 8, right: 56, bottom: 0, left: 12 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" horizontal={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" horizontal={false} />
           <XAxis
             type="number"
             tickFormatter={(v: number) => formatCurrency(v)}
-            tick={{ fontSize: 11, fill: "#71717a" }}
+            tick={{ fontSize: 11, fill: "#9ca3af" }}
             tickLine={false}
-            axisLine={{ stroke: "#e4e4e7" }}
+            axisLine={{ stroke: "#1f2937" }}
           />
           <YAxis
             type="category"
             dataKey="hotel"
-            tick={{ fontSize: 12, fill: "#3f3f46" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
             width={140}
           />
           <Tooltip
-            cursor={{ fill: "rgba(244, 244, 245, 0.6)" }}
+            cursor={{ fill: "rgba(255,255,255,0.06)" }}
             formatter={(value) =>
               [formatCurrency(Number(value) || 0), "Revenue"] as [string, string]
             }
-            contentStyle={{ borderRadius: 8, border: "1px solid #e4e4e7", fontSize: 12 }}
+            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
           />
           <Bar dataKey="revenue" radius={[0, 6, 6, 0]} barSize={22}>
             {sorted.map((_, i) => (
@@ -72,7 +72,7 @@ export function RevenueByHotelChart({
               dataKey="revenue"
               position="right"
               formatter={(value: unknown) => formatCurrency(Number(value) || 0)}
-              style={{ fontSize: 11, fill: "#52525b" }}
+              style={{ fontSize: 11, fill: "#d1d5db" }}
             />
           </Bar>
         </BarChart>

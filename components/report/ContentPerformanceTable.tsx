@@ -14,17 +14,17 @@ const TYPE_LABELS: Record<string, string> = {
   story: "Story",
 };
 const TYPE_CLS: Record<string, string> = {
-  organic: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
-  paid_ad: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  influencer: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
-  story: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  organic: "bg-info/15 text-info",
+  paid_ad: "bg-[rgb(168_85_247_/0.15)] text-[#c084fc]",
+  influencer: "bg-[rgb(236_72_153_/0.15)] text-[#f472b6]",
+  story: "bg-warning/15 text-warning",
 };
 
 function TypeBadge({ type }: { type: string }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        TYPE_CLS[type] ?? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+        TYPE_CLS[type] ?? "bg-elevated text-ink-tertiary"
       }`}
     >
       {TYPE_LABELS[type] ?? type}
@@ -84,7 +84,7 @@ export function ContentPerformanceTable({ rows }: { rows: ContentPerf[] }) {
 
   if (rows.length === 0) {
     return (
-      <p className="px-4 py-8 text-center text-sm text-zinc-500">
+      <p className="px-4 py-8 text-center text-sm text-ink-tertiary">
         No content pieces for this hotel yet.
       </p>
     );
@@ -93,7 +93,7 @@ export function ContentPerformanceTable({ rows }: { rows: ContentPerf[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+        <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             {COLUMNS.map((c) => (
               <th
@@ -103,7 +103,7 @@ export function ContentPerformanceTable({ rows }: { rows: ContentPerf[] }) {
                 <button
                   type="button"
                   onClick={() => toggleSort(c.key)}
-                  className={`inline-flex items-center gap-1 hover:text-black dark:hover:text-white ${
+                  className={`inline-flex items-center gap-1 hover:text-ink ${
                     c.numeric ? "flex-row-reverse" : ""
                   }`}
                 >
@@ -118,7 +118,7 @@ export function ContentPerformanceTable({ rows }: { rows: ContentPerf[] }) {
         </thead>
         <tbody>
           {sorted.map((r) => (
-            <tr key={r.id} className="border-t border-zinc-100 dark:border-zinc-800">
+            <tr key={r.id} className="border-t border-line">
               <td className="px-4 py-3 font-medium">{r.title}</td>
               <td className="px-4 py-3">
                 <TypeBadge type={r.contentType} />

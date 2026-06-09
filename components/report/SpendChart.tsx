@@ -26,7 +26,7 @@ export function SpendChart({
 }) {
   if (data.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
+      <p className="py-8 text-center text-sm text-ink-tertiary">
         No ad spend recorded in this range.
       </p>
     );
@@ -36,18 +36,18 @@ export function SpendChart({
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={shortDate}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
-            axisLine={{ stroke: "#e4e4e7" }}
+            axisLine={{ stroke: "#1f2937" }}
             minTickGap={24}
           />
           <YAxis
             tickFormatter={(v: number) => formatCurrency(v)}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
             width={64}
@@ -59,7 +59,7 @@ export function SpendChart({
             labelFormatter={(label) => shortDate(String(label))}
             contentStyle={{
               borderRadius: 8,
-              border: "1px solid #e4e4e7",
+              border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb",
               fontSize: 12,
             }}
           />

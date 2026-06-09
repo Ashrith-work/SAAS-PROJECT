@@ -15,26 +15,26 @@ export default async function AdminLayout({
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-zinc-200 dark:border-zinc-800">
+      <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/admin" className="font-semibold">
+            <Link href="/admin" className="font-semibold text-ink">
               HotelTrack
             </Link>
-            <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white dark:bg-white dark:text-black">
+            <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
               Admin
             </span>
-            <nav className="ml-2 flex items-center gap-3 text-sm text-zinc-500">
-              <Link href="/admin" className="hover:text-black dark:hover:text-white">
+            <nav className="ml-2 flex items-center gap-1 text-sm">
+              <Link href="/admin" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
                 Overview
               </Link>
-              <Link href="/admin/billing" className="hover:text-black dark:hover:text-white">
+              <Link href="/admin/billing" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
                 Billing
               </Link>
-              <Link href="/admin/audit" className="hover:text-black dark:hover:text-white">
+              <Link href="/admin/audit" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
                 Audit log
               </Link>
-              <Link href="/admin/sync-now" className="hover:text-black dark:hover:text-white">
+              <Link href="/admin/sync-now" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
                 Sync now
               </Link>
             </nav>

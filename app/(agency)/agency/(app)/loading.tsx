@@ -4,12 +4,12 @@
 // doesn't shift when real data arrives.
 
 function Bar({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-zinc-200 dark:bg-zinc-800 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-elevated ${className}`} />;
 }
 
 function Card() {
   return (
-    <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="rounded-xl border border-line p-4">
       <Bar className="h-3 w-16" />
       <Bar className="mt-2 h-7 w-24" />
     </div>
@@ -31,7 +31,7 @@ export default function Loading() {
           <Card key={i} />
         ))}
       </div>
-      <div className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <div className="rounded-xl border border-line p-6">
         <Bar className="h-4 w-48" />
         <Bar className="mt-4 h-56 w-full" />
       </div>

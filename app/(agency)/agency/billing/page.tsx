@@ -25,7 +25,7 @@ function Banner({ sp, active }: { sp: SP; active: boolean }) {
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   if (one(sp.success)) {
     return (
-      <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300">
+      <div className="rounded-lg border-l-4 border-success bg-success/10 p-3 text-sm text-ink-secondary">
         Subscription updated. It can take a few seconds to activate — refresh if your
         plan isn&apos;t shown yet.
       </div>
@@ -33,21 +33,21 @@ function Banner({ sp, active }: { sp: SP; active: boolean }) {
   }
   if (one(sp.canceled)) {
     return (
-      <div className="rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+      <div className="rounded-lg border border-line bg-card p-3 text-sm text-ink-secondary">
         Your subscription will cancel at the end of the current billing period.
       </div>
     );
   }
   if (one(sp.error)) {
     return (
-      <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+      <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-3 text-sm text-ink-secondary">
         Something went wrong. Please try again.
       </div>
     );
   }
   if (!active) {
     return (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+      <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
         Your subscription is inactive. Choose a plan below to unlock your agency
         dashboard.
       </div>
@@ -59,13 +59,13 @@ function Banner({ sp, active }: { sp: SP; active: boolean }) {
 function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
   if (invoices.length === 0) return null;
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+    <div className="overflow-hidden rounded-xl border border-line">
+      <div className="border-b border-line px-4 py-3">
         <h3 className="font-medium">Invoice history</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+          <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
             <tr>
               <th className="px-4 py-3 font-medium">Invoice</th>
               <th className="px-4 py-3 font-medium">Date</th>
@@ -76,12 +76,12 @@ function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id} className="border-t border-zinc-100 dark:border-zinc-800">
+              <tr key={inv.id} className="border-t border-line">
                 <td className="px-4 py-3 font-mono text-xs">{inv.number ?? inv.id}</td>
-                <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                <td className="px-4 py-3 text-ink-tertiary">
                   {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("en-IN") : "—"}
                 </td>
-                <td className="px-4 py-3 capitalize text-zinc-600 dark:text-zinc-400">{inv.status}</td>
+                <td className="px-4 py-3 capitalize text-ink-tertiary">{inv.status}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatInr(inv.amountPaise)}</td>
                 <td className="px-4 py-3 text-right">
                   {inv.shortUrl && (
@@ -89,7 +89,7 @@ function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
                       href={inv.shortUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-zinc-500 hover:underline"
+                      className="text-xs text-ink-tertiary hover:underline"
                     >
                       View →
                     </a>
@@ -133,11 +133,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
-          <p className="text-sm text-zinc-500">{member.agency.name}</p>
+          <p className="text-sm text-ink-tertiary">{member.agency.name}</p>
         </div>
         <div className="flex items-center gap-3">
           {active && (
-            <Link href="/agency/dashboard" className="text-sm text-zinc-500 hover:underline">
+            <Link href="/agency/dashboard" className="text-sm text-ink-tertiary hover:underline">
               ← Dashboard
             </Link>
           )}
@@ -148,14 +148,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       <div className="space-y-4">
         <Banner sp={sp} active={active} />
 
-        <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-          <p className="text-sm text-zinc-500">Current plan</p>
+        <div className="rounded-xl border border-line p-4">
+          <p className="text-sm text-ink-tertiary">Current plan</p>
           <p className="mt-0.5 text-lg font-medium">
             {active || paused ? currentPlan.name : "No active subscription"}
-            <span className="ml-2 align-middle text-xs font-normal text-zinc-500">({status})</span>
+            <span className="ml-2 align-middle text-xs font-normal text-ink-tertiary">({status})</span>
           </p>
           {member.agency.subscriptionExpiresAt && (active || paused) && (
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-ink-tertiary">
               Current period ends{" "}
               {new Date(member.agency.subscriptionExpiresAt).toLocaleDateString("en-IN", {
                 day: "numeric",
@@ -178,9 +178,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
         <InvoiceHistory invoices={invoices} />
 
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-ink-tertiary">
           Payments run in Razorpay test mode. Use card{" "}
-          <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">4111 1111 1111 1111</code>{" "}
+          <code className="rounded bg-elevated px-1">4111 1111 1111 1111</code>{" "}
           (any future expiry &amp; CVV) and choose <strong>Success</strong> on the
           authentication screen. No real money is charged.
         </p>

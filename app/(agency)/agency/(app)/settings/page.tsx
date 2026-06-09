@@ -70,7 +70,7 @@ export default async function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-ink-tertiary">
           Connect Meta (Facebook) Ads to bring ad spend and ROI into each
           hotel&apos;s dashboard.
         </p>
@@ -79,17 +79,17 @@ export default async function SettingsPage() {
       <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
 
       {/* ── Meta connection ─────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <section className="rounded-xl border border-line p-6">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">Meta Ads connection</h2>
           {connected ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               Connected
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-elevated px-2.5 py-1 text-xs font-medium text-ink-tertiary">
+              <span className="h-1.5 w-1.5 rounded-full bg-ink-disabled" />
               Disconnected
             </span>
           )}
@@ -97,7 +97,7 @@ export default async function SettingsPage() {
 
         {connected && token ? (
           <div className="mt-4 space-y-4">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-ink-tertiary">
               Token active · expires:{" "}
               <span className="font-medium">
                 {formatExpiry(token.tokenExpiresAt)}
@@ -106,13 +106,13 @@ export default async function SettingsPage() {
             <form action={disconnectMetaToken}>
               <button
                 type="submit"
-                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                className="rounded-lg border border-line-strong bg-elevated px-3 py-1.5 text-sm font-medium text-ink-secondary hover:bg-line-strong"
               >
                 Disconnect
               </button>
             </form>
             <details className="text-sm">
-              <summary className="cursor-pointer text-zinc-500 hover:text-black dark:hover:text-white">
+              <summary className="cursor-pointer text-ink-tertiary hover:text-ink">
                 Replace token
               </summary>
               <div className="mt-3">
@@ -123,12 +123,12 @@ export default async function SettingsPage() {
         ) : (
           <div className="mt-4 space-y-4">
             {expired && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+              <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
                 Your Meta connection expired or was revoked. Paste a fresh access
                 token below to reconnect.
               </div>
             )}
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-ink-tertiary">
               Paste a Meta access token with ads read permissions
               (<code className="text-xs">ads_read</code>). Generate one from the
               Meta for Developers Graph API Explorer or your app&apos;s system
@@ -139,16 +139,16 @@ export default async function SettingsPage() {
         )}
 
         {loadError && (
-          <p className="mt-4 text-sm text-red-600">{loadError}</p>
+          <p className="mt-4 text-sm text-danger">{loadError}</p>
         )}
       </section>
 
       {/* Ad-account → hotel mapping now lives per hotel on each hotel's
           Integrations page, so the connection and its mapping sit together. */}
       {connected && (
-        <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+        <section className="rounded-xl border border-line p-6">
           <h2 className="font-medium">Map ad accounts to hotels</h2>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-ink-tertiary">
             {accounts.length === 0
               ? "This token can't access any ad accounts. Reconnect a token with ads permissions."
               : `${accounts.length} ad account${accounts.length === 1 ? "" : "s"} available.`}{" "}

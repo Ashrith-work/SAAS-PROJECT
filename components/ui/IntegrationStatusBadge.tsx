@@ -4,20 +4,20 @@ import type { IntegrationTone } from "@/lib/integration-status";
 // Tailwind's compiler keeps them (it can't see interpolated class names).
 const TONE: Record<IntegrationTone, { pill: string; dot: string }> = {
   gray: {
-    pill: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-    dot: "bg-zinc-400",
+    pill: "bg-elevated text-ink-tertiary",
+    dot: "bg-ink-disabled",
   },
   green: {
-    pill: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-    dot: "bg-green-500",
+    pill: "bg-success/15 text-success",
+    dot: "bg-success",
   },
   yellow: {
-    pill: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-    dot: "bg-amber-500",
+    pill: "bg-warning/15 text-warning",
+    dot: "bg-warning",
   },
   red: {
-    pill: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-    dot: "bg-red-500",
+    pill: "bg-danger/15 text-danger",
+    dot: "bg-danger",
   },
 };
 

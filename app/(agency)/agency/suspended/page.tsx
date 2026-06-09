@@ -15,20 +15,20 @@ export default async function SuspendedPage() {
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center px-6 py-16 text-center">
-      <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+      <p className="text-xs font-semibold uppercase tracking-widest text-ink-disabled">
         HotelTrack
       </p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">
         Your account is suspended
       </h1>
-      <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="mt-3 text-sm text-ink-tertiary">
         Access to {member.agency.name}&apos;s dashboard has been paused by the
         HotelTrack team. If you think this is a mistake, please contact support to
         get it reactivated.
       </p>
       <div className="mt-8 flex items-center justify-center gap-3">
         <UserButton />
-        <span className="text-sm text-zinc-500">{member.email}</span>
+        <span className="text-sm text-ink-tertiary">{member.email}</span>
       </div>
     </main>
   );

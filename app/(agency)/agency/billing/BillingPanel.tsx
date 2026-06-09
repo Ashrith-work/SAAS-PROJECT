@@ -182,7 +182,7 @@ export function BillingPanel({
   return (
     <div className="space-y-4">
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+        <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-3 text-sm text-ink-secondary">
           {error}
         </div>
       )}
@@ -195,22 +195,22 @@ export function BillingPanel({
             <div
               key={plan.key}
               className={`flex flex-col rounded-xl border p-5 ${
-                isCurrent ? "border-black dark:border-white" : "border-zinc-200 dark:border-zinc-800"
+                isCurrent ? "border-brand" : "border-line"
               }`}
             >
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold">{plan.name}</h2>
+                <h2 className="font-semibold text-ink">{plan.name}</h2>
                 {isCurrent && (
-                  <span className="rounded-full bg-black px-2 py-0.5 text-xs font-medium text-white dark:bg-white dark:text-black">
+                  <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
                     Current
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-2xl font-semibold">
+              <p className="mt-1 text-2xl font-semibold text-ink">
                 {plan.priceLabel}
-                <span className="text-sm font-normal text-zinc-500">/mo</span>
+                <span className="text-sm font-normal text-ink-tertiary">/mo</span>
               </p>
-              <ul className="mt-3 flex-1 space-y-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+              <ul className="mt-3 flex-1 space-y-1.5 text-sm text-ink-secondary">
                 {plan.features.map((f) => (
                   <li key={f}>• {f}</li>
                 ))}
@@ -219,7 +219,7 @@ export function BillingPanel({
                 {isCurrent ? (
                   <button
                     disabled
-                    className="w-full rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-500 dark:bg-zinc-800"
+                    className="w-full rounded-lg bg-elevated px-4 py-2 text-sm font-medium text-ink-tertiary"
                   >
                     Your plan
                   </button>
@@ -227,7 +227,7 @@ export function BillingPanel({
                   <button
                     onClick={() => handleSwitch(plan.key)}
                     disabled={busy !== null}
-                    className="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    className="w-full rounded-lg border border-line-strong bg-elevated px-4 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong disabled:opacity-50"
                   >
                     {loading ? "Switching…" : "Switch to this plan"}
                   </button>
@@ -235,7 +235,7 @@ export function BillingPanel({
                   <button
                     onClick={() => handleSubscribe(plan.key)}
                     disabled={busy !== null}
-                    className="w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                    className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-50"
                   >
                     {loading ? "Opening checkout…" : "Subscribe"}
                   </button>
@@ -247,23 +247,23 @@ export function BillingPanel({
       </div>
 
       {active && (
-        <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-          <h3 className="font-medium">Manage subscription</h3>
-          <p className="mt-0.5 text-sm text-zinc-500">
+        <div className="rounded-xl border border-line p-4">
+          <h3 className="font-medium text-ink">Manage subscription</h3>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
             Switch plans above, or pause/cancel here.
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
             <button
               onClick={handlePauseResume}
               disabled={busy !== null}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="rounded-lg border border-line-strong bg-elevated px-3 py-1.5 text-sm font-medium text-ink-secondary hover:bg-line-strong disabled:opacity-50"
             >
               {busy === "pause" ? "Working…" : paused ? "Resume subscription" : "Pause subscription"}
             </button>
             <button
               onClick={() => setConfirmingCancel(true)}
               disabled={busy !== null}
-              className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800/60 dark:text-red-400 dark:hover:bg-red-900/20"
+              className="rounded-lg border border-danger/60 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
             >
               Cancel subscription
             </button>
@@ -272,10 +272,10 @@ export function BillingPanel({
       )}
 
       {confirmingCancel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
-            <h3 className="text-lg font-semibold">Cancel your subscription?</h3>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-elevated p-6 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+            <h3 className="text-lg font-semibold text-ink">Cancel your subscription?</h3>
+            <p className="mt-2 text-sm text-ink-secondary">
               Your plan will cancel at the end of the current billing period. You&apos;ll
               keep dashboard access until then. Your hotels, content, and historical
               data are kept if you resubscribe later.
@@ -284,14 +284,14 @@ export function BillingPanel({
               <button
                 onClick={() => setConfirmingCancel(false)}
                 disabled={busy === "cancel"}
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                className="rounded-lg border border-line-strong bg-elevated px-4 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
               >
                 Keep subscription
               </button>
               <button
                 onClick={handleCancel}
                 disabled={busy === "cancel"}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:bg-danger/90 disabled:opacity-50"
               >
                 {busy === "cancel" ? "Cancelling…" : "Yes, cancel"}
               </button>

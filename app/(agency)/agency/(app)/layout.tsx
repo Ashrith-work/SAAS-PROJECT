@@ -34,53 +34,33 @@ export default async function AgencyAppLayout({
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-zinc-200 dark:border-zinc-800">
+      <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
-            <Link href="/agency/dashboard" className="font-semibold">
+            <Link href="/agency/dashboard" className="font-semibold text-ink">
               HotelTrack
             </Link>
-            <nav className="flex items-center gap-4 text-sm">
-              <Link
-                href="/agency/dashboard"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/agency/hotels"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Hotel Clients
-              </Link>
-              <Link
-                href="/agency/content"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Content
-              </Link>
-              <Link
-                href="/agency/alerts"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Alerts
-              </Link>
-              <Link
-                href="/agency/settings"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Settings
-              </Link>
-              <Link
-                href="/agency/billing"
-                className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-              >
-                Billing
-              </Link>
+            <nav className="flex items-center gap-1 text-sm">
+              {[
+                { href: "/agency/dashboard", label: "Dashboard" },
+                { href: "/agency/hotels", label: "Hotel Clients" },
+                { href: "/agency/content", label: "Content" },
+                { href: "/agency/alerts", label: "Alerts" },
+                { href: "/agency/settings", label: "Settings" },
+                { href: "/agency/billing", label: "Billing" },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink"
+                >
+                  {item.label}
+                </Link>
+              ))}
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-zinc-500 sm:inline">
+            <span className="hidden text-sm text-ink-tertiary sm:inline">
               {member.agency.name}
             </span>
             <UserButton />

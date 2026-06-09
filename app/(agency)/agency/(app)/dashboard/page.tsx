@@ -34,11 +34,11 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const KPI_ACCENT = {
-  zinc: { bar: "bg-zinc-400", text: "text-zinc-500" },
-  blue: { bar: "bg-blue-500", text: "text-blue-600 dark:text-blue-400" },
-  amber: { bar: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
-  emerald: { bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
-  violet: { bar: "bg-violet-500", text: "text-violet-600 dark:text-violet-400" },
+  zinc: { bar: "bg-ink-disabled", text: "text-ink-tertiary" },
+  blue: { bar: "bg-blue-500", text: "text-info" },
+  amber: { bar: "bg-amber-500", text: "text-warning" },
+  emerald: { bar: "bg-emerald-500", text: "text-success" },
+  violet: { bar: "bg-violet-500", text: "text-violet-400" },
 } as const;
 type Accent = keyof typeof KPI_ACCENT;
 
@@ -60,18 +60,18 @@ function KpiCard({
       <p
         className={`mt-1 text-xs font-medium tabular-nums ${
           delta >= 0
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-red-600 dark:text-red-400"
+            ? "text-success"
+            : "text-danger"
         }`}
       >
         {delta >= 0 ? "▲" : "▼"} {formatPercent(Math.abs(delta))} vs prior 30d
       </p>
     ) : delta === null ? (
-      <p className="mt-1 text-xs text-zinc-400">No prior period</p>
+      <p className="mt-1 text-xs text-ink-disabled">No prior period</p>
     ) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="relative overflow-hidden rounded-xl border border-line p-4">
       <span className={`absolute inset-y-0 left-0 w-1 ${a.bar}`} aria-hidden />
       <p className={`text-xs font-medium uppercase tracking-wide ${a.text}`}>{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
@@ -93,11 +93,11 @@ function ChartCard({
 }) {
   return (
     <section
-      className={`overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 ${className ?? ""}`}
+      className={`overflow-hidden rounded-xl border border-line ${className ?? ""}`}
     >
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <div className="border-b border-line px-4 py-3">
         <h2 className="font-medium">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-xs text-zinc-500">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-xs text-ink-tertiary">{subtitle}</p>}
       </div>
       <div className="p-4">{children}</div>
     </section>
@@ -266,7 +266,7 @@ export default async function AgencyDashboardPage() {
           <h1 className="text-2xl font-semibold tracking-tight">
             {member.agency.name}
           </h1>
-          <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 text-ink-tertiary">
             All hotel clients · last 30 days
           </p>
         </div>
@@ -274,7 +274,7 @@ export default async function AgencyDashboardPage() {
           <ExportMenu basePath="/api/agency/export" />
           <Link
             href="/agency/hotels/new"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Add Hotel Client
           </Link>
@@ -350,7 +350,7 @@ export default async function AgencyDashboardPage() {
       )}
 
       {pixelMode && (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+        <div className="rounded-xl border border-dashed border-line p-6 text-sm text-ink-tertiary">
           Per-content / per-source attribution is disabled in Facebook Pixel mode.
           The Pixel reports website conversions to Meta, not HotelTrack — open
           Meta Ads Manager for content-level breakdowns, and the{" "}
@@ -363,13 +363,13 @@ export default async function AgencyDashboardPage() {
       <div>
         <h2 className="mb-3 font-medium">Hotel clients</h2>
         {hotels.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
-            <p className="text-zinc-600 dark:text-zinc-400">
+          <div className="rounded-xl border border-dashed border-line p-12 text-center">
+            <p className="text-ink-tertiary">
               No hotel clients yet.
             </p>
             <Link
               href="/agency/hotels/new"
-              className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
             >
               Add your first hotel client
             </Link>
@@ -382,14 +382,14 @@ export default async function AgencyDashboardPage() {
                 <Link
                   key={h.id}
                   href={`/agency/hotel/${h.id}`}
-                  className="group rounded-xl border border-zinc-200 p-5 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+                  className="group rounded-xl border border-line p-5 transition-colors hover:border-line-strong"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="truncate font-medium group-hover:underline">
                         {h.name}
                       </h3>
-                      <p className="truncate text-xs text-zinc-500">
+                      <p className="truncate text-xs text-ink-tertiary">
                         {h.websiteUrl}
                       </p>
                     </div>
@@ -397,21 +397,21 @@ export default async function AgencyDashboardPage() {
                   </div>
 
                   {!pixelMode && (
-                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-4">
                       <div>
-                        <p className="text-xs text-zinc-500">Visits</p>
+                        <p className="text-xs text-ink-tertiary">Visits</p>
                         <p className="text-lg font-semibold tabular-nums">
                           {formatNumber(m.visits)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500">Bookings</p>
+                        <p className="text-xs text-ink-tertiary">Bookings</p>
                         <p className="text-lg font-semibold tabular-nums">
                           {formatNumber(m.bookings)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500">Revenue</p>
+                        <p className="text-xs text-ink-tertiary">Revenue</p>
                         <p className="text-lg font-semibold tabular-nums">
                           {formatCurrency(m.revenue)}
                         </p>
@@ -419,7 +419,7 @@ export default async function AgencyDashboardPage() {
                     </div>
                   )}
 
-                  <p className={`text-xs text-zinc-400 ${pixelMode ? "mt-3" : "mt-3"}`}>
+                  <p className={`text-xs text-ink-disabled ${pixelMode ? "mt-3" : "mt-3"}`}>
                     {formatLastSync(h.lastSyncedAt)}
                   </p>
                 </Link>

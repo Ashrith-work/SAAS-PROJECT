@@ -73,27 +73,27 @@ const TONE: Record<
   { wrap: string; badge: string; label: string; icon: string }
 > = {
   info: {
-    wrap: "border-[#1A56DB]/30 bg-[#1A56DB]/5 text-slate-700",
-    badge: "bg-[#1A56DB] text-white",
-    label: "text-[#1A56DB]",
+    wrap: "border-info bg-info/10 text-ink-secondary",
+    badge: "bg-info text-white",
+    label: "text-info",
     icon: "i",
   },
   warn: {
-    wrap: "border-amber-300 bg-amber-50 text-amber-900",
-    badge: "bg-amber-500 text-white",
-    label: "text-amber-700",
+    wrap: "border-warning bg-warning/10 text-ink-secondary",
+    badge: "bg-warning text-[#0a0e1a]",
+    label: "text-warning",
     icon: "!",
   },
   success: {
-    wrap: "border-green-300 bg-green-50 text-green-900",
-    badge: "bg-green-600 text-white",
-    label: "text-green-700",
+    wrap: "border-success bg-success/10 text-ink-secondary",
+    badge: "bg-success text-[#0a0e1a]",
+    label: "text-success",
     icon: "✓",
   },
   danger: {
-    wrap: "border-red-300 bg-red-50 text-red-900",
-    badge: "bg-red-600 text-white",
-    label: "text-red-700",
+    wrap: "border-danger bg-danger/10 text-ink-secondary",
+    badge: "bg-danger text-white",
+    label: "text-danger",
     icon: "×",
   },
 };
@@ -110,7 +110,8 @@ function Callout({
   const t = TONE[tone];
   return (
     <div
-      className={`my-4 flex gap-3 rounded-xl border p-4 text-sm leading-relaxed ${t.wrap}`}
+      data-callout
+      className={`my-4 flex gap-3 rounded-r-xl border-l-4 p-4 text-sm leading-relaxed ${t.wrap}`}
     >
       <span
         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${t.badge}`}
@@ -136,13 +137,13 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-4 border-t border-slate-100 py-5 first:border-t-0">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1A56DB] text-sm font-bold text-white">
+    <div className="flex gap-4 border-t border-line py-5 first:border-t-0">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-bold text-white">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <h4 className="mb-2 font-semibold text-[#0F172A]">{title}</h4>
-        <div className="space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <h4 className="mb-2 font-semibold text-ink">{title}</h4>
+        <div className="space-y-3 text-[15px] leading-relaxed text-ink-secondary">
           {children}
         </div>
       </div>
@@ -163,20 +164,20 @@ function SectionTitle({
 }) {
   return (
     <div id={id} className="scroll-mt-24">
-      <span className="text-sm font-bold uppercase tracking-wide text-[#1A56DB]">
+      <span className="text-sm font-bold uppercase tracking-wide text-brand">
         Section {num}
       </span>
-      <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">
+      <h3 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
         {title}
       </h3>
-      {meta && <p className="mt-1 text-sm text-slate-500">{meta}</p>}
+      {meta && <p className="mt-1 text-sm text-ink-tertiary">{meta}</p>}
     </div>
   );
 }
 
 function Ol({ children }: { children: React.ReactNode }) {
   return (
-    <ol className="ml-1 list-inside list-decimal space-y-1.5 text-slate-600 marker:font-semibold marker:text-[#1A56DB]">
+    <ol className="ml-1 list-inside list-decimal space-y-1.5 text-ink-secondary marker:font-semibold marker:text-brand">
       {children}
     </ol>
   );
@@ -190,9 +191,9 @@ function PlatformCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <p className="mb-2 font-semibold text-[#0F172A]">If you use {name}</p>
-      <div className="text-[15px] leading-relaxed text-slate-600">{children}</div>
+    <div className="rounded-xl border border-line bg-card p-4">
+      <p className="mb-2 font-semibold text-ink">If you use {name}</p>
+      <div className="text-[15px] leading-relaxed text-ink-secondary">{children}</div>
     </div>
   );
 }
@@ -201,7 +202,7 @@ function PlatformCard({
 
 export default function SetupGuidePage() {
   return (
-    <div className="min-h-screen bg-white text-[#0F172A]">
+    <div className="min-h-screen bg-page text-ink">
       {/* Print rules: backgrounds print, layout collapses to one readable column */}
       <style>{`
         @media print {
@@ -211,20 +212,20 @@ export default function SetupGuidePage() {
       `}</style>
 
       {/* Sticky top bar */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur print:static print:bg-white">
+      <header className="sticky top-0 z-30 border-b border-line bg-page/90 backdrop-blur print:static print:bg-page">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A56DB] text-sm font-black text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand text-sm font-black text-white">
               H
             </span>
-            <span className="text-base font-bold tracking-tight text-[#0F172A]">
+            <span className="text-base font-bold tracking-tight text-ink">
               HotelTrack
             </span>
           </Link>
           <a
             href={PDF_URL}
             download="HotelTrack-Setup-Guide.pdf"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#1A56DB] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1648b0] print:hidden"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover print:hidden"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
               <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" strokeLinecap="round" strokeLinejoin="round" />
@@ -235,15 +236,15 @@ export default function SetupGuidePage() {
       </header>
 
       {/* Hero */}
-      <section className="border-b border-slate-200 bg-gradient-to-b from-[#0F172A] to-[#152033] text-white">
+      <section className="border-b border-line bg-gradient-to-b from-page to-card text-ink">
         <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#93b4f4]">
+          <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-codeink">
             Setup Guide · v1.0
           </span>
           <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-5xl">
             HotelTrack Setup Guide
           </h1>
-          <p className="mt-3 max-w-2xl text-lg text-slate-300">
+          <p className="mt-3 max-w-2xl text-lg text-ink-secondary">
             Step-by-step instructions for hotels and marketing agencies.
           </p>
 
@@ -262,7 +263,7 @@ export default function SetupGuidePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#part-1"
-              className="rounded-lg bg-[#1A56DB] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2563eb]"
+              className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover"
             >
               Part 1 — For Hotels →
             </a>
@@ -285,21 +286,21 @@ export default function SetupGuidePage() {
         <main className="min-w-0 space-y-16">
           {/* ── Introduction ─────────────────────────────────────────────── */}
           <section id="intro" className="scroll-mt-24">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-[#1A56DB]">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-brand">
               Overview
             </h2>
-            <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">
+            <h3 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
               Who this guide is for
             </h3>
-            <p className="mt-4 text-[15px] leading-relaxed text-slate-600">
+            <p className="mt-4 text-[15px] leading-relaxed text-ink-secondary">
               This is the complete setup guide for HotelTrack, covering both
               audiences who need to do the initial configuration.
             </p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                <p className="font-semibold text-[#0F172A]">For hotels</p>
-                <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+              <div className="rounded-xl border border-line bg-card p-5">
+                <p className="font-semibold text-ink">For hotels</p>
+                <p className="mt-2 text-[15px] leading-relaxed text-ink-secondary">
                   Follow <strong>Part 1</strong>. You&apos;ll install a small
                   tracking code on your website (10 min) and connect your
                   Instagram account (5 min). Total time: ~15 minutes. No
@@ -307,9 +308,9 @@ export default function SetupGuidePage() {
                   instructions for WordPress, Shopify, Wix, and Squarespace.
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                <p className="font-semibold text-[#0F172A]">For agencies</p>
-                <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+              <div className="rounded-xl border border-line bg-card p-5">
+                <p className="font-semibold text-ink">For agencies</p>
+                <p className="mt-2 text-[15px] leading-relaxed text-ink-secondary">
                   Follow <strong>Part 2</strong>. You&apos;ll generate a Meta
                   long-lived access token (10 min) and add UTM parameters to
                   Meta ads (5 min per ad account). This enables campaign
@@ -318,7 +319,7 @@ export default function SetupGuidePage() {
               </div>
             </div>
 
-            <p className="mt-4 text-[15px] leading-relaxed text-slate-600">
+            <p className="mt-4 text-[15px] leading-relaxed text-ink-secondary">
               Both parts are independent. You can complete them in any order, or
               split the work between hotel staff and agency staff.
             </p>
@@ -341,12 +342,12 @@ export default function SetupGuidePage() {
 
           {/* ── PART 1 ───────────────────────────────────────────────────── */}
           <section id="part-1" className="scroll-mt-24">
-            <div className="rounded-2xl bg-[#0F172A] px-6 py-5 text-white">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#93b4f4]">
+            <div className="rounded-2xl bg-gradient-to-br from-brand to-brand-hover px-6 py-5 text-white">
+              <p className="text-xs font-bold uppercase tracking-widest text-codeink">
                 Part 1 of 2
               </p>
               <h2 className="mt-1 text-2xl font-bold">For Hotels</h2>
-              <p className="mt-1 text-sm text-slate-300">
+              <p className="mt-1 text-sm text-ink-secondary">
                 Install the website snippet and connect Instagram.
               </p>
             </div>
@@ -369,7 +370,7 @@ export default function SetupGuidePage() {
                 down your website or change anything visitors can see.
               </Callout>
 
-              <div className="rounded-2xl border border-slate-200 p-2 sm:p-4">
+              <div className="rounded-2xl border border-line p-2 sm:p-4">
                 <Step n={1} title="Get your tracking code from the agency">
                   <p>
                     Your marketing agency will provide you with a snippet that
@@ -516,7 +517,7 @@ export default function SetupGuidePage() {
                 changes to your account.
               </Callout>
 
-              <div className="rounded-2xl border border-slate-200 p-2 sm:p-4">
+              <div className="rounded-2xl border border-line p-2 sm:p-4">
                 <Step n={1} title="Verify Instagram account type">
                   <p>
                     Instagram lets HotelTrack read insights data ONLY from{" "}
@@ -619,12 +620,12 @@ export default function SetupGuidePage() {
 
           {/* ── PART 2 ───────────────────────────────────────────────────── */}
           <section id="part-2" className="scroll-mt-24">
-            <div className="rounded-2xl bg-[#0F172A] px-6 py-5 text-white">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#93b4f4]">
+            <div className="rounded-2xl bg-gradient-to-br from-brand to-brand-hover px-6 py-5 text-white">
+              <p className="text-xs font-bold uppercase tracking-widest text-codeink">
                 Part 2 of 2
               </p>
               <h2 className="mt-1 text-2xl font-bold">For Agencies</h2>
-              <p className="mt-1 text-sm text-slate-300">
+              <p className="mt-1 text-sm text-ink-secondary">
                 Generate a Meta access token and tag your ads with UTMs.
               </p>
             </div>
@@ -659,7 +660,7 @@ export default function SetupGuidePage() {
                 </ul>
               </Callout>
 
-              <div className="rounded-2xl border border-slate-200 p-2 sm:p-4">
+              <div className="rounded-2xl border border-line p-2 sm:p-4">
                 <Step n={1} title="Create a Meta App">
                   <p>
                     If you don&apos;t have a Meta App already, create one first:
@@ -717,7 +718,7 @@ export default function SetupGuidePage() {
                     <li>Log in with your Facebook account when prompted</li>
                     <li>Approve all permissions requested</li>
                   </Ol>
-                  <p className="font-semibold text-[#0F172A]">
+                  <p className="font-semibold text-ink">
                     Required permissions:
                   </p>
                   <ul className="list-inside list-disc space-y-1">
@@ -780,7 +781,7 @@ export default function SetupGuidePage() {
                     caption="Token exchange URL"
                     code={`https://graph.facebook.com/v23.0/oauth/access_token?grant_type=fb_exchange_token&client_id=YOUR_APP_ID&client_secret=YOUR_APP_SECRET&fb_exchange_token=YOUR_SHORT_LIVED_TOKEN`}
                   />
-                  <p className="font-semibold text-[#0F172A]">Replace:</p>
+                  <p className="font-semibold text-ink">Replace:</p>
                   <ul className="list-inside list-disc space-y-1">
                     <li>
                       <code>YOUR_APP_ID</code> — your App ID from Step 5
@@ -847,7 +848,7 @@ export default function SetupGuidePage() {
               </div>
 
               <div className="space-y-3">
-                <h4 className="text-lg font-bold text-[#0F172A]">
+                <h4 className="text-lg font-bold text-ink">
                   Common Errors &amp; Fixes
                 </h4>
                 <Callout tone="danger" title="Error 190 — Invalid OAuth access token">
@@ -901,9 +902,9 @@ export default function SetupGuidePage() {
                 whole campaign-attribution feature.
               </Callout>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                <p className="font-semibold text-[#0F172A]">How the matching works</p>
-                <ol className="mt-2 ml-1 list-inside list-decimal space-y-1.5 text-[15px] leading-relaxed text-slate-600 marker:font-semibold marker:text-[#1A56DB]">
+              <div className="rounded-2xl border border-line bg-card p-5">
+                <p className="font-semibold text-ink">How the matching works</p>
+                <ol className="mt-2 ml-1 list-inside list-decimal space-y-1.5 text-[15px] leading-relaxed text-ink-secondary marker:font-semibold marker:text-brand">
                   <li>
                     Agency creates an ad in Meta Ads Manager called “Monsoon
                     Promo”
@@ -932,7 +933,7 @@ export default function SetupGuidePage() {
                 </ol>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 p-2 sm:p-4">
+              <div className="rounded-2xl border border-line p-2 sm:p-4">
                 <Step n={1} title="Open Meta Ads Manager">
                   <p>
                     Go to business.facebook.com/adsmanager, log in, and select the
@@ -951,10 +952,10 @@ export default function SetupGuidePage() {
                     You have two options. Pick the one that suits your account:
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 bg-white p-4">
-                      <p className="mb-2 font-semibold text-[#0F172A]">
+                    <div className="rounded-xl border border-line bg-card p-4">
+                      <p className="mb-2 font-semibold text-ink">
                         Option A — Account-level defaults{" "}
-                        <span className="text-[#1A56DB]">(recommended)</span>
+                        <span className="text-brand">(recommended)</span>
                       </p>
                       <Ol>
                         <li>
@@ -969,8 +970,8 @@ export default function SetupGuidePage() {
                         </li>
                       </Ol>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-white p-4">
-                      <p className="mb-2 font-semibold text-[#0F172A]">
+                    <div className="rounded-xl border border-line bg-card p-4">
+                      <p className="mb-2 font-semibold text-ink">
                         Option B — Edit each ad individually
                       </p>
                       <Ol>
@@ -1061,15 +1062,15 @@ export default function SetupGuidePage() {
           {/* ── Troubleshooting ──────────────────────────────────────────── */}
           <section id="troubleshooting" className="scroll-mt-24 space-y-6">
             <div>
-              <span className="text-sm font-bold uppercase tracking-wide text-[#1A56DB]">
+              <span className="text-sm font-bold uppercase tracking-wide text-brand">
                 Appendix
               </span>
-              <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">
+              <h3 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
                 Troubleshooting common issues
               </h3>
             </div>
 
-            <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
+            <div className="divide-y divide-line rounded-2xl border border-line">
               {[
                 {
                   q: "Snippet shows 'Not Installed' after I added the code",
@@ -1093,8 +1094,8 @@ export default function SetupGuidePage() {
                 },
               ].map((item) => (
                 <div key={item.q} className="p-5">
-                  <p className="font-semibold text-[#0F172A]">{item.q}</p>
-                  <p className="mt-1 text-[15px] leading-relaxed text-slate-600">
+                  <p className="font-semibold text-ink">{item.q}</p>
+                  <p className="mt-1 text-[15px] leading-relaxed text-ink-secondary">
                     {item.a}
                   </p>
                 </div>
@@ -1105,10 +1106,10 @@ export default function SetupGuidePage() {
           {/* ── FAQ ──────────────────────────────────────────────────────── */}
           <section id="faq" className="scroll-mt-24 space-y-6">
             <div>
-              <span className="text-sm font-bold uppercase tracking-wide text-[#1A56DB]">
+              <span className="text-sm font-bold uppercase tracking-wide text-brand">
                 Appendix
               </span>
-              <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">
+              <h3 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
                 Frequently asked questions
               </h3>
             </div>
@@ -1150,21 +1151,21 @@ export default function SetupGuidePage() {
               ].map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-xl border border-slate-200 bg-white p-4 open:bg-slate-50"
+                  className="group rounded-xl border border-line bg-card p-4 open:bg-card"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#0F172A]">
+                  <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-ink">
                     {item.q}
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
-                      className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180"
+                      className="h-4 w-4 shrink-0 text-ink-disabled transition-transform group-open:rotate-180"
                     >
                       <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </summary>
-                  <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+                  <p className="mt-2 text-[15px] leading-relaxed text-ink-secondary">
                     {item.a}
                   </p>
                 </details>
@@ -1185,17 +1186,17 @@ export default function SetupGuidePage() {
           </section>
 
           {/* Bottom download CTA */}
-          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center print:hidden">
-            <p className="text-lg font-bold text-[#0F172A]">
+          <section className="rounded-2xl border border-line bg-card p-6 text-center print:hidden">
+            <p className="text-lg font-bold text-ink">
               Prefer a printable copy?
             </p>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-ink-secondary">
               Download the full guide as a PDF to share or print.
             </p>
             <a
               href={PDF_URL}
               download="HotelTrack-Setup-Guide.pdf"
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1A56DB] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1648b0]"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
                 <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" strokeLinecap="round" strokeLinejoin="round" />
@@ -1207,9 +1208,9 @@ export default function SetupGuidePage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 py-8 text-center text-sm text-slate-500">
+      <footer className="border-t border-line py-8 text-center text-sm text-ink-tertiary">
         HotelTrack · Complete Setup Guide · Version 1.0 ·{" "}
-        <a href="https://www.hoteltrack.in" className="font-medium text-[#1A56DB] hover:underline">
+        <a href="https://www.hoteltrack.in" className="font-medium text-brand hover:underline">
           www.hoteltrack.in
         </a>
       </footer>

@@ -21,7 +21,7 @@ const PLATFORMS = [
 ] as const;
 
 const inputCls =
-  "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950";
+  "w-full rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink placeholder:text-ink-disabled outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
 
 export function ContentForm({
   hotels,
@@ -36,17 +36,17 @@ export function ContentForm({
   return (
     <div className="space-y-6">
       {state.result && (
-        <div className="rounded-xl border border-green-300 bg-green-50 p-4 dark:border-green-900/60 dark:bg-green-900/20">
-          <p className="text-sm font-medium text-green-800 dark:text-green-300">
+        <div className="rounded-xl border-l-4 border-success bg-success/10 p-4">
+          <p className="text-sm font-medium text-success">
             Tracked link generated for “{state.result.title}”
           </p>
           <div className="mt-3 flex items-start gap-2">
-            <code className="block flex-1 overflow-x-auto break-all rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+            <code className="block flex-1 overflow-x-auto break-all rounded-lg border border-line bg-code px-4 py-3 text-sm text-codeink">
               {state.result.utmLink}
             </code>
             <CopyButton text={state.result.utmLink} />
           </div>
-          <p className="mt-2 text-xs text-green-800/80 dark:text-green-300/80">
+          <p className="mt-2 text-xs text-ink-tertiary">
             Use this link in the content. Every visit and booking it drives will
             show up against this piece.
           </p>
@@ -61,7 +61,7 @@ export function ContentForm({
 
       <form action={action} className="space-y-5">
         <div className="space-y-1.5">
-          <label htmlFor="hotelClientId" className="text-sm font-medium">
+          <label htmlFor="hotelClientId" className="text-sm font-medium text-ink-secondary">
             Hotel client
           </label>
           <select id="hotelClientId" name="hotelClientId" className={inputCls} defaultValue="">
@@ -77,7 +77,7 @@ export function ContentForm({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="title" className="text-sm font-medium">
+          <label htmlFor="title" className="text-sm font-medium text-ink-secondary">
             Title
           </label>
           <input
@@ -86,14 +86,14 @@ export function ContentForm({
             className={inputCls}
             placeholder="Summer rooftop reel"
           />
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-ink-tertiary">
             Becomes the campaign name in the link (e.g. “summer-rooftop-reel”).
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label htmlFor="contentType" className="text-sm font-medium">
+            <label htmlFor="contentType" className="text-sm font-medium text-ink-secondary">
               Content type
             </label>
             <select
@@ -112,7 +112,7 @@ export function ContentForm({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="platform" className="text-sm font-medium">
+            <label htmlFor="platform" className="text-sm font-medium text-ink-secondary">
               Platform
             </label>
             <select id="platform" name="platform" className={inputCls} defaultValue="instagram">
@@ -126,7 +126,7 @@ export function ContentForm({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="destinationUrl" className="text-sm font-medium">
+          <label htmlFor="destinationUrl" className="text-sm font-medium text-ink-secondary">
             Destination URL
           </label>
           <input
@@ -136,15 +136,15 @@ export function ContentForm({
             className={inputCls}
             placeholder="https://seasideresort.com/rooms"
           />
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-ink-tertiary">
             The page on the hotel’s site this content sends people to.
           </p>
         </div>
 
         {isInfluencer && (
-          <div className="space-y-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="space-y-4 rounded-lg border border-line p-4">
             <div className="space-y-1.5">
-              <label htmlFor="influencerName" className="text-sm font-medium">
+              <label htmlFor="influencerName" className="text-sm font-medium text-ink-secondary">
                 Influencer name
               </label>
               <input
@@ -155,7 +155,7 @@ export function ContentForm({
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="couponCode" className="text-sm font-medium">
+              <label htmlFor="couponCode" className="text-sm font-medium text-ink-secondary">
                 Coupon code
               </label>
               <input
@@ -164,19 +164,19 @@ export function ContentForm({
                 className={inputCls}
                 placeholder="JANE10"
               />
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-ink-tertiary">
                 Guests who redeem this code can be matched back to this collab.
               </p>
             </div>
           </div>
         )}
 
-        {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+        {state.error && <p className="text-sm text-danger">{state.error}</p>}
 
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
         >
           {pending ? "Generating…" : "Generate tracked link"}
         </button>

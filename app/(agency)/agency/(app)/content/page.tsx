@@ -27,9 +27,9 @@ const PLATFORM_LABELS: Record<string, string> = {
   youtube: "YouTube",
 };
 const STATUS_CLS: Record<string, string> = {
-  active: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  paused: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  archived: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  active: "bg-success/15 text-success",
+  paused: "bg-warning/15 text-warning",
+  archived: "bg-elevated text-ink-tertiary",
 };
 
 const isContentType = (v: string): v is ContentTypeValue =>
@@ -146,7 +146,7 @@ export default async function ContentLibraryPage({
           <ExportMenu basePath="/api/content/export" />
           <Link
             href="/agency/content/new"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             New Content Piece
           </Link>
@@ -159,22 +159,22 @@ export default async function ContentLibraryPage({
       />
 
       {pieces.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
-          <p className="text-zinc-600 dark:text-zinc-400">
+        <div className="rounded-xl border border-dashed border-line p-12 text-center">
+          <p className="text-ink-tertiary">
             No content pieces match these filters.
           </p>
           <Link
             href="/agency/content/new"
-            className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Create your first content piece
           </Link>
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <div className="overflow-x-auto rounded-xl border border-line">
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+              <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Content</th>
                   <th className="px-4 py-3 font-medium">Type</th>
@@ -194,10 +194,10 @@ export default async function ContentLibraryPage({
                 {pieces.map((p) => {
                   const m = metrics.get(utmContentFor(p.id)) ?? blank();
                   return (
-                    <tr key={p.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <tr key={p.id} className="border-t border-line">
                       <td className="px-4 py-3">
                         <div className="font-medium">{p.title}</div>
-                        <div className="text-xs text-zinc-500">
+                        <div className="text-xs text-ink-tertiary">
                           {p.hotelClient.name}
                           {p.influencerName ? ` · ${p.influencerName}` : ""}
                           {p.couponCode ? ` · ${p.couponCode}` : ""}
@@ -221,7 +221,7 @@ export default async function ContentLibraryPage({
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             STATUS_CLS[p.status] ??
-                            "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                            "bg-elevated text-ink-tertiary"
                           }`}
                         >
                           {p.status}
@@ -231,7 +231,7 @@ export default async function ContentLibraryPage({
                         <CopyButton
                           text={p.utmLink}
                           label="Copy link"
-                          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                          className="rounded-lg border border-line-strong px-3 py-1.5 text-xs font-medium hover:bg-elevated"
                         />
                       </td>
                     </tr>
@@ -241,13 +241,13 @@ export default async function ContentLibraryPage({
             </table>
           </div>
           {pixelMode ? (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               Per-content performance (clicks / visits / bookings) is not
               available in Facebook Pixel mode — Meta&apos;s Pixel reports at
               the ad-account / campaign level only.
             </p>
           ) : (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               <strong>Clicks</strong> counts every tracked arrival from a link;{" "}
               <strong>visits</strong> counts the unique sessions behind them;{" "}
               <strong>bookings</strong> counts conversions. All are matched to a

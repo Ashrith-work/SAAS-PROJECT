@@ -21,9 +21,9 @@ export default function Error({
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <div className="w-full max-w-md rounded-xl border border-line p-6">
         <h1 className="text-lg font-semibold">Something went wrong loading this page</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 text-sm text-ink-tertiary">
           This usually means the database, Meta API, or another upstream service
           had a hiccup. Try again — if it keeps failing, contact support.
         </p>
@@ -31,21 +31,21 @@ export default function Error({
           <button
             type="button"
             onClick={reset}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Try again
           </button>
           <a
             href="/agency/dashboard"
-            className="text-sm text-zinc-500 hover:underline"
+            className="text-sm text-ink-tertiary hover:underline"
           >
             Back to dashboard
           </a>
         </div>
         {error.digest && (
-          <details className="mt-5 text-xs text-zinc-500">
+          <details className="mt-5 text-xs text-ink-tertiary">
             <summary className="cursor-pointer">Error reference</summary>
-            <code className="mt-2 block break-all rounded bg-zinc-50 px-2 py-1 dark:bg-zinc-900">
+            <code className="mt-2 block break-all rounded bg-code px-2 py-1 text-codeink">
               {error.digest}
             </code>
           </details>

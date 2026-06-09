@@ -1,10 +1,10 @@
 // Tiny inline-SVG sparkline — no chart library. A single trend line for the
-// last N days on a campaign card. Pure, deterministic, light-mode.
+// last N days on a campaign card. Pure, deterministic, dark theme.
 
 export function Sparkline({
   values,
   className = "",
-  stroke = "#1A56DB",
+  stroke = "#3B82F6",
   width = 120,
   height = 32,
 }: {
@@ -15,7 +15,7 @@ export function Sparkline({
   height?: number;
 }) {
   if (values.length === 0) {
-    return <div className={`h-8 w-full rounded bg-slate-50 ${className}`} />;
+    return <div className={`h-8 w-full rounded bg-elevated ${className}`} />;
   }
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);

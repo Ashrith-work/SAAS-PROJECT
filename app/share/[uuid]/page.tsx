@@ -21,11 +21,11 @@ export const metadata: Metadata = {
 function ShareMessage({ title, body }: { title: string; body: string }) {
   return (
     <main className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-6 py-16 text-center">
-      <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+      <p className="text-xs font-semibold uppercase tracking-widest text-ink-disabled">
         HotelTrack
       </p>
-      <h1 className="mt-3 text-xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-2 text-sm text-zinc-500">{body}</p>
+      <h1 className="mt-3 text-xl font-semibold tracking-tight text-ink">{title}</h1>
+      <p className="mt-2 text-sm text-ink-tertiary">{body}</p>
     </main>
   );
 }

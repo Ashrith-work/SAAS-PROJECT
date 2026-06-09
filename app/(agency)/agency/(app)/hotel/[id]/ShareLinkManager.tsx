@@ -28,9 +28,9 @@ function CreateForm({
     <form action={action} className="space-y-3">
       <input type="hidden" name="hotelId" value={hotelId} />
       <div>
-        <label className="block text-sm font-medium" htmlFor="share-password">
+        <label className="block text-sm font-medium text-ink-secondary" htmlFor="share-password">
           Password{" "}
-          <span className="font-normal text-zinc-500">(optional)</span>
+          <span className="font-normal text-ink-tertiary">(optional)</span>
         </label>
         <input
           id="share-password"
@@ -38,20 +38,20 @@ function CreateForm({
           type="text"
           autoComplete="off"
           placeholder="Leave blank for no password"
-          className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+          className="mt-1 w-full rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink placeholder:text-ink-disabled focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
         />
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-ink-tertiary">
           The hotel owner enters this to view the report. Share it with them
           separately.
         </p>
       </div>
       {state.error && (
-        <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
+        <p className="text-sm text-danger">{state.error}</p>
       )}
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
       >
         {pending ? "Generating…" : cta}
       </button>
@@ -71,7 +71,7 @@ export function ShareLinkManager({
   if (!link) {
     return (
       <div className="p-4">
-        <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mb-3 text-sm text-ink-secondary">
           Generate a private link to a read-only version of this dashboard. It
           works on any phone — no login needed — and expires in 30 days.
         </p>
@@ -91,16 +91,16 @@ export function ShareLinkManager({
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}
-          className="w-full flex-1 truncate rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-full flex-1 truncate rounded-lg border border-line-strong bg-card px-3 py-2 text-sm text-ink"
         />
         <CopyButton text={url} label="Copy link" />
       </div>
 
-      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-zinc-500">
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-tertiary">
         <span>
           {link.hasPassword ? "🔒 Password protected" : "🔓 No password"}
         </span>
-        <span className={expired ? "text-red-600 dark:text-red-400" : ""}>
+        <span className={expired ? "text-danger" : ""}>
           {expired ? "Expired " : "Expires "}
           {expires.toLocaleDateString()}
         </span>
@@ -118,18 +118,18 @@ export function ShareLinkManager({
           <input type="hidden" name="hotelId" value={hotelId} />
           <button
             type="submit"
-            className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-800/60 dark:text-red-400 dark:hover:bg-red-900/20"
+            className="rounded-lg border border-danger/60 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/10"
           >
             Revoke link
           </button>
         </form>
       </div>
 
-      <details className="border-t border-zinc-100 pt-3 dark:border-zinc-800">
-        <summary className="cursor-pointer text-sm font-medium text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white">
+      <details className="border-t border-line pt-3">
+        <summary className="cursor-pointer text-sm font-medium text-ink-secondary hover:text-ink">
           Replace with a new link
         </summary>
-        <p className="mt-2 mb-3 text-xs text-zinc-500">
+        <p className="mt-2 mb-3 text-xs text-ink-tertiary">
           Generating a new link revokes the current one immediately.
         </p>
         <CreateForm hotelId={hotelId} cta="Generate new link" />

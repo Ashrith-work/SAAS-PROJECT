@@ -10,7 +10,7 @@ import type { AdAccount } from "@/lib/meta";
 const initialState: MapAccountState = { error: null, ok: false };
 
 const selectCls =
-  "rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950";
+  "rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-60";
 
 // Per-hotel ad-account picker on the Meta card. Maps one of the agency's Meta
 // ad accounts to this hotel (HotelClient.metaAdAccountId) so the dashboard pulls
@@ -46,7 +46,7 @@ export function HotelAdAccountSelect({
     // Don't hide an existing mapping just because the account list couldn't
     // load (no ads permission, transient Meta error) — the mapping is intact.
     return (
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-ink-tertiary">
         {currentAdAccountId ? (
           <>
             Mapped to <code className="font-mono">{currentAdAccountId}</code> —
@@ -71,7 +71,7 @@ export function HotelAdAccountSelect({
   return (
     <form ref={formRef} action={action} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="hotelId" value={hotelId} />
-      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <label className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
         Ad account
       </label>
       <select
@@ -97,11 +97,11 @@ export function HotelAdAccountSelect({
           </option>
         ))}
       </select>
-      <span className="min-w-16 text-xs text-zinc-500">
+      <span className="min-w-16 text-xs text-ink-tertiary">
         {pending ? (
           "Saving…"
         ) : state.error ? (
-          <span className="text-red-600">{state.error}</span>
+          <span className="text-danger">{state.error}</span>
         ) : state.ok ? (
           "Saved ✓"
         ) : (

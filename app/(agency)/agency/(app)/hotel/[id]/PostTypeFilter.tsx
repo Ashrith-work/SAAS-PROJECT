@@ -29,7 +29,7 @@ export function PostTypeFilter({ current }: { current: string }) {
   }
 
   return (
-    <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+    <div className="inline-flex rounded-lg border border-line p-0.5">
       {TYPES.map((t) => {
         const active = t.value === current || (t.value === "all" && !current);
         return (
@@ -40,8 +40,8 @@ export function PostTypeFilter({ current }: { current: string }) {
             disabled={pending}
             className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
               active
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                ? "bg-brand text-white"
+                : "text-ink-tertiary hover:bg-elevated"
             } disabled:opacity-60`}
           >
             {t.label}

@@ -1,5 +1,5 @@
 // Mission-control KPI strip — 6 cards in one row, big number + small label +
-// % change vs the previous period. Light-mode only, pure presentation.
+// % change vs the previous period. Dark theme, pure presentation.
 
 export type KpiCardSpec = {
   label: string;
@@ -19,10 +19,10 @@ function DeltaBadge({ delta, goodWhenUp = true }: { delta: number; goodWhenUp?: 
   const flat = Math.abs(delta) < 0.0005;
   const good = flat ? null : up === goodWhenUp;
   const cls = flat
-    ? "bg-slate-100 text-slate-500"
+    ? "bg-elevated text-ink-tertiary"
     : good
-      ? "bg-emerald-50 text-emerald-700"
-      : "bg-red-50 text-red-600";
+      ? "bg-success/15 text-success"
+      : "bg-danger/15 text-danger";
   const arrow = flat ? "→" : up ? "↑" : "↓";
   return (
     <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
@@ -33,15 +33,15 @@ function DeltaBadge({ delta, goodWhenUp = true }: { delta: number; goodWhenUp?: 
 
 function KpiCard({ spec }: { spec: KpiCardSpec }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
+    <div className="rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{spec.label}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{spec.label}</p>
         {spec.delta != null && <DeltaBadge delta={spec.delta} goodWhenUp={spec.goodWhenUp} />}
       </div>
-      <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums lg:text-4xl ${spec.valueClassName ?? "text-slate-900"}`}>
+      <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums lg:text-4xl ${spec.valueClassName ?? "text-ink"}`}>
         {spec.value}
       </p>
-      {spec.hint && <p className="mt-1 text-xs text-slate-400">{spec.hint}</p>}
+      {spec.hint && <p className="mt-1 text-xs text-ink-disabled">{spec.hint}</p>}
     </div>
   );
 }

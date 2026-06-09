@@ -68,12 +68,12 @@ function KpiCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+    <div className="rounded-xl border border-line p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
         {label}
       </p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-ink-tertiary">{hint}</p>}
     </div>
   );
 }
@@ -88,10 +88,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+    <section className="overflow-hidden rounded-xl border border-line">
+      <div className="border-b border-line px-4 py-3">
         <h2 className="font-medium">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-sm text-zinc-500">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-sm text-ink-tertiary">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -718,7 +718,7 @@ export default async function HotelDashboardPage({
 
   const adr = kpis.bookings > 0 ? kpis.revenue / kpis.bookings : null; // avg booking value
   const trueRoasColor =
-    kpis.roas == null ? "text-slate-900" : kpis.roas > 4 ? "text-emerald-600" : kpis.roas >= 2 ? "text-amber-600" : "text-red-600";
+    kpis.roas == null ? "text-ink" : kpis.roas > 4 ? "text-success" : kpis.roas >= 2 ? "text-warning" : "text-danger";
 
   const kpiCards: KpiCardSpec[] = [
     { label: "Revenue", value: formatCurrency(kpis.revenue), delta: pctDelta(kpis.revenue, prevRevenue) },
@@ -914,16 +914,16 @@ export default async function HotelDashboardPage({
     <div className="space-y-6">
       {/* Header strip — hotel + last sync (left), period selector + actions (right) */}
       <div className="space-y-4">
-        <Link href="/agency/hotels" className="text-sm text-slate-500 hover:underline">
+        <Link href="/agency/hotels" className="text-sm text-ink-tertiary hover:underline">
           ← Hotel Clients
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{hotel.name}</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">{hotel.name}</h1>
+            <p className="mt-0.5 text-sm text-ink-tertiary">
               {hotel.websiteUrl}
               {hotel.lastSyncedAt && (
-                <span className="ml-2 text-slate-400">
+                <span className="ml-2 text-ink-disabled">
                   · Last synced{" "}
                   {new Date(hotel.lastSyncedAt).toLocaleString("en-IN", {
                     dateStyle: "medium",
@@ -940,11 +940,11 @@ export default async function HotelDashboardPage({
                 fromInput={range.fromInput}
                 toInput={range.toInput}
               />
-              <span className="mt-1 text-xs text-slate-400">vs previous period</span>
+              <span className="mt-1 text-xs text-ink-disabled">vs previous period</span>
             </div>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
             >
               Manage Integrations
             </Link>
@@ -959,9 +959,9 @@ export default async function HotelDashboardPage({
         {missingDays > 0 && (
           <Link
             href={`/agency/hotel/${hotel.id}/integrations`}
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+            className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning ring-1 ring-warning/30 hover:bg-warning/25"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            <span className="h-1.5 w-1.5 rounded-full bg-warning" />
             {missingDays} day{missingDays === 1 ? "" : "s"} of data missing — reconnect Meta to backfill
           </Link>
         )}
@@ -971,7 +971,7 @@ export default async function HotelDashboardPage({
       {integrationStatus.anyBrokenOrExpired && (
         <Link
           href={`/agency/hotel/${hotel.id}/integrations`}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+          className="flex items-center justify-between gap-3 rounded-2xl border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-ink-secondary hover:bg-warning/20"
         >
           <span>
             <strong>An integration needs attention.</strong> A connection for this
@@ -987,7 +987,7 @@ export default async function HotelDashboardPage({
           <KpiStrip cards={kpiCards} />
           <MetaVsRealityHero data={metaVsReality} />
           <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-tertiary">
               Channel performance
             </h2>
             <ChannelBreakdown data={channelData} />
@@ -1014,66 +1014,66 @@ export default async function HotelDashboardPage({
             : "No Meta ad account mapped — map one in Settings to sync ad data."
         }
       >
-        <div className="grid grid-cols-2 gap-px border-b border-zinc-200 bg-zinc-200 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
-          <div className="bg-white p-4 dark:bg-zinc-950">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-4">
+          <div className="bg-card p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Meta ad spend
             </p>
             <p className="mt-1 text-xl font-semibold tabular-nums">
               {formatCurrency(ads.spend)}
             </p>
           </div>
-          <div className="bg-white p-4 dark:bg-zinc-950">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <div className="bg-card p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Bookings from ads
             </p>
             <p className="mt-1 text-xl font-semibold tabular-nums">
               {formatNumber(ads.bookingsFromAds)}
             </p>
-            <p className="mt-0.5 text-xs text-zinc-500">Meta-reported</p>
+            <p className="mt-0.5 text-xs text-ink-tertiary">Meta-reported</p>
           </div>
-          <div className="bg-white p-4 dark:bg-zinc-950">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <div className="bg-card p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Meta ROAS
             </p>
             <p className="mt-1 text-xl font-semibold tabular-nums">
               {formatMultiple(ads.metaRoas)}
             </p>
-            <p className="mt-0.5 text-xs text-zinc-500">Platform-reported</p>
+            <p className="mt-0.5 text-xs text-ink-tertiary">Platform-reported</p>
           </div>
           {!pixelMode && (
-            <div className="bg-white p-4 dark:bg-zinc-950">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <div className="bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 True ROI
               </p>
               <p className="mt-1 text-xl font-semibold tabular-nums">
                 {realRoi == null ? "—" : formatPercent(realRoi)}
               </p>
-              <p className="mt-0.5 text-xs text-zinc-500">Real bookings ÷ spend</p>
+              <p className="mt-0.5 text-xs text-ink-tertiary">Real bookings ÷ spend</p>
             </div>
           )}
         </div>
 
         <div className="p-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
             Spend over time
           </p>
           <SpendChart data={ads.spendOverTime} />
         </div>
 
         {!pixelMode && (
-          <div className="border-t border-zinc-200 dark:border-zinc-800">
-            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <div className="border-t border-line">
+            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Campaign breakdown
             </p>
             {paidCampaigns.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-zinc-500">
+              <p className="px-4 py-6 text-sm text-ink-tertiary">
                 No paid-ad content for this hotel yet.
               </p>
             ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
                   <tr>
                     <th className="px-4 py-2 font-medium">Campaign</th>
                     <th className="px-4 py-2 text-right font-medium">Sessions</th>
@@ -1085,7 +1085,7 @@ export default async function HotelDashboardPage({
                   {paidCampaigns.map((c) => (
                     <tr
                       key={c.id}
-                      className="border-t border-zinc-100 dark:border-zinc-800"
+                      className="border-t border-line"
                     >
                       <td className="px-4 py-2 font-medium">{c.title}</td>
                       <td className="px-4 py-2 text-right tabular-nums">
@@ -1114,7 +1114,7 @@ export default async function HotelDashboardPage({
         subtitle="Meta-reported (raw from Facebook). For verified booking attribution, see the Campaign Performance section below."
       >
         {metaCampaignRows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+          <p className="px-4 py-8 text-center text-sm text-ink-tertiary">
             {hotel.metaAdAccountId
               ? "No Meta campaign data for this range yet — runs after the next ad sync."
               : "No Meta ad account mapped — map one in Settings to pull campaign data."}
@@ -1122,7 +1122,7 @@ export default async function HotelDashboardPage({
         ) : (
           <>
             <MetaCampaignBreakdownTable rows={metaCampaignRows} />
-            <p className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500 dark:border-zinc-800">
+            <p className="border-t border-line px-4 py-3 text-xs text-ink-tertiary">
               {metaCampaignRows.length} campaign{metaCampaignRows.length === 1 ? "" : "s"} · {range.label} ·
               numbers exactly as Meta reports them, before HotelTrack attribution. Use the date range
               selector at the top to switch between last 7 / 30 / 90 days.
@@ -1143,7 +1143,7 @@ export default async function HotelDashboardPage({
                 Campaign performance will appear once we&apos;ve collected at least 5
                 conversions across your ads.
               </p>
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-sm text-ink-tertiary">
                 Currently tracking: {formatNumber(totalTrackedConversions)} conversion
                 {totalTrackedConversions === 1 ? "" : "s"}.
                 {totalTrackedConversions < 5 &&
@@ -1157,26 +1157,26 @@ export default async function HotelDashboardPage({
               <div className="p-4">
                 <CampaignGrid cards={campaignCards} />
               </div>
-              <div className="grid grid-cols-1 gap-px border-t border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="grid grid-cols-1 gap-px border-t border-line bg-line sm:grid-cols-3">
+                <div className="bg-card p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                     Total ad spend (selected period)
                   </p>
                   <p className="mt-1 text-xl font-semibold tabular-nums">
                     {formatCurrency(campaignTotalSpend)}
                   </p>
                 </div>
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <div className="bg-card p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                     Real revenue from ads
                   </p>
                   <p className="mt-1 text-xl font-semibold tabular-nums">
                     {formatCurrency(campaignRealRevenue)}
                   </p>
-                  <p className="mt-0.5 text-xs text-zinc-500">Snippet-tracked bookings</p>
+                  <p className="mt-0.5 text-xs text-ink-tertiary">Snippet-tracked bookings</p>
                 </div>
-                <div className="bg-white p-4 dark:bg-zinc-950">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <div className="bg-card p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                     Real ROI
                   </p>
                   <p
@@ -1184,13 +1184,13 @@ export default async function HotelDashboardPage({
                       campaignRealRoi == null
                         ? ""
                         : campaignRealRoi >= 0
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400"
+                          ? "text-success"
+                          : "text-danger"
                     }`}
                   >
                     {campaignRealRoi == null ? "—" : formatPercent(campaignRealRoi)}
                   </p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
+                  <p className="mt-0.5 text-xs text-ink-tertiary">
                     (Revenue − spend) ÷ spend
                   </p>
                 </div>
@@ -1198,8 +1198,8 @@ export default async function HotelDashboardPage({
             </>
           )}
 
-          <div className="border-t border-zinc-200 dark:border-zinc-800">
-            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <div className="border-t border-line">
+            <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Recent tracked bookings
             </p>
             <ConversionJourneys journeys={journeys} />
@@ -1213,13 +1213,13 @@ export default async function HotelDashboardPage({
         subtitle="Coupon redemptions and revenue per influencer collaboration."
       >
         {influencerRows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+          <p className="px-4 py-8 text-center text-sm text-ink-tertiary">
             No influencer content for this hotel yet.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+              <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Influencer</th>
                   <th className="px-4 py-3 font-medium">Coupon</th>
@@ -1232,19 +1232,19 @@ export default async function HotelDashboardPage({
                 {influencerRows.map((r) => (
                   <tr
                     key={r.id}
-                    className="border-t border-zinc-100 dark:border-zinc-800"
+                    className="border-t border-line"
                   >
                     <td className="px-4 py-3">
                       <div className="font-medium">{r.influencerName}</div>
-                      <div className="text-xs text-zinc-500">{r.title}</div>
+                      <div className="text-xs text-ink-tertiary">{r.title}</div>
                     </td>
                     <td className="px-4 py-3">
                       {r.couponCode ? (
-                        <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                        <code className="rounded bg-elevated px-1.5 py-0.5 text-xs">
                           {r.couponCode}
                         </code>
                       ) : (
-                        <span className="text-zinc-400">—</span>
+                        <span className="text-ink-disabled">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
@@ -1253,7 +1253,7 @@ export default async function HotelDashboardPage({
                     <td className="px-4 py-3 text-right tabular-nums">
                       {formatCurrency(r.revenue)}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-zinc-400">
+                    <td className="px-4 py-3 text-right tabular-nums text-ink-disabled">
                       {r.costPerBooking == null
                         ? "—"
                         : formatCurrencyCents(r.costPerBooking)}
@@ -1262,7 +1262,7 @@ export default async function HotelDashboardPage({
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-zinc-500">
+            <p className="px-4 py-3 text-xs text-ink-tertiary">
               Cost / booking shows once influencer fees are tracked per
               collaboration.
             </p>
@@ -1279,17 +1279,17 @@ export default async function HotelDashboardPage({
       >
         {!hasSocialData ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-sm text-zinc-500">No organic social data yet.</p>
+            <p className="text-sm text-ink-tertiary">No organic social data yet.</p>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
-              className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
+              className="mt-2 inline-block text-sm font-medium text-ink-secondary underline"
             >
               Connect this hotel&apos;s Instagram in Setup →
             </Link>
           </div>
         ) : (
           <div className="space-y-5 p-4">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               {socialLastUpdated
                 ? `Last updated ${new Date(socialLastUpdated).toLocaleString()} · `
                 : ""}
@@ -1322,7 +1322,7 @@ export default async function HotelDashboardPage({
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Follower growth
               </p>
               <FollowerChart data={followerSeries} />
@@ -1330,19 +1330,19 @@ export default async function HotelDashboardPage({
 
             <div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Top posts by reach
                 </p>
                 <PostTypeFilter current={postType ?? "all"} />
               </div>
               {topPosts.length === 0 ? (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-ink-tertiary">
                   No {postType ? `${postType} ` : ""}posts published in this range.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-line">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                    <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                       <tr>
                         <th className="px-4 py-2 font-medium">Post</th>
                         <th className="px-4 py-2 font-medium">Type</th>
@@ -1355,7 +1355,7 @@ export default async function HotelDashboardPage({
                     </thead>
                     <tbody>
                       {topPosts.map((p) => (
-                        <tr key={p.mediaId} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <tr key={p.mediaId} className="border-t border-line">
                           <td className="px-4 py-2">
                             {p.permalink ? (
                               <a
@@ -1372,12 +1372,12 @@ export default async function HotelDashboardPage({
                               </span>
                             )}
                             {p.postedAt && (
-                              <span className="block text-xs text-zinc-500">
+                              <span className="block text-xs text-ink-tertiary">
                                 {new Date(p.postedAt).toLocaleDateString()}
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-xs capitalize text-zinc-500">
+                          <td className="px-4 py-2 text-xs capitalize text-ink-tertiary">
                             {p.mediaType ?? "—"}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums">{formatNumber(p.reach)}</td>
@@ -1398,19 +1398,19 @@ export default async function HotelDashboardPage({
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Stories performance · last 30 days
               </p>
               {recentStories.length === 0 ? (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-ink-tertiary">
                   No stories captured in the last 30 days. Stories expire 24h
                   after posting — the cron at <code>/api/social/sync-stories</code>{" "}
                   runs every 2 hours to catch them.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-line">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                    <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                       <tr>
                         <th className="px-4 py-2 font-medium">Story</th>
                         <th className="px-4 py-2 text-right font-medium">Reach</th>
@@ -1422,13 +1422,13 @@ export default async function HotelDashboardPage({
                     </thead>
                     <tbody>
                       {recentStories.map((s) => (
-                        <tr key={s.storyId} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <tr key={s.storyId} className="border-t border-line">
                           <td className="px-4 py-2">
-                            <span className="text-xs capitalize text-zinc-500">
+                            <span className="text-xs capitalize text-ink-tertiary">
                               {s.mediaType ?? "story"}
                             </span>
                             {s.postedAt && (
-                              <span className="block text-xs text-zinc-500">
+                              <span className="block text-xs text-ink-tertiary">
                                 {new Date(s.postedAt).toLocaleString()}
                               </span>
                             )}
@@ -1466,26 +1466,26 @@ export default async function HotelDashboardPage({
       >
         {!gaConnected ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-ink-tertiary">
               No Google Analytics data yet.
             </p>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
-              className="mt-2 inline-block text-sm font-medium text-zinc-700 underline dark:text-zinc-300"
+              className="mt-2 inline-block text-sm font-medium text-ink-secondary underline"
             >
               Connect this hotel&apos;s GA4 in Setup →
             </Link>
           </div>
         ) : !hasGaData ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-ink-tertiary">
               GA connected — run a sync from Setup to pull metrics for this date
               range.
             </p>
           </div>
         ) : (
           <div className="space-y-5 p-4">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               {gaLastUpdated
                 ? `Last updated ${new Date(gaLastUpdated).toLocaleString()} · `
                 : ""}
@@ -1513,14 +1513,14 @@ export default async function HotelDashboardPage({
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Traffic by source
               </p>
               <SourcePieChart data={gaSourceSlices} />
             </div>
 
             {!pixelMode && (
-              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-200">
+              <div className="rounded-lg border-l-4 border-info bg-info/10 p-4 text-sm text-ink-secondary">
                 <p className="font-medium">
                   Of {formatNumber(gaTotals.sessions)} total website visits,{" "}
                   {formatNumber(hotelTrackTaggedVisits)} came from our content
@@ -1529,7 +1529,7 @@ export default async function HotelDashboardPage({
                   )}
                   .
                 </p>
-                <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
+                <p className="mt-1 text-xs text-ink-tertiary">
                   Comparing HotelTrack&apos;s UTM-tagged snippet visits against
                   GA&apos;s total sessions for this date range.
                 </p>

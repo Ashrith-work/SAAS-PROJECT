@@ -27,7 +27,7 @@ export function RevenueTrendChart({
 }) {
   if (data.length === 0 || data.every((d) => d.revenue === 0 && d.bookings === 0)) {
     return (
-      <p className="py-12 text-center text-sm text-zinc-500">
+      <p className="py-12 text-center text-sm text-ink-tertiary">
         No tracked activity in this window yet.
       </p>
     );
@@ -42,19 +42,19 @@ export function RevenueTrendChart({
               <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={shortDate}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
-            axisLine={{ stroke: "#e4e4e7" }}
+            axisLine={{ stroke: "#1f2937" }}
             minTickGap={24}
           />
           <YAxis
             yAxisId="rev"
             tickFormatter={(v: number) => formatCurrency(v)}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
             width={72}
@@ -63,7 +63,7 @@ export function RevenueTrendChart({
             yAxisId="bk"
             orientation="right"
             tickFormatter={(v: number) => formatNumber(v)}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
             width={42}
@@ -76,7 +76,7 @@ export function RevenueTrendChart({
               return [formatNumber(n), name] as [string, string];
             }}
             labelFormatter={(label) => shortDate(String(label))}
-            contentStyle={{ borderRadius: 8, border: "1px solid #e4e4e7", fontSize: 12 }}
+            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
           <Area

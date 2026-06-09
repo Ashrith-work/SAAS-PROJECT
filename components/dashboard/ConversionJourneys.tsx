@@ -59,7 +59,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
 
   if (journeys.length === 0) {
     return (
-      <p className="px-4 py-6 text-sm text-zinc-500">
+      <p className="px-4 py-6 text-sm text-ink-tertiary">
         No conversions tracked in this range yet.
       </p>
     );
@@ -69,7 +69,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
     <>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-zinc-500">
+          <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
             <tr>
               <th className="px-4 py-2 font-medium">When</th>
               <th className="px-4 py-2 text-right font-medium">Value</th>
@@ -79,7 +79,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
           </thead>
           <tbody>
             {journeys.map((j) => (
-              <tr key={j.id} className="border-t border-zinc-100 dark:border-zinc-800">
+              <tr key={j.id} className="border-t border-line">
                 <td className="px-4 py-2 tabular-nums">{fmtDate(j.convertedAt)}</td>
                 <td className="px-4 py-2 text-right tabular-nums">
                   {j.conversionValue == null ? "—" : formatCurrency(j.conversionValue)}
@@ -89,7 +89,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
                   <button
                     type="button"
                     onClick={() => setOpenId(j.id)}
-                    className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                    className="text-sm font-medium text-brand hover:underline"
                   >
                     View journey
                   </button>
@@ -102,19 +102,19 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setOpenId(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-elevated p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
-              <h3 className="text-lg font-semibold">Visitor journey</h3>
+              <h3 className="text-lg font-semibold text-ink">Visitor journey</h3>
               <button
                 type="button"
                 onClick={() => setOpenId(null)}
-                className="rounded p-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="rounded p-1 text-ink-tertiary hover:bg-line-strong"
                 aria-label="Close"
               >
                 ✕
@@ -123,7 +123,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
 
             <dl className="mt-4 space-y-4 text-sm">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   First touch
                 </dt>
                 {open.firstTouch ? (
@@ -135,7 +135,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
                     {open.firstTouch.adTag && (
                       <p>
                         <span className="font-medium">Ad / content tag:</span>{" "}
-                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+                        <code className="rounded bg-code px-1 py-0.5 text-xs text-codeink">
                           {open.firstTouch.adTag}
                         </code>
                       </p>
@@ -156,19 +156,19 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
                     </p>
                   </dd>
                 ) : (
-                  <dd className="mt-1 text-zinc-500">
+                  <dd className="mt-1 text-ink-tertiary">
                     No earlier visit captured for this session.
                   </dd>
                 )}
               </div>
 
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Pages visited
                 </dt>
                 <dd className="mt-1">
                   {open.pagesVisited.length === 0 ? (
-                    <span className="text-zinc-500">Converted on the landing page.</span>
+                    <span className="text-ink-tertiary">Converted on the landing page.</span>
                   ) : (
                     <ol className="list-inside list-decimal space-y-0.5">
                       {open.pagesVisited.map((p, i) => (
@@ -182,7 +182,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
               </div>
 
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Time to convert
                 </dt>
                 <dd className="mt-1">
@@ -195,7 +195,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
               </div>
 
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Booking
                 </dt>
                 <dd className="mt-1 space-y-0.5">
@@ -215,13 +215,13 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
                 </dd>
               </div>
 
-              <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800/60">
-                <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="rounded-lg bg-card p-3">
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Final attribution
                 </dt>
                 <dd className="mt-1">
                   <p className="font-medium">{open.attributedTo}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
+                  <p className="mt-0.5 text-xs text-ink-tertiary">
                     Why: {REASON_LABEL[open.attributionReason] ?? open.attributionReason}
                   </p>
                 </dd>

@@ -1,13 +1,13 @@
 const STYLES: Record<string, { label: string; cls: string }> = {
-  live: { label: "Live", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
-  not_installed: { label: "Not installed", cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
-  error: { label: "Error", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+  live: { label: "Live", cls: "bg-success/15 text-success" },
+  not_installed: { label: "Not installed", cls: "bg-elevated text-ink-tertiary" },
+  error: { label: "Error", cls: "bg-danger/15 text-danger" },
 };
 
 export function SnippetStatusBadge({ status }: { status: string }) {
   const s = STYLES[status] ?? {
     label: status,
-    cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+    cls: "bg-elevated text-ink-tertiary",
   };
   return (
     <span

@@ -8,7 +8,7 @@ type Method = "url_change" | "same_page" | "both";
 const initialState: { error: string | null } = { error: null };
 
 const inputCls =
-  "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950";
+  "w-full rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink placeholder:text-ink-disabled outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
 
 function Field({
   label,
@@ -25,11 +25,11 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={name} className="text-sm font-medium">
+      <label htmlFor={name} className="text-sm font-medium text-ink-secondary">
         {label}
       </label>
       <input id={name} name={name} type={type} placeholder={placeholder} className={inputCls} />
-      {help && <p className="text-xs text-zinc-500">{help}</p>}
+      {help && <p className="text-xs text-ink-tertiary">{help}</p>}
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function HotelForm() {
       <Field label="Website URL" name="websiteUrl" type="url" placeholder="https://seasideresort.com" />
 
       <div className="space-y-1.5">
-        <label htmlFor="sitePlatform" className="text-sm font-medium">
+        <label htmlFor="sitePlatform" className="text-sm font-medium text-ink-secondary">
           Website platform
         </label>
         <select id="sitePlatform" name="sitePlatform" defaultValue="wordpress" className={inputCls}>
@@ -74,7 +74,7 @@ export function HotelForm() {
             </option>
           ))}
         </select>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-ink-tertiary">
           We&apos;ll show the matching step-by-step snippet install guide.
         </p>
       </div>
@@ -83,14 +83,14 @@ export function HotelForm() {
       <Field label="Contact email" name="contactEmail" type="email" placeholder="jane@seasideresort.com" />
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">How is a booking confirmed?</legend>
+        <legend className="text-sm font-medium text-ink-secondary">How is a booking confirmed?</legend>
         {options.map((o) => (
           <label
             key={o.value}
             className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
               method === o.value
-                ? "border-black dark:border-white"
-                : "border-zinc-300 dark:border-zinc-700"
+                ? "border-brand"
+                : "border-line-strong"
             }`}
           >
             <input
@@ -102,8 +102,8 @@ export function HotelForm() {
               className="mt-1"
             />
             <span>
-              <span className="block text-sm font-medium">{o.title}</span>
-              <span className="block text-xs text-zinc-500">{o.desc}</span>
+              <span className="block text-sm font-medium text-ink">{o.title}</span>
+              <span className="block text-xs text-ink-tertiary">{o.desc}</span>
             </span>
           </label>
         ))}
@@ -119,7 +119,7 @@ export function HotelForm() {
       )}
 
       {showSame && (
-        <div className="space-y-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="space-y-4 rounded-lg border border-line p-4">
           <Field
             label="Success phrase (text on the page)"
             name="successPhrase"
@@ -130,16 +130,16 @@ export function HotelForm() {
             name="successSelector"
             placeholder="#booking-confirmation"
           />
-          <p className="text-xs text-zinc-500">Provide at least one of the two above.</p>
+          <p className="text-xs text-ink-tertiary">Provide at least one of the two above.</p>
         </div>
       )}
 
-      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.error && <p className="text-sm text-danger">{state.error}</p>}
 
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
       >
         {pending ? "Creating…" : "Create hotel client"}
       </button>

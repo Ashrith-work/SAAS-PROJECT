@@ -26,7 +26,7 @@ export function FollowerChart({
 }) {
   if (data.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
+      <p className="py-8 text-center text-sm text-ink-tertiary">
         No follower history in this range yet.
       </p>
     );
@@ -48,19 +48,19 @@ export function FollowerChart({
               <stop offset="100%" stopColor="#db2777" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={shortDate}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
-            axisLine={{ stroke: "#e4e4e7" }}
+            axisLine={{ stroke: "#1f2937" }}
             minTickGap={24}
           />
           <YAxis
             domain={[Math.max(min - pad, 0), max + pad]}
             tickFormatter={(v: number) => formatNumber(v)}
-            tick={{ fontSize: 12, fill: "#71717a" }}
+            tick={{ fontSize: 12, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
             width={56}
@@ -71,7 +71,7 @@ export function FollowerChart({
               [formatNumber(Number(value) || 0), "Followers"] as [string, string]
             }
             labelFormatter={(label) => shortDate(String(label))}
-            contentStyle={{ borderRadius: 8, border: "1px solid #e4e4e7", fontSize: 12 }}
+            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
           />
           <Area
             type="monotone"

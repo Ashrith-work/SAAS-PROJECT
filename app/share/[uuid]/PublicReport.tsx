@@ -17,10 +17,10 @@ const RANGES = [
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
+    <div className="rounded-xl border border-line bg-card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-ink-tertiary">{hint}</p>}
     </div>
   );
 }
@@ -35,10 +35,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-medium">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-sm text-zinc-500">{subtitle}</p>}
+    <section className="overflow-hidden rounded-xl border border-line bg-card">
+      <div className="border-b border-line px-4 py-3">
+        <h2 className="font-medium text-ink">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-sm text-ink-tertiary">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -66,14 +66,14 @@ export function PublicReport({
   const paidCampaigns = contentPerf.filter((c) => c.contentType === "paid_ad");
 
   return (
-    <div className="min-h-full bg-white dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 dark:border-zinc-800">
+    <div className="min-h-full bg-page">
+      <header className="border-b border-line">
         <div className="mx-auto w-full max-w-3xl px-4 py-5">
-          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          <p className="text-xs font-semibold uppercase tracking-widest text-ink-disabled">
             HotelTrack
           </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">{hotelName}</h1>
-          <p className="mt-0.5 text-sm text-zinc-500">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">{hotelName}</h1>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
             Report shared by {agencyName} · {websiteUrl}
           </p>
         </div>
@@ -91,8 +91,8 @@ export function PublicReport({
                   href={`/share/${token}?range=${r.key}`}
                   className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
                     active
-                      ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-                      : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                      ? "border-brand bg-brand text-white"
+                      : "border-line-strong bg-elevated text-ink-secondary hover:bg-line-strong"
                   }`}
                 >
                   Last {r.label}
@@ -100,7 +100,7 @@ export function PublicReport({
               );
             })}
           </div>
-          <span className="hidden text-sm text-zinc-500 sm:inline">{rangeLabel}</span>
+          <span className="hidden text-sm text-ink-tertiary sm:inline">{rangeLabel}</span>
         </div>
 
         {/* KPIs */}
@@ -126,44 +126,44 @@ export function PublicReport({
 
         {/* Paid ads */}
         <SectionCard title="Paid ads performance">
-          <div className="grid grid-cols-2 gap-px border-b border-zinc-200 bg-zinc-200 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
-            <div className="bg-white p-4 dark:bg-zinc-950">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Ad spend</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{formatCurrency(ads.spend)}</p>
+          <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-4">
+            <div className="bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">Ad spend</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{formatCurrency(ads.spend)}</p>
             </div>
-            <div className="bg-white p-4 dark:bg-zinc-950">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <div className="bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Bookings from ads
               </p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">
+              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
                 {formatNumber(ads.bookingsFromAds)}
               </p>
             </div>
-            <div className="bg-white p-4 dark:bg-zinc-950">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Meta ROAS</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{formatMultiple(ads.metaRoas)}</p>
+            <div className="bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">Meta ROAS</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{formatMultiple(ads.metaRoas)}</p>
             </div>
-            <div className="bg-white p-4 dark:bg-zinc-950">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">True ROI</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">
+            <div className="bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">True ROI</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
                 {realRoi == null ? "—" : formatPercent(realRoi)}
               </p>
             </div>
           </div>
           <div className="p-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
               Spend over time
             </p>
             <SpendChart data={ads.spendOverTime} />
           </div>
           {paidCampaigns.length > 0 && (
-            <div className="border-t border-zinc-200 dark:border-zinc-800">
-              <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <div className="border-t border-line">
+              <p className="px-4 pt-4 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Campaign breakdown
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                  <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
                     <tr>
                       <th className="px-4 py-2 font-medium">Campaign</th>
                       <th className="px-4 py-2 text-right font-medium">Sessions</th>
@@ -173,7 +173,7 @@ export function PublicReport({
                   </thead>
                   <tbody>
                     {paidCampaigns.map((c) => (
-                      <tr key={c.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                      <tr key={c.id} className="border-t border-line">
                         <td className="px-4 py-2 font-medium">{c.title}</td>
                         <td className="px-4 py-2 text-right tabular-nums">
                           {formatNumber(c.sessions)}
@@ -201,7 +201,7 @@ export function PublicReport({
           >
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
                   <tr>
                     <th className="px-4 py-3 font-medium">Influencer</th>
                     <th className="px-4 py-3 font-medium">Coupon</th>
@@ -211,18 +211,18 @@ export function PublicReport({
                 </thead>
                 <tbody>
                   {influencerRows.map((r) => (
-                    <tr key={r.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <tr key={r.id} className="border-t border-line">
                       <td className="px-4 py-3">
                         <div className="font-medium">{r.influencerName}</div>
-                        <div className="text-xs text-zinc-500">{r.title}</div>
+                        <div className="text-xs text-ink-tertiary">{r.title}</div>
                       </td>
                       <td className="px-4 py-3">
                         {r.couponCode ? (
-                          <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                          <code className="rounded bg-code px-1.5 py-0.5 text-xs text-codeink">
                             {r.couponCode}
                           </code>
                         ) : (
-                          <span className="text-zinc-400">—</span>
+                          <span className="text-ink-disabled">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
@@ -239,7 +239,7 @@ export function PublicReport({
           </SectionCard>
         )}
 
-        <p className="pt-2 text-center text-xs text-zinc-400">
+        <p className="pt-2 text-center text-xs text-ink-disabled">
           Powered by HotelTrack · This is a private, read-only report.
         </p>
       </main>

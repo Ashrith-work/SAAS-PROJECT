@@ -33,7 +33,7 @@ export function GoogleAnalyticsActions({ hotelId }: { hotelId: string }) {
           <button
             type="submit"
             disabled={syncing}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {syncing ? "Syncing…" : "Sync GA data now"}
           </button>
@@ -43,7 +43,7 @@ export function GoogleAnalyticsActions({ hotelId }: { hotelId: string }) {
           <button
             type="submit"
             disabled={testing}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong disabled:opacity-60"
           >
             {testing ? "Testing…" : "Test connection"}
           </button>
@@ -52,19 +52,19 @@ export function GoogleAnalyticsActions({ hotelId }: { hotelId: string }) {
           <input type="hidden" name="hotelId" value={hotelId} />
           <button
             type="submit"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
           >
             Disconnect
           </button>
         </form>
       </div>
-      {syncState.error && <p className="text-sm text-red-600">{syncState.error}</p>}
+      {syncState.error && <p className="text-sm text-danger">{syncState.error}</p>}
       {syncState.ok && syncState.message && (
-        <p className="text-sm text-green-600 dark:text-green-400">{syncState.message}</p>
+        <p className="text-sm text-success">{syncState.message}</p>
       )}
-      {testState.error && <p className="text-sm text-red-600">{testState.error}</p>}
+      {testState.error && <p className="text-sm text-danger">{testState.error}</p>}
       {testState.ok && (
-        <p className="text-sm text-green-600 dark:text-green-400">
+        <p className="text-sm text-success">
           Connection OK — service account can read this property.
         </p>
       )}

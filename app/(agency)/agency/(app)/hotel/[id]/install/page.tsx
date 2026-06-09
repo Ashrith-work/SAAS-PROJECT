@@ -132,36 +132,36 @@ export default async function HotelInstallPage({
   return (
     <div className="space-y-8">
       <div>
-        <Link href={`/agency/hotel/${hotel.id}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/agency/hotel/${hotel.id}`} className="text-sm text-ink-tertiary hover:underline">
           ← {hotel.name}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Install the tracking snippet</h1>
-        <p className="text-zinc-500">{hotel.websiteUrl}</p>
+        <p className="text-ink-tertiary">{hotel.websiteUrl}</p>
         <div className="mt-2">
           <SnippetStatusBadge status={hotel.snippetStatus} />
         </div>
       </div>
 
       {/* ── The snippet ──────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <section className="rounded-xl border border-line p-6">
         <h2 className="font-semibold">Your snippet</h2>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-ink-tertiary">
           The same one line works on every platform. Copy it, then follow the
           guide below.
         </p>
         <div className="mt-4 flex items-start gap-2">
-          <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+          <code className="block flex-1 overflow-x-auto rounded-lg bg-code px-4 py-3 text-sm text-codeink">
             {snippet}
           </code>
           <CopyButton text={snippet} />
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-ink-tertiary">
           Site ID: <code>{hotel.siteId}</code>
         </p>
       </section>
 
       {/* ── Platform guide (with tabs) ───────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <section className="rounded-xl border border-line p-6">
         <h2 className="font-semibold">Step-by-step guide</h2>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -174,33 +174,33 @@ export default async function HotelInstallPage({
                 scroll={false}
                 className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
                   isActive
-                    ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-                    : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    ? "border-brand bg-brand text-white"
+                    : "border-line-strong text-ink-secondary hover:bg-elevated"
                 }`}
               >
                 {SITE_PLATFORM_LABELS[p]}
                 {p === hotel.sitePlatform && !isActive && (
-                  <span className="ml-1.5 text-xs text-zinc-400">· selected</span>
+                  <span className="ml-1.5 text-xs text-ink-disabled">· selected</span>
                 )}
               </Link>
             );
           })}
         </div>
 
-        <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">{guide.intro}</p>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-4 text-sm text-ink-secondary">{guide.intro}</p>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-ink-secondary">
           {guide.steps.map((step, i) => (
             <li key={i}>{step}</li>
           ))}
         </ol>
-        <p className="mt-4 text-xs text-zinc-500">
+        <p className="mt-4 text-xs text-ink-tertiary">
           We only collect campaign (UTM) and page data — never names, emails, or
           form contents.
         </p>
       </section>
 
       {/* ── Test connection ──────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+      <section className="rounded-xl border border-line p-6">
         <h2 className="font-semibold">Test connection</h2>
         <div className="mt-3">
           <TestConnection hotelId={hotel.id} />

@@ -78,43 +78,43 @@ export function ReportMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
       >
         Generate Report ▾
       </button>
 
       {open && (
-        <div className="absolute right-0 z-10 mt-2 w-56 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="absolute right-0 z-10 mt-2 w-56 overflow-hidden rounded-lg border border-line bg-elevated shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
           <button
             type="button"
             onClick={handlePdf}
             disabled={generating}
-            className="block w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-60 dark:hover:bg-zinc-800"
+            className="block w-full px-4 py-2.5 text-left text-sm text-ink-secondary hover:bg-line-strong disabled:opacity-60"
           >
             {generating ? "Generating PDF…" : "PDF report"}
-            <span className="block text-xs text-zinc-500">Branded, owner-friendly</span>
+            <span className="block text-xs text-ink-tertiary">Branded, owner-friendly</span>
           </button>
           <a
             href={excelHref}
             onClick={() => setOpen(false)}
-            className="block w-full border-t border-zinc-100 px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
+            className="block w-full border-t border-line px-4 py-2.5 text-left text-sm text-ink-secondary hover:bg-line-strong"
           >
             Excel export
-            <span className="block text-xs text-zinc-500">4 sheets · raw data</span>
+            <span className="block text-xs text-ink-tertiary">4 sheets · raw data</span>
           </a>
           <a
             href={csvHref}
             onClick={() => setOpen(false)}
-            className="block w-full border-t border-zinc-100 px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
+            className="block w-full border-t border-line px-4 py-2.5 text-left text-sm text-ink-secondary hover:bg-line-strong"
           >
             CSV export
-            <span className="block text-xs text-zinc-500">Event log · one flat file</span>
+            <span className="block text-xs text-ink-tertiary">Event log · one flat file</span>
           </a>
         </div>
       )}
 
       {error && (
-        <p className="absolute right-0 mt-1 w-56 text-right text-xs text-red-600">{error}</p>
+        <p className="absolute right-0 mt-1 w-56 text-right text-xs text-danger">{error}</p>
       )}
 
       {/* Off-screen source for the PDF rasteriser. */}

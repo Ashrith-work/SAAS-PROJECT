@@ -29,7 +29,7 @@ export function TrafficSourceChart({
   const total = data.reduce((s, d) => s + d.visits, 0);
   if (total === 0) {
     return (
-      <p className="py-12 text-center text-sm text-zinc-500">
+      <p className="py-12 text-center text-sm text-ink-tertiary">
         No tracked visits in this window yet.
       </p>
     );
@@ -46,7 +46,7 @@ export function TrafficSourceChart({
               const pct = total > 0 ? ` (${((n / total) * 100).toFixed(1)}%)` : "";
               return [`${formatNumber(n)}${pct}`, String(name)] as [string, string];
             }}
-            contentStyle={{ borderRadius: 8, border: "1px solid #e4e4e7", fontSize: 12 }}
+            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
           />
           <Legend
             verticalAlign="bottom"
@@ -60,7 +60,7 @@ export function TrafficSourceChart({
             innerRadius={60}
             outerRadius={92}
             paddingAngle={2}
-            stroke="#ffffff"
+            stroke="#111827"
             strokeWidth={2}
           >
             {ranked.map((d, i) => (

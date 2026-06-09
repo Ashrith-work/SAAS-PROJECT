@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-1 text-3xl font-semibold tabular-nums">{value}</p>
+    <div className="rounded-xl border border-line bg-card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
+      <p className="mt-1 text-3xl font-semibold tabular-nums text-ink">{value}</p>
     </div>
   );
 }
@@ -23,15 +23,15 @@ function StatCard({ label, value }: { label: string; value: string }) {
 function StatusBadge({ status, suspended }: { status: string; suspended: boolean }) {
   if (suspended) {
     return (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300">
+      <span className="inline-flex items-center rounded-full bg-danger/15 px-2.5 py-0.5 text-xs font-medium text-danger">
         Suspended
       </span>
     );
   }
   const cls =
     status === "active" || status === "trialing"
-      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-      : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+      ? "bg-success/15 text-success"
+      : "bg-elevated text-ink-tertiary";
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}>
       {status}
@@ -71,8 +71,8 @@ export default async function AdminOverviewPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Platform overview</h1>
-        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Platform overview</h1>
+        <p className="mt-1 text-ink-secondary">
           Every agency on HotelTrack, across all tenants.
         </p>
       </div>
@@ -85,16 +85,16 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* Agencies table */}
-      <section className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-        <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="font-medium">Agencies</h2>
+      <section className="overflow-hidden rounded-xl border border-line bg-card">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="font-medium text-ink">Agencies</h2>
         </div>
         {agencies.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">No agencies yet.</p>
+          <p className="px-4 py-8 text-center text-sm text-ink-tertiary">No agencies yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+              <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Agency</th>
                   <th className="px-4 py-3 font-medium">Plan</th>
@@ -108,10 +108,10 @@ export default async function AdminOverviewPage() {
                 {agencies.map((a) => {
                   const suspended = a.suspendedAt != null;
                   return (
-                    <tr key={a.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <tr key={a.id} className="border-t border-line">
                       <td className="px-4 py-3">
                         <div className="font-medium">{a.name}</div>
-                        <div className="text-xs text-zinc-500">{a.email}</div>
+                        <div className="text-xs text-ink-tertiary">{a.email}</div>
                       </td>
                       <td className="px-4 py-3">{getPlan(a.plan).name}</td>
                       <td className="px-4 py-3">
@@ -131,8 +131,8 @@ export default async function AdminOverviewPage() {
                             type="submit"
                             className={
                               suspended
-                                ? "rounded-lg border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-800/60 dark:text-green-400 dark:hover:bg-green-900/20"
-                                : "rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-800/60 dark:text-red-400 dark:hover:bg-red-900/20"
+                                ? "rounded-lg border border-success/40 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/10"
+                                : "rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10"
                             }
                           >
                             {suspended ? "Reactivate" : "Suspend"}

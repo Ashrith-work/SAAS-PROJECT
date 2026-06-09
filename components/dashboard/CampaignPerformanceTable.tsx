@@ -23,10 +23,10 @@ export type CampaignRow = {
 type SortKey = "campaignName" | "spend" | "realBookings" | "realRevenue" | "realRoas";
 
 function roasColor(roas: number | null): string {
-  if (roas == null) return "text-zinc-400";
-  if (roas > 4) return "text-green-600 dark:text-green-400";
-  if (roas >= 2) return "text-amber-600 dark:text-amber-400";
-  return "text-red-600 dark:text-red-400";
+  if (roas == null) return "text-ink-disabled";
+  if (roas > 4) return "text-success";
+  if (roas >= 2) return "text-warning";
+  return "text-danger";
 }
 
 /** "Meta says" cell: Meta's claim + how far it is from our measured bookings. */
@@ -92,7 +92,7 @@ export function CampaignPerformanceTable({ rows }: { rows: CampaignRow[] }) {
     right?: boolean;
   }) => (
     <th
-      className={`px-4 py-3 font-medium ${right ? "text-right" : ""} ${k ? "cursor-pointer select-none hover:text-zinc-800 dark:hover:text-zinc-200" : ""}`}
+      className={`px-4 py-3 font-medium ${right ? "text-right" : ""} ${k ? "cursor-pointer select-none hover:text-ink" : ""}`}
       onClick={k ? () => onSort(k) : undefined}
     >
       {label}
@@ -103,7 +103,7 @@ export function CampaignPerformanceTable({ rows }: { rows: CampaignRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+        <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             <TH label="Campaign" k="campaignName" />
             <TH label="Spend" k="spend" right />
@@ -119,12 +119,12 @@ export function CampaignPerformanceTable({ rows }: { rows: CampaignRow[] }) {
             return (
               <tr
                 key={r.campaignKey}
-                className={`border-t border-zinc-100 dark:border-zinc-800 ${r.unattributed ? "bg-zinc-50/60 text-zinc-500 dark:bg-zinc-900/40" : ""}`}
+                className={`border-t border-line ${r.unattributed ? "bg-elevated/40 text-ink-tertiary" : ""}`}
               >
                 <td className="px-4 py-3 font-medium">
                   {r.campaignName}
                   {r.unattributed && (
-                    <span className="ml-2 text-xs font-normal text-zinc-400">
+                    <span className="ml-2 text-xs font-normal text-ink-disabled">
                       not blamed on any campaign
                     </span>
                   )}
@@ -145,16 +145,16 @@ export function CampaignPerformanceTable({ rows }: { rows: CampaignRow[] }) {
                 </td>
                 <td className="px-4 py-3">
                   {verdict == null ? (
-                    <span className="text-zinc-400">—</span>
+                    <span className="text-ink-disabled">—</span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       {verdict.badge === "ok" && (
-                        <span className="text-green-600 dark:text-green-400">✓</span>
+                        <span className="text-success">✓</span>
                       )}
                       {verdict.badge === "warn" && (
-                        <span className="text-amber-600 dark:text-amber-400">⚠</span>
+                        <span className="text-warning">⚠</span>
                       )}
-                      <span className="text-zinc-600 dark:text-zinc-300">
+                      <span className="text-ink-secondary">
                         {verdict.text}
                       </span>
                     </span>

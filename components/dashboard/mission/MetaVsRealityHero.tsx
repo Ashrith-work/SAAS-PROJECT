@@ -14,7 +14,7 @@ export type MetaVsReality = {
 function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${accent}`}>{value}</p>
     </div>
   );
@@ -40,32 +40,32 @@ export function MetaVsRealityHero({ data }: { data: MetaVsReality }) {
           : { text: `Meta under-counts by ${Math.round(-inflationPct)}%`, sub: "Real bookings exceed Meta's count", tone: "emerald" as const };
 
   const verdictCls = {
-    emerald: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    red: "bg-red-50 text-red-600 ring-red-200",
-    amber: "bg-amber-50 text-amber-700 ring-amber-200",
-    slate: "bg-slate-50 text-slate-600 ring-slate-200",
+    emerald: "bg-success/15 text-success ring-success/30",
+    red: "bg-danger/15 text-danger ring-danger/30",
+    amber: "bg-warning/15 text-warning ring-warning/30",
+    slate: "bg-elevated text-ink-tertiary ring-line-strong",
   }[verdict.tone];
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+    <section className="overflow-hidden rounded-2xl border border-line bg-gradient-to-b from-elevated to-card shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+      <div className="border-b border-line px-6 py-4">
+        <h2 className="text-lg font-semibold tracking-tight text-ink">
           What Meta claims vs what actually happened
         </h2>
-        <p className="mt-0.5 text-sm text-slate-500">
+        <p className="mt-0.5 text-sm text-ink-tertiary">
           Platform-reported numbers next to the bookings HotelTrack verified on the hotel&apos;s own website.
         </p>
       </div>
 
       <div className="grid items-center gap-6 p-6 lg:grid-cols-[1fr_auto_1fr]">
         {/* Meta's view */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#1A56DB]/10 px-3 py-1 text-xs font-semibold text-[#1A56DB]">
-            <span className="h-2 w-2 rounded-full bg-[#1A56DB]" /> Meta reports
+        <div className="rounded-2xl border border-line bg-card p-6">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+            <span className="h-2 w-2 rounded-full bg-brand" /> Meta reports
           </div>
           <div className="space-y-4">
-            <Stat label="Bookings claimed" value={formatNumber(metaBookings)} accent="text-slate-900" />
-            <Stat label="Revenue claimed" value={formatCurrency(metaRevenue)} accent="text-slate-900" />
+            <Stat label="Bookings claimed" value={formatNumber(metaBookings)} accent="text-ink" />
+            <Stat label="Revenue claimed" value={formatCurrency(metaRevenue)} accent="text-ink" />
           </div>
         </div>
 
@@ -75,17 +75,17 @@ export function MetaVsRealityHero({ data }: { data: MetaVsReality }) {
             <p className="text-lg font-bold leading-tight">{verdict.text}</p>
             <p className="mt-1 text-xs opacity-80">{verdict.sub}</p>
           </div>
-          <p className="mt-3 hidden text-xs text-slate-400 lg:block">vs</p>
+          <p className="mt-3 hidden text-xs text-ink-disabled lg:block">vs</p>
         </div>
 
         {/* HotelTrack verified */}
-        <div className="rounded-2xl border-2 border-emerald-200 bg-white p-6">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-            <span className="h-2 w-2 rounded-full bg-emerald-600" /> HotelTrack verified
+        <div className="rounded-2xl border-2 border-success/40 bg-card p-6">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
+            <span className="h-2 w-2 rounded-full bg-success" /> HotelTrack verified
           </div>
           <div className="space-y-4">
-            <Stat label="Real bookings tracked" value={formatNumber(realBookings)} accent="text-emerald-700" />
-            <Stat label="Real revenue" value={formatCurrency(realRevenue)} accent="text-emerald-700" />
+            <Stat label="Real bookings tracked" value={formatNumber(realBookings)} accent="text-success" />
+            <Stat label="Real revenue" value={formatCurrency(realRevenue)} accent="text-success" />
           </div>
         </div>
       </div>

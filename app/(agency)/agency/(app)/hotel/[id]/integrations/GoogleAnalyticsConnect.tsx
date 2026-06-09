@@ -7,7 +7,7 @@ import { connectGoogleAnalytics, type ConnectGaState } from "./ga-actions";
 const initial: ConnectGaState = { error: null, ok: false };
 
 const inputCls =
-  "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950";
+  "w-full rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink placeholder:text-ink-disabled outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
 
 export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
   const router = useRouter();
@@ -20,20 +20,20 @@ export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="text-sm text-ink-secondary">
         Pull this hotel&apos;s total website performance from Google Analytics 4
         so the dashboard can show <strong>every</strong> visit (not just the ones
         with HotelTrack&apos;s UTM tags) and break down traffic by source.
       </p>
 
       <details
-        className="rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800"
+        className="rounded-lg border border-line p-3 text-sm"
         open
       >
-        <summary className="cursor-pointer select-none font-medium">
+        <summary className="cursor-pointer select-none font-medium text-ink">
           How to create the service account
         </summary>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-zinc-700 dark:text-zinc-300">
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-ink-secondary">
           <li>
             Go to{" "}
             <a
@@ -90,7 +90,7 @@ export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
         <input type="hidden" name="hotelId" value={hotelId} />
 
         <label className="block">
-          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <span className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
             GA4 Property ID
           </span>
           <input
@@ -105,24 +105,24 @@ export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
         </label>
 
         <label className="block">
-          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <span className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
             Service-account JSON key
           </span>
           <input
             name="credentialsFile"
             type="file"
             accept="application/json,.json"
-            className="mt-1 block w-full text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-zinc-200 dark:text-zinc-400 dark:file:bg-zinc-800 dark:hover:file:bg-zinc-700"
+            className="mt-1 block w-full text-sm text-ink-secondary file:mr-3 file:rounded-md file:border-0 file:bg-elevated file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink-secondary hover:file:bg-line-strong"
             onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
           />
           {fileName && (
-            <span className="mt-1 block text-xs text-zinc-500">
+            <span className="mt-1 block text-xs text-ink-tertiary">
               Selected: <code>{fileName}</code>
             </span>
           )}
         </label>
 
-        <details className="text-xs text-zinc-500">
+        <details className="text-xs text-ink-tertiary">
           <summary className="cursor-pointer select-none">
             Or paste the JSON contents instead
           </summary>
@@ -137,7 +137,7 @@ export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
         </details>
 
         {state.error && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+          <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
             {state.error}
           </div>
         )}
@@ -145,11 +145,11 @@ export function GoogleAnalyticsConnect({ hotelId }: { hotelId: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
         >
           {pending ? "Testing & saving…" : "Test connection & save"}
         </button>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-ink-tertiary">
           We test against your property before saving. Credentials are encrypted
           (AES-256-GCM) at rest and never shown again or sent to your browser.
         </p>

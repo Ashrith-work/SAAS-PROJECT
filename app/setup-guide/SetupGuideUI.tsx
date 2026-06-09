@@ -31,21 +31,21 @@ export function CodeBlock({
   }
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border border-slate-700 bg-[#0F172A] print:border-slate-300">
+    <div className="sg-codeblock my-4 overflow-hidden rounded-xl border border-line bg-code print:border-line-strong">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <span className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           {caption ?? "Code"}
         </span>
         <button
           type="button"
           onClick={copy}
-          className="rounded-md border border-white/15 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-white/10 print:hidden"
+          className="rounded-md border border-white/15 px-2.5 py-1 text-xs font-medium text-ink-secondary transition hover:bg-white/10 print:hidden"
         >
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
       <pre className="overflow-x-auto px-4 py-3 text-sm leading-relaxed">
-        <code className="whitespace-pre font-mono text-[#60A5FA]">{code}</code>
+        <code className="whitespace-pre font-mono text-codeink">{code}</code>
       </pre>
     </div>
   );
@@ -66,18 +66,18 @@ export function Toc({ items }: { items: TocItem[] }) {
           <a
             href={`#${item.id}`}
             onClick={onClick}
-            className="block rounded-md px-3 py-1.5 font-medium text-slate-700 transition hover:bg-[#1A56DB]/10 hover:text-[#1A56DB]"
+            className="block rounded-md px-3 py-1.5 font-medium text-ink-secondary transition hover:bg-brand/10 hover:text-brand"
           >
             {item.label}
           </a>
           {item.children && item.children.length > 0 && (
-            <ul className="mt-1 space-y-1 border-l border-slate-200 pl-3">
+            <ul className="mt-1 space-y-1 border-l border-line pl-3">
               {item.children.map((child) => (
                 <li key={child.id}>
                   <a
                     href={`#${child.id}`}
                     onClick={onClick}
-                    className="block rounded-md px-3 py-1.5 text-slate-500 transition hover:bg-[#1A56DB]/10 hover:text-[#1A56DB]"
+                    className="block rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-brand/10 hover:text-brand"
                   >
                     {child.label}
                   </a>
@@ -93,11 +93,11 @@ export function Toc({ items }: { items: TocItem[] }) {
   return (
     <>
       {/* Mobile: collapsible accordion */}
-      <div className="mb-6 rounded-xl border border-slate-200 bg-white lg:hidden print:hidden">
+      <div className="mb-6 rounded-xl border border-line bg-card lg:hidden print:hidden">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-[#0F172A]"
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-ink"
           aria-expanded={open}
         >
           On this page
@@ -111,12 +111,12 @@ export function Toc({ items }: { items: TocItem[] }) {
             <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        {open && <div className="border-t border-slate-100 p-2">{list(() => setOpen(false))}</div>}
+        {open && <div className="border-t border-line p-2">{list(() => setOpen(false))}</div>}
       </div>
 
       {/* Desktop: sticky sidebar */}
       <nav className="sticky top-24 hidden lg:block print:hidden" aria-label="Table of contents">
-        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
           On this page
         </p>
         {list()}

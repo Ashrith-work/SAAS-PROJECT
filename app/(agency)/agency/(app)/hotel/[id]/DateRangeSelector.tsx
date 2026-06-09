@@ -36,9 +36,9 @@ export function DateRangeSelector({
 
   const baseCls =
     "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors";
-  const activeCls = "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black";
+  const activeCls = "border-brand bg-brand text-white";
   const idleCls =
-    "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900";
+    "border-line-strong text-ink-secondary hover:bg-elevated";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -67,20 +67,20 @@ export function DateRangeSelector({
             value={from}
             max={to || undefined}
             onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            className="rounded-lg border border-line-strong bg-page px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
           />
-          <span className="text-zinc-400">→</span>
+          <span className="text-ink-disabled">→</span>
           <input
             type="date"
             value={to}
             min={from || undefined}
             onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            className="rounded-lg border border-line-strong bg-page px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
           />
           <button
             type="button"
             onClick={applyCustom}
-            className="rounded-lg bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Apply
           </button>

@@ -58,7 +58,7 @@ export function MetaCampaignBreakdownTable({ rows }: { rows: MetaCampaignRow[] }
 
   const TH = ({ label, k, right }: { label: string; k: SortKey; right?: boolean }) => (
     <th
-      className={`cursor-pointer select-none px-4 py-3 font-medium hover:text-zinc-800 dark:hover:text-zinc-200 ${right ? "text-right" : ""}`}
+      className={`cursor-pointer select-none px-4 py-3 font-medium hover:text-ink ${right ? "text-right" : ""}`}
       onClick={() => onSort(k)}
     >
       {label}
@@ -69,7 +69,7 @@ export function MetaCampaignBreakdownTable({ rows }: { rows: MetaCampaignRow[] }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+        <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             <TH label="Campaign name" k="campaignName" />
             <TH label="Spend" k="spend" right />
@@ -82,7 +82,7 @@ export function MetaCampaignBreakdownTable({ rows }: { rows: MetaCampaignRow[] }
         </thead>
         <tbody>
           {sorted.map((r) => (
-            <tr key={r.campaignId} className="border-t border-zinc-100 dark:border-zinc-800">
+            <tr key={r.campaignId} className="border-t border-line">
               <td className="px-4 py-3 font-medium">{r.campaignName}</td>
               <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(r.spend)}</td>
               <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.impressions)}</td>

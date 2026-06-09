@@ -42,7 +42,7 @@ export function SourcePieChart({ data }: { data: SourceSlice[] }) {
 
   if (rows.length === 0 || total === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
+      <p className="py-8 text-center text-sm text-ink-tertiary">
         No GA source data in this range yet.
       </p>
     );
@@ -77,7 +77,7 @@ export function SourcePieChart({ data }: { data: SourceSlice[] }) {
               }}
               contentStyle={{
                 borderRadius: 8,
-                border: "1px solid #e4e4e7",
+                border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb",
                 fontSize: 12,
               }}
             />
@@ -94,8 +94,8 @@ export function SourcePieChart({ data }: { data: SourceSlice[] }) {
                 style={{ background: COLORS[row.source] ?? COLORS.other }}
               />
               <span className="flex-1">{LABELS[row.source] ?? row.source}</span>
-              <span className="text-zinc-500">{formatNumber(row.sessions)}</span>
-              <span className="w-12 text-right text-xs text-zinc-500">
+              <span className="text-ink-tertiary">{formatNumber(row.sessions)}</span>
+              <span className="w-12 text-right text-xs text-ink-tertiary">
                 {pct.toFixed(1)}%
               </span>
             </li>

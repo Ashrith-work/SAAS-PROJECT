@@ -13,19 +13,19 @@ const LEVEL_STYLES: Record<
   { card: string; dot: string; heading: string }
 > = {
   green: {
-    card: "border-green-300 bg-green-50 dark:border-green-800/60 dark:bg-green-900/20",
-    dot: "bg-green-500",
-    heading: "text-green-800 dark:text-green-300",
+    card: "border-l-4 border-success bg-success/10",
+    dot: "bg-success",
+    heading: "text-success",
   },
   yellow: {
-    card: "border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/20",
-    dot: "bg-amber-500",
-    heading: "text-amber-800 dark:text-amber-300",
+    card: "border-l-4 border-warning bg-warning/10",
+    dot: "bg-warning",
+    heading: "text-warning",
   },
   red: {
-    card: "border-red-300 bg-red-50 dark:border-red-800/60 dark:bg-red-900/20",
-    dot: "bg-red-500",
-    heading: "text-red-800 dark:text-red-300",
+    card: "border-l-4 border-danger bg-danger/10",
+    dot: "bg-danger",
+    heading: "text-danger",
   },
 };
 
@@ -48,7 +48,7 @@ export function TestConnection({ hotelId }: { hotelId: string }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-ink-tertiary">
           Checks two things at once: whether the snippet is on your homepage, and
           whether we&apos;ve actually received events from it.
         </p>
@@ -57,24 +57,24 @@ export function TestConnection({ hotelId }: { hotelId: string }) {
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {pending ? "Testing…" : "Test connection"}
           </button>
         </form>
       </div>
 
-      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
 
       {result && styles && (
-        <div className={`rounded-xl border p-4 ${styles.card}`}>
+        <div className={`rounded-xl p-4 ${styles.card}`}>
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${styles.dot}`} />
             <p className={`text-sm font-semibold ${styles.heading}`}>{result.title}</p>
           </div>
-          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{result.detail}</p>
+          <p className="mt-2 text-sm text-ink-secondary">{result.detail}</p>
 
-          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
+          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs text-ink-tertiary sm:grid-cols-2">
             <Row
               label="Snippet on homepage"
               value={
@@ -105,9 +105,9 @@ export function TestConnection({ hotelId }: { hotelId: string }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 border-b border-black/5 py-1 dark:border-white/5">
+    <div className="flex justify-between gap-3 border-b border-white/5 py-1">
       <dt>{label}</dt>
-      <dd className="text-right font-medium tabular-nums text-zinc-800 dark:text-zinc-200">
+      <dd className="text-right font-medium tabular-nums text-ink">
         {value}
       </dd>
     </div>

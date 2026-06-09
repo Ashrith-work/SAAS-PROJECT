@@ -31,8 +31,8 @@ export default async function AdminSyncNowPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Manual Meta sync</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-xl font-semibold text-ink">Manual Meta sync</h1>
+        <p className="mt-1 text-sm text-ink-tertiary">
           Pull a hotel&apos;s trailing ads data right now instead of waiting for
           the daily cron. Hotels without a mapped ad account can&apos;t be
           synced.
@@ -42,10 +42,10 @@ export default async function AdminSyncNowPage() {
       <SyncNowForm hotels={hotels} />
 
       <div>
-        <h2 className="text-sm font-medium text-zinc-500">Last synced</h2>
+        <h2 className="text-sm font-medium text-ink-tertiary">Last synced</h2>
         <ul className="mt-2 space-y-1 text-sm">
           {hotels.map((h) => (
-            <li key={h.id} className="text-zinc-600 dark:text-zinc-400">
+            <li key={h.id} className="text-ink-secondary">
               {h.agencyName} / {h.name} —{" "}
               {h.lastSyncedAt
                 ? new Date(h.lastSyncedAt).toLocaleString()

@@ -9,7 +9,7 @@ const POLL_MS = 3000;
 function Spinner() {
   return (
     <svg
-      className="h-4 w-4 animate-spin text-amber-600 dark:text-amber-400"
+      className="h-4 w-4 animate-spin text-warning"
       viewBox="0 0 24 24"
       fill="none"
     >
@@ -76,13 +76,13 @@ export function BackfillProgress({ initialJob }: { initialJob: BackfillJobView |
 
   if (active) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+      <div className="flex items-center gap-3 rounded-lg border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-ink-secondary">
         <Spinner />
         <span>
           Pulling missing data from <strong>{job.rangeStart}</strong> to{" "}
           <strong>{job.rangeEnd}</strong>… this may take a few minutes.
           {job.daysRestored > 0 && (
-            <span className="text-amber-700/80 dark:text-amber-300/80">
+            <span className="text-warning/80">
               {" "}
               ({job.daysRestored} day{job.daysRestored === 1 ? "" : "s"} so far)
             </span>
@@ -94,13 +94,13 @@ export function BackfillProgress({ initialJob }: { initialJob: BackfillJobView |
 
   const tone =
     job.status === "completed"
-      ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300"
+      ? "border-success bg-success/10 text-ink-secondary"
       : job.status === "partial"
-        ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300"
-        : "border-red-300 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300";
+        ? "border-warning bg-warning/10 text-ink-secondary"
+        : "border-danger bg-danger/10 text-ink-secondary";
 
   return (
-    <div className={`flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${tone}`}>
+    <div className={`flex items-start justify-between gap-3 rounded-lg border-l-4 px-4 py-3 text-sm ${tone}`}>
       <span>{job.message ?? "Backfill finished."}</span>
       <button
         type="button"

@@ -6,7 +6,7 @@ import { adminSyncNow, type SyncNowState } from "./actions";
 const initialState: SyncNowState = { error: null, ok: false, message: null };
 
 const fieldCls =
-  "rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950";
+  "rounded-lg border border-line-strong bg-page px-3 py-2 text-sm text-ink placeholder:text-ink-disabled outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-60";
 
 export type SyncableHotel = {
   id: string;
@@ -40,7 +40,7 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
   return (
     <form action={action} className="max-w-xl space-y-4">
       <div className="flex flex-col gap-1">
-        <label htmlFor="hotelId" className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <label htmlFor="hotelId" className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           Hotel
         </label>
         <select
@@ -62,7 +62,7 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="days" className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <label htmlFor="days" className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           Trailing days to (re)sync (1–90)
         </label>
         <input
@@ -79,7 +79,7 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <label htmlFor="password" className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           Admin password
         </label>
         <input
@@ -97,18 +97,18 @@ export function SyncNowForm({ hotels }: { hotels: SyncableHotel[] }) {
       <button
         type="submit"
         disabled={pending || !hotelId}
-        className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-60"
       >
         {pending ? "Syncing…" : "Sync now"}
       </button>
 
       {state.error && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+        <p className="rounded-lg border-l-4 border-danger bg-danger/10 px-4 py-3 text-sm text-ink-secondary">
           {state.error}
         </p>
       )}
       {state.ok && state.message && (
-        <p className="rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300">
+        <p className="rounded-lg border-l-4 border-success bg-success/10 px-4 py-3 text-sm text-ink-secondary">
           {state.message}
         </p>
       )}

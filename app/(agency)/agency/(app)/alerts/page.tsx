@@ -16,16 +16,16 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const SEVERITY_CLS: Record<string, string> = {
-  critical: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  warning: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  info: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  critical: "bg-danger/15 text-danger",
+  warning: "bg-warning/15 text-warning",
+  info: "bg-info/15 text-info",
 };
 
 const EMAIL_CLS: Record<string, string> = {
-  sent: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  skipped: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-  pending: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  sent: "bg-success/15 text-success",
+  failed: "bg-danger/15 text-danger",
+  skipped: "bg-elevated text-ink-tertiary",
+  pending: "bg-elevated text-ink-tertiary",
 };
 
 const EMAIL_LABELS: Record<string, string> = {
@@ -80,22 +80,22 @@ export default async function AlertsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
-        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-ink-tertiary">
           Performance drops, tracking failures, Meta expiries, and weekly
           summaries — and whether each was emailed to {member.agency.email}.
         </p>
       </div>
 
       {alerts.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
-          <p className="text-zinc-600 dark:text-zinc-400">No alerts yet.</p>
-          <p className="mt-1 text-sm text-zinc-400">
+        <div className="rounded-xl border border-dashed border-line p-12 text-center">
+          <p className="text-ink-tertiary">No alerts yet.</p>
+          <p className="mt-1 text-sm text-ink-disabled">
             We&apos;ll flag booking drops, broken tracking, and expiring Meta
             connections here as they happen.
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
           {alerts.map((a) => (
             <li key={a.id} className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
@@ -106,21 +106,21 @@ export default async function AlertsPage() {
                 {a.hotelClient?.name ? (
                   <span className="text-sm font-medium">{a.hotelClient.name}</span>
                 ) : (
-                  <span className="text-sm font-medium text-zinc-500">All hotels</span>
+                  <span className="text-sm font-medium text-ink-tertiary">All hotels</span>
                 )}
                 <span className="ml-auto flex items-center gap-2">
                   <Badge
                     label={EMAIL_LABELS[a.emailStatus] ?? a.emailStatus}
                     cls={EMAIL_CLS[a.emailStatus] ?? EMAIL_CLS.pending}
                   />
-                  <time className="text-xs text-zinc-400">{fmtWhen(a.createdAt)}</time>
+                  <time className="text-xs text-ink-disabled">{fmtWhen(a.createdAt)}</time>
                 </span>
               </div>
-              <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <p className="mt-2 text-sm text-ink-secondary">
                 {a.message}
               </p>
               {a.emailStatus === "failed" && a.emailError ? (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                <p className="mt-1 text-xs text-danger">
                   {a.emailError}
                 </p>
               ) : null}

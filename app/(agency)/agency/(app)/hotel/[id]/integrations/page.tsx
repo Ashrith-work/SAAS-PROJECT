@@ -43,7 +43,7 @@ function daysAgo(d: Date, now: Date): number {
 function SyncFailureNotice({ failedAt, now }: { failedAt: Date; now: Date }) {
   const n = daysAgo(failedAt, now);
   return (
-    <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+    <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-3 text-sm text-ink-secondary">
       Data sync failed {n} day{n === 1 ? "" : "s"} ago. Reconnect to restore
       data flow.
     </div>
@@ -79,7 +79,7 @@ const SnippetIcon = (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="h-5 w-5 text-zinc-600 dark:text-zinc-300"
+    className="h-5 w-5 text-ink-secondary"
   >
     <path d="m8 6-6 6 6 6" />
     <path d="m16 6 6 6-6 6" />
@@ -251,16 +251,16 @@ export default async function HotelIntegrationsPage({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link href="/agency/hotels" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/agency/hotels" className="text-sm text-ink-tertiary hover:underline">
           ← Hotel Clients
         </Link>
         <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{hotel.name}</h1>
-            <p className="text-zinc-500">{hotel.websiteUrl}</p>
+            <p className="text-ink-tertiary">{hotel.websiteUrl}</p>
           </div>
-          <p className="text-sm text-zinc-500">
-            <span className="font-medium text-zinc-700 dark:text-zinc-300">
+          <p className="text-sm text-ink-tertiary">
+            <span className="font-medium text-ink-secondary">
               {summary.connectedCount} of {summary.total}
             </span>{" "}
             integrations connected
@@ -269,16 +269,16 @@ export default async function HotelIntegrationsPage({
       </div>
 
       {/* Help — share the public setup guide with the hotel */}
-      <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800 dark:bg-zinc-900/50">
+      <div className="flex flex-col gap-3 rounded-xl border border-line bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1A56DB]/10 text-[#1A56DB]">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
               <path d="M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
           <div>
             <p className="text-sm font-semibold">New to HotelTrack setup?</p>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-ink-tertiary">
               Send {hotel.name} a step-by-step guide for installing the snippet
               and connecting Instagram.
             </p>
@@ -291,21 +291,21 @@ export default async function HotelIntegrationsPage({
 
       {/* OAuth round-trip feedback */}
       {igConnectedBanner && (
-        <div className="rounded-lg border border-green-300 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800/60 dark:bg-green-900/20 dark:text-green-300">
+        <div className="rounded-lg border-l-4 border-success bg-success/10 p-4 text-sm text-ink-secondary">
           Instagram connected successfully. Click <strong>Sync insights now</strong>{" "}
           on the Instagram card to pull the first data.
         </div>
       )}
       {igErrorBanner && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+        <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-4 text-sm text-ink-secondary">
           {igErrorBanner}
         </div>
       )}
 
       {/* ── Card 1 — Meta Ads (EAA token, agency-wide) ───────────────────── */}
       {(metaSt === "expiring" || metaSt === "expired") && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800/60 dark:bg-amber-900/20">
-          <p className="font-medium text-amber-800 dark:text-amber-300">
+        <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-4 text-sm">
+          <p className="font-medium text-warning">
             {metaSt === "expired"
               ? "Your Meta Ads connection expired or was revoked."
               : "Your Meta Ads token is expiring soon."}{" "}
@@ -313,14 +313,14 @@ export default async function HotelIntegrationsPage({
           </p>
           <Link
             href="/agency/settings"
-            className="mt-3 inline-block rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+            className="mt-3 inline-block rounded-lg bg-warning px-3 py-1.5 text-sm font-medium text-white hover:bg-warning/90"
           >
             Reconnect now →
           </Link>
         </div>
       )}
       <IntegrationCard
-        icon={<span className="text-base font-bold text-blue-600">f</span>}
+        icon={<span className="text-base font-bold text-brand">f</span>}
         title="Meta Ads"
         subtitle="Paid ad performance, ROAS, campaign data"
         badge={<IntegrationStatusBadge tone={tokenTone(metaSt)} label={TOKEN_LABELS[metaSt]} />}
@@ -331,7 +331,7 @@ export default async function HotelIntegrationsPage({
           </div>
         )}
         {metaSt === "not_connected" ? (
-          <div className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <div className="space-y-3 text-sm text-ink-secondary">
             <p>
               Connect Meta (Facebook) Ads once for your whole agency to bring ad
               spend and ROI into each hotel&apos;s dashboard. Then map the ad
@@ -339,13 +339,13 @@ export default async function HotelIntegrationsPage({
             </p>
             <Link
               href="/agency/settings"
-              className="inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
             >
               Connect Meta in Settings →
             </Link>
           </div>
         ) : metaSt === "expired" ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-ink-secondary">
             Reconnect your Meta token on{" "}
             <Link href="/agency/settings" className="underline">
               Settings
@@ -355,18 +355,18 @@ export default async function HotelIntegrationsPage({
           </p>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-ink-secondary">
               Token active · expires:{" "}
               <span className="font-medium">{fmtExpiry(token?.tokenExpiresAt)}</span>{" "}
-              · <span className="text-zinc-500">applies to all your hotels</span>
+              · <span className="text-ink-tertiary">applies to all your hotels</span>
             </p>
             <HotelAdAccountSelect
               hotelId={hotel.id}
               accounts={adAccounts}
               currentAdAccountId={hotel.metaAdAccountId}
             />
-            {metaLoadError && <p className="text-sm text-red-600">{metaLoadError}</p>}
-            <p className="text-xs text-zinc-500">
+            {metaLoadError && <p className="text-sm text-danger">{metaLoadError}</p>}
+            <p className="text-xs text-ink-tertiary">
               Manage the Meta token (replace / disconnect) on{" "}
               <Link href="/agency/settings" className="underline">
                 Settings
@@ -379,7 +379,7 @@ export default async function HotelIntegrationsPage({
 
       {/* ── Card 2 — Instagram (IGAA via Instagram Login) ────────────────── */}
       <IntegrationCard
-        icon={<span className="text-xs font-bold text-pink-600">IG</span>}
+        icon={<span className="text-xs font-bold text-pink-400">IG</span>}
         title="Instagram"
         subtitle="Organic reach, followers, post engagement"
         badge={<IntegrationStatusBadge tone={tokenTone(igSt)} label={TOKEN_LABELS[igSt]} />}
@@ -397,16 +397,16 @@ export default async function HotelIntegrationsPage({
                 <img
                   src={ig.profilePicUrl}
                   alt={`@${ig.username ?? "instagram"} profile picture`}
-                  className="h-12 w-12 rounded-full border border-zinc-200 object-cover dark:border-zinc-800"
+                  className="h-12 w-12 rounded-full border border-line object-cover"
                 />
               ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-100 text-sm font-bold text-pink-600 dark:bg-pink-900/40">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-900/40 text-sm font-bold text-pink-400">
                   IG
                 </div>
               )}
               <div className="text-sm">
                 <p className="font-medium">@{ig?.username}</p>
-                <p className="text-zinc-500">
+                <p className="text-ink-tertiary">
                   {ig?.igAccountType === "CREATOR" ? "Creator" : "Business"} account ·
                   Last synced: {fmtDate(ig?.lastSyncedAt)}
                 </p>
@@ -429,17 +429,17 @@ export default async function HotelIntegrationsPage({
             <InstagramActions hotelId={hotel.id} />
 
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                 Recent posts
               </p>
               {recentPosts.length === 0 ? (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-ink-tertiary">
                   No posts synced yet. Click “Sync insights now”.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-line">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+                    <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                       <tr>
                         <th className="px-3 py-2 font-medium">Post</th>
                         <th className="px-3 py-2 text-right font-medium">Reach</th>
@@ -449,7 +449,7 @@ export default async function HotelIntegrationsPage({
                     </thead>
                     <tbody>
                       {recentPosts.map((p) => (
-                        <tr key={p.mediaId} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <tr key={p.mediaId} className="border-t border-line">
                           <td className="px-3 py-2">
                             {p.permalink ? (
                               <a
@@ -466,7 +466,7 @@ export default async function HotelIntegrationsPage({
                               </span>
                             )}
                             {p.postedAt && (
-                              <span className="block text-xs text-zinc-500">
+                              <span className="block text-xs text-ink-tertiary">
                                 {new Date(p.postedAt).toLocaleDateString()}
                               </span>
                             )}
@@ -491,12 +491,12 @@ export default async function HotelIntegrationsPage({
         ) : (
           <div className="space-y-3">
             {ig?.status === "error" && ig.errorMessage && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+              <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
                 The last sync failed: {ig.errorMessage} — reconnect below to
                 resume.
               </div>
             )}
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-ink-secondary">
               Bring organic reach, impressions, follower growth, and per-post
               engagement into HotelTrack.
             </p>
@@ -509,7 +509,7 @@ export default async function HotelIntegrationsPage({
               </svg>
               Log in with Instagram
             </a>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               The hotel will be asked to log in with their Instagram Business or
               Creator account. No Facebook Page required.
             </p>
@@ -534,7 +534,7 @@ export default async function HotelIntegrationsPage({
         }
       >
         {pixelMode ? (
-          <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
+          <div className="space-y-2 text-sm text-ink-secondary">
             <p>
               This agency uses Meta&apos;s Pixel for website tracking, so the
               HotelTrack snippet isn&apos;t used here. Conversions and ROAS appear
@@ -544,16 +544,16 @@ export default async function HotelIntegrationsPage({
         ) : (
           <div className="space-y-4">
             <div className="flex items-start gap-2">
-              <code className="block flex-1 overflow-x-auto rounded-lg bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
+              <code className="block flex-1 overflow-x-auto rounded-lg bg-code px-4 py-3 text-sm text-codeink">
                 {snippet}
               </code>
               <CopyButton text={snippet} />
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-tertiary">
               Site ID: <code>{hotel.siteId}</code>
             </p>
             {snippetSt === "live" && (
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-ink-tertiary">
                 Last event received: {fmtDate(hotel.lastEventAt)}
               </p>
             )}
@@ -567,7 +567,7 @@ export default async function HotelIntegrationsPage({
               >
                 View install guide →
               </Link>{" "}
-              <span className="text-zinc-500">
+              <span className="text-ink-tertiary">
                 — step-by-step for WordPress, Shopify, or any site.
               </span>
             </p>
@@ -577,28 +577,28 @@ export default async function HotelIntegrationsPage({
 
       {/* ── Card 4 — Google Analytics 4 ───────────────────────────────────── */}
       <IntegrationCard
-        icon={<span className="text-xs font-bold text-amber-600">GA</span>}
+        icon={<span className="text-xs font-bold text-warning">GA</span>}
         title="Google Analytics 4"
         subtitle="Total website performance and source-by-source traffic mix."
         badge={<IntegrationStatusBadge tone={gaTone(gaSt)} label={GA_LABELS[gaSt]} />}
       >
         {gaSt === "gated" ? (
-          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-center dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="rounded-lg border border-line bg-card p-6 text-center">
             <p className="text-sm font-medium">GA4 is a Growth feature</p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">
+            <p className="mx-auto mt-1 max-w-md text-sm text-ink-tertiary">
               Connect Google Analytics 4 to see every visit (not just UTM-tagged
               ones) and a full source breakdown. Upgrade your plan to enable it.
             </p>
             <Link
               href="/agency/billing"
-              className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
             >
               Upgrade to Growth to enable GA4 →
             </Link>
           </div>
         ) : gaSt === "connected" ? (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-ink-secondary">
               Property <code>{ga?.propertyId}</code>
               {ga?.lastSyncedAt
                 ? ` · last synced ${fmtDate(ga.lastSyncedAt)}`
@@ -608,7 +608,7 @@ export default async function HotelIntegrationsPage({
           </div>
         ) : gaSt === "broken" ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+            <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
               Service account no longer has access to property{" "}
               <code>{ga?.propertyId}</code>. Re-share the property with the service
               account (Viewer role) in GA Admin, or upload a fresh key below.
@@ -625,8 +625,8 @@ export default async function HotelIntegrationsPage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
+    <div className="rounded-lg border border-line p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
     </div>
   );
