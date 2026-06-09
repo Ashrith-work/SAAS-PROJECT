@@ -720,9 +720,26 @@ export default async function HotelDashboardPage({
   const trueRoasColor =
     kpis.roas == null ? "text-ink" : kpis.roas > 4 ? "text-success" : kpis.roas >= 2 ? "text-warning" : "text-danger";
 
+  // Cost/booking divides total ad spend by *tracked* bookings, so with only a
+  // handful of tracked conversions the figure is meaningless (e.g. ₹7.6L / 2 =
+  // ₹3.8L per booking). Suppress it until tracking coverage is high enough.
+  const MIN_CPB_BOOKINGS = 10;
+  const cpbReliable = kpis.costPerBooking != null && kpis.bookings >= MIN_CPB_BOOKINGS;
+
   const kpiCards: KpiCardSpec[] = [
-    { label: "Revenue", value: formatCurrency(kpis.revenue), delta: pctDelta(kpis.revenue, prevRevenue) },
-    { label: "Ad spend", value: formatCurrency(ads.spend), delta: pctDelta(ads.spend, prevSpend), goodWhenUp: false },
+    {
+      label: "Revenue",
+      value: formatCurrency(kpis.revenue, { compact: true }),
+      title: formatCurrency(kpis.revenue),
+      delta: pctDelta(kpis.revenue, prevRevenue),
+    },
+    {
+      label: "Ad spend",
+      value: formatCurrency(ads.spend, { compact: true }),
+      title: formatCurrency(ads.spend),
+      delta: pctDelta(ads.spend, prevSpend),
+      goodWhenUp: false,
+    },
     {
       label: "True ROAS",
       value: formatMultiple(kpis.roas),
@@ -731,12 +748,22 @@ export default async function HotelDashboardPage({
       hint: "Real revenue ÷ spend",
     },
     { label: "Bookings", value: formatNumber(kpis.bookings), delta: pctDelta(kpis.bookings, prevBookings) },
-    { label: "ADR", value: adr == null ? "—" : formatCurrency(adr), delta: pctDelta(adr, prevAdr), hint: "Avg booking value" },
+    {
+      label: "ADR",
+      value: adr == null ? "—" : formatCurrency(adr, { compact: true }),
+      title: adr == null ? undefined : formatCurrency(adr),
+      delta: pctDelta(adr, prevAdr),
+      hint: "Avg booking value",
+    },
     {
       label: "Cost / booking",
-      value: kpis.costPerBooking == null ? "—" : formatCurrency(kpis.costPerBooking),
-      delta: pctDelta(kpis.costPerBooking, prevCpb),
+      value: cpbReliable ? formatCurrency(kpis.costPerBooking!, { compact: true }) : "—",
+      title: cpbReliable ? formatCurrency(kpis.costPerBooking!) : undefined,
+      delta: cpbReliable ? pctDelta(kpis.costPerBooking, prevCpb) : null,
       goodWhenUp: false,
+      hint: cpbReliable
+        ? "Ad spend ÷ tracked bookings"
+        : `Needs ≥${MIN_CPB_BOOKINGS} tracked bookings`,
     },
   ];
 

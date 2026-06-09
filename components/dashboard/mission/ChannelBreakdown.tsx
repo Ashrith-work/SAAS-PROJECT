@@ -1,4 +1,4 @@
-import { formatCurrency, formatMultiple, formatNumber, formatPercent } from "@/lib/format";
+import { formatCurrency, formatMultiple, formatNumber, formatNumberCompact, formatPercent } from "@/lib/format";
 
 // Channel performance — three horizontal cards, each tinted with its channel's
 // brand color (subtle). Pure presentation over already-computed aggregates.
@@ -9,11 +9,27 @@ export type ChannelData = {
   direct: { bookings: number; revenue: number };
 };
 
-function Metric({ label, value }: { label: string; value: string }) {
+// Narrower than the KPI cards (three to a sub-card), so the value scales down
+// more aggressively to stay inside its column.
+function metricSize(text: string): string {
+  const n = text.length;
+  if (n <= 6) return "text-xl";
+  if (n <= 9) return "text-lg";
+  return "text-base";
+}
+
+function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
-      <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums text-ink">{value}</p>
+      <p
+        title={title ?? value}
+        className={`mt-0.5 font-semibold leading-[1.1] tracking-tight tabular-nums break-words text-ink ${metricSize(
+          value,
+        )}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -36,7 +52,7 @@ function ChannelCard({
         <h3 className="text-sm font-semibold text-ink">{name}</h3>
         <span className={`ml-auto h-1.5 w-10 rounded-full ${tint}`} />
       </div>
-      <div className="grid grid-cols-3 gap-3">{children}</div>
+      <div className="grid grid-cols-3 gap-x-6 gap-y-3">{children}</div>
     </div>
   );
 }
@@ -45,13 +61,21 @@ export function ChannelBreakdown({ data }: { data: ChannelData }) {
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       <ChannelCard name="Paid Ads" dot="bg-brand" tint="bg-brand/30">
-        <Metric label="Spend" value={formatCurrency(data.paid.spend)} />
+        <Metric
+          label="Spend"
+          value={formatCurrency(data.paid.spend, { compact: true })}
+          title={formatCurrency(data.paid.spend)}
+        />
         <Metric label="Bookings" value={formatNumber(data.paid.bookings)} />
         <Metric label="True ROAS" value={formatMultiple(data.paid.roas)} />
       </ChannelCard>
 
       <ChannelCard name="Instagram Organic" dot="bg-pink-500" tint="bg-pink-500/20">
-        <Metric label="Reach" value={formatNumber(data.instagram.reach)} />
+        <Metric
+          label="Reach"
+          value={formatNumberCompact(data.instagram.reach)}
+          title={formatNumber(data.instagram.reach)}
+        />
         <Metric
           label="Engagement"
           value={data.instagram.engagementRate == null ? "—" : formatPercent(data.instagram.engagementRate)}
@@ -61,7 +85,11 @@ export function ChannelBreakdown({ data }: { data: ChannelData }) {
 
       <ChannelCard name="Direct / Website" dot="bg-ink-tertiary" tint="bg-ink-tertiary/30">
         <Metric label="Bookings" value={formatNumber(data.direct.bookings)} />
-        <Metric label="Revenue" value={formatCurrency(data.direct.revenue)} />
+        <Metric
+          label="Revenue"
+          value={formatCurrency(data.direct.revenue, { compact: true })}
+          title={formatCurrency(data.direct.revenue)}
+        />
         <Metric label="Share" value="—" />
       </ChannelCard>
     </div>

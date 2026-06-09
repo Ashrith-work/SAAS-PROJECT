@@ -6,6 +6,7 @@ import { agencyScoped } from "@/lib/tenant";
 import { isPixelMode } from "@/lib/tracking-mode";
 import { planHasGa4 } from "@/lib/plans";
 import { getTokenForApiCall } from "@/lib/token-access";
+import { formatNumber } from "@/lib/format";
 import { getAdAccounts, MetaAuthError, type AdAccount } from "@/lib/meta";
 import {
   snippetState,
@@ -414,15 +415,15 @@ export default async function HotelIntegrationsPage({
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Followers" value={(latestSnap?.followers ?? 0).toLocaleString()} />
-              <Stat label="Reach · 30d" value={(reachAgg?._sum.reach ?? 0).toLocaleString()} />
+              <Stat label="Followers" value={formatNumber(latestSnap?.followers ?? 0)} />
+              <Stat label="Reach · 30d" value={formatNumber(reachAgg?._sum.reach ?? 0)} />
               <Stat
                 label="Impressions · 30d"
-                value={(reachAgg?._sum.impressions ?? 0).toLocaleString()}
+                value={formatNumber(reachAgg?._sum.impressions ?? 0)}
               />
               <Stat
                 label="Profile views · 30d"
-                value={(reachAgg?._sum.profileViews ?? 0).toLocaleString()}
+                value={formatNumber(reachAgg?._sum.profileViews ?? 0)}
               />
             </div>
 
@@ -472,13 +473,13 @@ export default async function HotelIntegrationsPage({
                             )}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {p.reach.toLocaleString()}
+                            {formatNumber(p.reach)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {p.engagement.toLocaleString()}
+                            {formatNumber(p.engagement)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {p.saves.toLocaleString()}
+                            {formatNumber(p.saves)}
                           </td>
                         </tr>
                       ))}
