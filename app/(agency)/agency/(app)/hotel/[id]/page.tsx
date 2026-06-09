@@ -61,6 +61,12 @@ import { getBudgetStatus } from "@/lib/budget";
 import { BudgetStatusCard } from "@/components/dashboard/BudgetStatusCard";
 import { loadGa4Dashboard } from "@/lib/ga4-dashboard";
 import { Ga4WebsiteTraffic } from "@/components/dashboard/Ga4WebsiteTraffic";
+import {
+  IntegrationBadges,
+  IntegrationEmptyState,
+  type BadgeState,
+} from "@/components/dashboard/IntegrationBadges";
+import type { TokenState } from "@/lib/integration-status";
 import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 
@@ -190,6 +196,16 @@ export default async function HotelDashboardPage({
     plan: member.agency.plan,
     pixelMode,
   });
+  // ── Connection gating: hide an integration's data when it's disconnected ──
+  // A disconnect deletes the token/connection row (snapshots are kept), so the
+  // state becomes "not_connected"; we then show "—"/empty states instead of
+  // stale historical numbers. "expired" still shows the last data (amber badge)
+  // since it was real — only a true disconnect hides it.
+  const metaConnected = integrationStatus.meta !== "not_connected";
+  const igConnected = integrationStatus.instagram !== "not_connected";
+  const tokenBadge = (s: TokenState): BadgeState =>
+    s === "connected" || s === "expiring" ? "connected" : s === "expired" ? "warning" : "disconnected";
+
   // Cumulative days of missing Meta ad data, shown as a badge when the token
   // isn't healthy (a reconnect will backfill the gap).
   const missingDays =
@@ -906,8 +922,12 @@ export default async function HotelDashboardPage({
   // Per-source ad spend (v1): all matched Meta campaign spend maps to the
   // documented paid source ("facebook" per the setup guide). Sources without
   // known spend show True ROAS "—". A per-source spend join is a follow-up.
+  // When Meta is disconnected, spend is unknown → drop it so True ROAS reads "—"
+  // (snippet-attributed visitors/bookings/revenue stay — they're real).
   const spendBySource: Record<string, number> =
-    campaignTotalSpend > 0 ? { [normSource("facebook")]: campaignTotalSpend } : {};
+    metaConnected && campaignTotalSpend > 0
+      ? { [normSource("facebook")]: campaignTotalSpend }
+      : {};
 
   const conversionsForAttr = convAttr.map((c) => ({
     touchpoints: c.touchpoints,
@@ -1058,17 +1078,19 @@ export default async function HotelDashboardPage({
     },
     {
       label: "Ad spend",
-      value: formatCurrency(ads.spend, { compact: true }),
-      title: formatCurrency(ads.spend),
-      delta: pctDelta(ads.spend, prevSpend),
+      value: metaConnected ? formatCurrency(ads.spend, { compact: true }) : "—",
+      title: metaConnected ? formatCurrency(ads.spend) : "Connect Meta Ads to see this metric",
+      delta: metaConnected ? pctDelta(ads.spend, prevSpend) : null,
       goodWhenUp: false,
+      hint: metaConnected ? undefined : "Meta not connected",
     },
     {
       label: "True ROAS",
-      value: formatMultiple(kpis.roas),
-      delta: pctDelta(kpis.roas, prevRoas),
-      valueClassName: trueRoasColor,
-      hint: "Real revenue ÷ spend",
+      value: metaConnected ? formatMultiple(kpis.roas) : "—",
+      title: metaConnected ? undefined : "Connect Meta Ads to see this metric",
+      delta: metaConnected ? pctDelta(kpis.roas, prevRoas) : null,
+      valueClassName: metaConnected ? trueRoasColor : undefined,
+      hint: metaConnected ? "Real revenue ÷ spend" : "Meta not connected",
     },
     { label: "Bookings", value: formatNumber(kpis.bookings), delta: pctDelta(kpis.bookings, prevBookings) },
     {
@@ -1080,13 +1102,19 @@ export default async function HotelDashboardPage({
     },
     {
       label: "Cost / booking",
-      value: cpbReliable ? formatCurrency(kpis.costPerBooking!, { compact: true }) : "—",
-      title: cpbReliable ? formatCurrency(kpis.costPerBooking!) : undefined,
-      delta: cpbReliable ? pctDelta(kpis.costPerBooking, prevCpb) : null,
+      value: metaConnected && cpbReliable ? formatCurrency(kpis.costPerBooking!, { compact: true }) : "—",
+      title: !metaConnected
+        ? "Connect Meta Ads to see this metric"
+        : cpbReliable
+          ? formatCurrency(kpis.costPerBooking!)
+          : undefined,
+      delta: metaConnected && cpbReliable ? pctDelta(kpis.costPerBooking, prevCpb) : null,
       goodWhenUp: false,
-      hint: cpbReliable
-        ? "Ad spend ÷ tracked bookings"
-        : `Needs ≥${MIN_CPB_BOOKINGS} tracked bookings`,
+      hint: !metaConnected
+        ? "Meta not connected"
+        : cpbReliable
+          ? "Ad spend ÷ tracked bookings"
+          : `Needs ≥${MIN_CPB_BOOKINGS} tracked bookings`,
     },
   ];
 
@@ -1302,6 +1330,16 @@ export default async function HotelDashboardPage({
         )}
       </div>
 
+      {/* Integration status badges — click any to manage that integration */}
+      <IntegrationBadges
+        hotelId={hotel.id}
+        items={[
+          { name: "Meta Ads", state: tokenBadge(integrationStatus.meta) },
+          { name: "Instagram", state: tokenBadge(integrationStatus.instagram) },
+          { name: "GA4", state: ga4Dashboard.connected ? "connected" : "disconnected" },
+        ]}
+      />
+
       {/* Integration health banner — only when something is broken or expired */}
       {integrationStatus.anyBrokenOrExpired && (
         <Link
@@ -1334,7 +1372,7 @@ export default async function HotelDashboardPage({
       {!pixelMode && (
         <div className="space-y-6">
           <KpiStrip cards={kpiCards} />
-          <MetaVsRealityHero data={metaVsReality} />
+          {metaConnected && <MetaVsRealityHero data={metaVsReality} />}
           <AttributionPanel byModel={channelByModel} />
         </div>
       )}
@@ -1358,6 +1396,15 @@ export default async function HotelDashboardPage({
             : "No Meta ad account mapped — map one in Settings to sync ad data."
         }
       >
+        {!metaConnected ? (
+          <IntegrationEmptyState
+            hotelId={hotel.id}
+            title="Meta Ads not connected"
+            body="Connect Meta to see ad spend, campaign performance, and ROAS."
+            cta="Connect Meta"
+          />
+        ) : (
+          <>
         {metaFreshStart && (
           <div className="border-b border-line bg-info/10 px-4 py-3 text-sm text-ink-secondary">
             <p className="font-medium text-ink">Meta sync in progress.</p>
@@ -1458,10 +1505,14 @@ export default async function HotelDashboardPage({
             )}
           </div>
         )}
+          </>
+        )}
       </SectionCard>
 
       {/* Section 3.4 — Meta Campaign Breakdown: raw per-campaign numbers from
-          Meta, NO snippet matching. Sits above the verified attribution below. */}
+          Meta, NO snippet matching. Sits above the verified attribution below.
+          Hidden entirely when Meta is disconnected. */}
+      {metaConnected && (
       <SectionCard
         title="Meta Campaign Breakdown"
         subtitle="Meta-reported (raw from Facebook). For verified booking attribution, see the Campaign Performance section below."
@@ -1483,9 +1534,11 @@ export default async function HotelDashboardPage({
           </>
         )}
       </SectionCard>
+      )}
 
-      {/* Section 3.5 — Campaign performance: Meta's claims vs reality (verified) */}
-      {!pixelMode && (
+      {/* Section 3.5 — Campaign performance: Meta's claims vs reality (verified).
+          Meta-dependent — hidden entirely when Meta is disconnected. */}
+      {!pixelMode && metaConnected && (
         <SectionCard
           title="Campaign performance"
           subtitle="Each Meta campaign's spend joined to the bookings our snippet actually tracked on the hotel's website — what Meta claims vs what really happened."
@@ -1630,14 +1683,24 @@ export default async function HotelDashboardPage({
           socialAccount?.username ? `Organic Instagram · @${socialAccount.username}` : "Organic Instagram"
         }
       >
-        {!hasSocialData ? (
+        {!igConnected ? (
+          <IntegrationEmptyState
+            hotelId={hotel.id}
+            title="Instagram not connected"
+            body="Connect Instagram to see organic reach, engagement, and post performance."
+            cta="Connect Instagram"
+          />
+        ) : !hasSocialData ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-sm text-ink-tertiary">No organic social data yet.</p>
+            <p className="text-sm text-ink-tertiary">
+              Instagram connected — run a sync from the Integrations page to pull
+              reach, engagement, and posts.
+            </p>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
               className="mt-2 inline-block text-sm font-medium text-ink-secondary underline"
             >
-              Connect this hotel&apos;s Instagram in Setup →
+              Go to Integrations →
             </Link>
           </div>
         ) : (
