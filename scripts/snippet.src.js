@@ -27,7 +27,7 @@
     var UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
     function log(t, p) {
-      if (!DEBUG) return;
+      if (!DEBUG && !(typeof window !== "undefined" && window.HT_DEBUG)) return;
       try {
         console.log("[HotelTrack]", t, p);
         window.dispatchEvent(new CustomEvent("hoteltrack:event", { detail: { type: t, payload: p } }));
@@ -165,15 +165,18 @@
     function extractBookingValue() {
       try {
         // Strategy A — data attribute (configured selector, or [data-ht-value]).
-        // Cleanest + most reliable; recommended in the install guide.
-        var sel = cfg && cfg.valueSelector;
-        var el = sel ? document.querySelector(sel) : document.querySelector("[data-ht-value]");
-        if (el) {
-          var raw = el.getAttribute && el.getAttribute("data-ht-value");
-          if (raw == null) raw = el.textContent || "";
+        // Cleanest + most reliable; recommended in the install guide. If several
+        // elements match (e.g. line-item subtotals plus a grand total), take the
+        // LARGEST parsed amount — the booking total is almost always the biggest.
+        var sel = (cfg && cfg.valueSelector) || "[data-ht-value]";
+        var els = document.querySelectorAll(sel), bestA = null;
+        for (var ai = 0; ai < els.length; ai++) {
+          var raw = els[ai].getAttribute && els[ai].getAttribute("data-ht-value");
+          if (raw == null) raw = els[ai].textContent || "";
           var a = parseAmount(raw);
-          if (a != null) return a;
+          if (a != null && (bestA == null || a > bestA)) bestA = a;
         }
+        if (bestA != null) return bestA;
         // Strategy B — regex over page text.
         var b = valueFromText();
         if (b != null) return b;
@@ -188,13 +191,85 @@
       return null;
     }
 
-    // 7. Fire a conversion at most once per session.
+    // 8b. Decouple "conversion detected" from "value extracted". On SPA sites
+    // (Next.js/React) the URL changes via history.pushState BEFORE React commits
+    // the /thank-you DOM, so reading the value synchronously at detection time
+    // races the render and yields null. Instead, open a bounded window and
+    // resolve with the value the moment it appears — a [data-ht-value]-scoped
+    // MutationObserver catches React's commit, a requestAnimationFrame poll gives
+    // fast resolution, and a hard setTimeout deadline is the authoritative
+    // backstop (it still fires when the tab is backgrounded and rAF is paused).
+    // Already-rendered pages (WordPress/Shopify/plain HTML) resolve on the first
+    // synchronous check, so non-SPA sites see no added delay. Resolves null only
+    // if nothing appears before the deadline — the conversion fires either way.
+    var VALUE_WAIT_MS = 2000;
+    function waitForBookingValue(maxWaitMs, done) {
+      var settled = false, obs = null, deadline = null, start = Date.now();
+      function finish(v) {
+        if (settled) return;
+        settled = true;
+        if (obs) { try { obs.disconnect(); } catch (e) {} }
+        if (deadline) { try { clearTimeout(deadline); } catch (e) {} }
+        try { removeEventListener("pagehide", flush); removeEventListener("visibilitychange", onVis); } catch (e) {}
+        log("value:resolved", { value: v, elapsedMs: Date.now() - start });
+        done(v);
+      }
+      function flush() { finish(extractBookingValue()); }
+      function onVis() { if (document.visibilityState === "hidden") flush(); }
+
+      // First try: value may already be on the page (non-SPA / fast commit).
+      var first = extractBookingValue();
+      log("value:initial", { value: first });
+      if (first != null) return finish(first);
+
+      // Catch React's commit: watch the DOM for the value element/attribute.
+      try {
+        if (window.MutationObserver && document.body) {
+          obs = new MutationObserver(function () {
+            if (settled) return;
+            var v = extractBookingValue();
+            if (v != null) finish(v);
+          });
+          obs.observe(document.body, {
+            childList: true, subtree: true, characterData: true,
+            attributes: true, attributeFilter: ["data-ht-value"]
+          });
+        }
+      } catch (e) {}
+
+      // If the visitor leaves before the value renders, send our best effort now
+      // (send() uses sendBeacon, which survives unload).
+      try {
+        addEventListener("pagehide", flush);
+        addEventListener("visibilitychange", onVis);
+      } catch (e) {}
+
+      // Authoritative deadline — fires even if rAF is throttled in a hidden tab.
+      deadline = setTimeout(function () { finish(extractBookingValue()); }, maxWaitMs);
+
+      // Fast poll while foregrounded; resolves the instant the value appears.
+      if (window.requestAnimationFrame) {
+        (function tick() {
+          if (settled) return;
+          var v = extractBookingValue();
+          if (v != null) return finish(v);
+          window.requestAnimationFrame(tick);
+        })();
+      }
+    }
+
+    // 7. Fire a conversion at most once per session. Mark "converted" immediately
+    // (so no detection path can double-fire while we wait), then resolve the
+    // booking value with a bounded wait before sending the single event.
     function convert() {
       if (converted) return;
       converted = true;
       setCookie("_ht_conv", sid, null);
       if (observer) { try { observer.disconnect(); } catch (e) {} }
-      send("conversion", extractBookingValue());
+      log("conversion:detected", { path: location.pathname });
+      waitForBookingValue(VALUE_WAIT_MS, function (value) {
+        send("conversion", value);
+      });
     }
 
     // 6. Conversion detection.
@@ -243,6 +318,20 @@
         };
         if (document.body) start(); else addEventListener("DOMContentLoaded", start);
       }
+    }
+
+    // Debug aid: expose the conversion-timing internals so they can be unit-
+    // tested and inspected from the console. Gated on debug mode — never exposed
+    // on a normal (non-debug) production page load.
+    if (DEBUG || (typeof window !== "undefined" && window.HT_DEBUG)) {
+      try {
+        window.__htInternals = {
+          extractBookingValue: extractBookingValue,
+          waitForBookingValue: waitForBookingValue,
+          parseAmount: parseAmount,
+          convert: convert
+        };
+      } catch (e) {}
     }
 
     // 2. Fetch this hotel's config, then wire up conversion detection.

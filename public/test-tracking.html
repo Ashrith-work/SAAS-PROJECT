@@ -92,8 +92,20 @@
       function convUrl() {
         history.pushState({}, "", "/thank-you");
         document.getElementById("confirmation").textContent =
-          "URL changed to /thank-you (snippet should fire a conversion).";
+          "URL changed to /thank-you. Simulating a slow SPA render — the booking " +
+          "value appears ~600ms later; the snippet should WAIT and still capture it.";
         renderState();
+        // Simulate React committing the /thank-you DOM AFTER the URL changed —
+        // this is the race the fix handles. Before the fix the conversion fired
+        // immediately with value=null; now it waits for this element to appear.
+        setTimeout(function () {
+          if (document.getElementById("ht-delayed-total")) return;
+          var el = document.createElement("div");
+          el.id = "ht-delayed-total";
+          el.setAttribute("data-ht-value", "377.00");
+          el.textContent = "Total paid: ₹377.00";
+          document.getElementById("confirmation").appendChild(el);
+        }, 600);
       }
 
       function renderState() {
