@@ -1,13 +1,21 @@
 // Tiny CSV serializer. RFC 4180-ish: comma separator, CRLF line endings, fields
 // containing comma/quote/newline are wrapped in double quotes with embedded
 // quotes doubled. Dates → ISO; null/undefined → empty string; numbers → as-is.
+//
+// SECURITY: string cells are formula-neutralized (lib/xlsx.ts) BEFORE quoting so
+// a value like `=cmd|'/c calc'!A1` opens as literal text, not an executable
+// formula, in Excel/Sheets (CSV injection, audit H-1). Numbers/dates are never
+// formulas and are left as-is.
+
+import { neutralizeFormula } from "@/lib/xlsx";
 
 type CellValue = string | number | boolean | Date | null | undefined;
 
 function escapeCell(v: CellValue): string {
   if (v == null) return "";
   if (v instanceof Date) return v.toISOString();
-  const s = typeof v === "string" ? v : String(v);
+  if (typeof v !== "string") return String(v); // numbers/booleans — never a formula
+  const s = neutralizeFormula(v);
   if (s === "") return "";
   if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;

@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
+import { sanitizeAoa, sanitizeRows } from "@/lib/xlsx";
 import {
   resolveRange,
   computeContentPerformance,
@@ -111,7 +112,9 @@ export async function GET(request: Request) {
     (a, b) => a.Date.localeCompare(b.Date) || a.Source.localeCompare(b.Source),
   );
   const ws1 = XLSX.utils.json_to_sheet(
-    dailyRows.length ? dailyRows : [{ Date: "", Source: "", Visits: 0, Bookings: 0, Revenue: 0 }],
+    sanitizeRows(
+      dailyRows.length ? dailyRows : [{ Date: "", Source: "", Visits: 0, Bookings: 0, Revenue: 0 }],
+    ),
   );
 
   // ── Sheet 2: Campaign-level ad performance (+ ad totals) ──
@@ -133,7 +136,7 @@ export async function GET(request: Request) {
     ["Campaign", "Clicks", "Sessions", "Bookings", "Revenue"],
     ...paid.map((c) => [c.title, c.clicks, c.sessions, c.bookings, Number(c.revenue.toFixed(2))]),
   ];
-  const ws2 = XLSX.utils.aoa_to_sheet(adsAoa);
+  const ws2 = XLSX.utils.aoa_to_sheet(sanitizeAoa(adsAoa));
 
   // ── Sheet 3: Influencer coupon redemptions ──
   const redRows = redemptionRows.map((r) => {
@@ -147,9 +150,11 @@ export async function GET(request: Request) {
     };
   });
   const ws3 = XLSX.utils.json_to_sheet(
-    redRows.length
-      ? redRows
-      : [{ Influencer: "", Coupon: "", Content: "", "Redemption Date": "", "Order Value": 0 }],
+    sanitizeRows(
+      redRows.length
+        ? redRows
+        : [{ Influencer: "", Coupon: "", Content: "", "Redemption Date": "", "Order Value": 0 }],
+    ),
   );
 
   // ── Sheet 4: Full event log ──
@@ -169,9 +174,11 @@ export async function GET(request: Request) {
     };
   });
   const ws4 = XLSX.utils.json_to_sheet(
-    logRows.length
-      ? logRows
-      : [{ "Date/Time": "", Type: "", Source: "", Medium: "", Campaign: "", Content: "", "Page URL": "", Session: "", Device: "", Value: "" }],
+    sanitizeRows(
+      logRows.length
+        ? logRows
+        : [{ "Date/Time": "", Type: "", Source: "", Medium: "", Campaign: "", Content: "", "Page URL": "", Session: "", Device: "", Value: "" }],
+    ),
   );
 
   const wb = XLSX.utils.book_new();

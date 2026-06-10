@@ -3,6 +3,7 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
+import { sanitizeRows } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,19 +50,21 @@ export async function GET(request: Request) {
   }
 
   const ws = XLSX.utils.json_to_sheet(
-    rows.length
-      ? rows
-      : [
-          {
-            Hotel: "",
-            Website: "",
-            Contact: "",
-            "Contact Email": "",
-            "Snippet Status": "",
-            "Last Event": "",
-            Created: "",
-          },
-        ],
+    sanitizeRows(
+      rows.length
+        ? rows
+        : [
+            {
+              Hotel: "",
+              Website: "",
+              Contact: "",
+              "Contact Email": "",
+              "Snippet Status": "",
+              "Last Event": "",
+              Created: "",
+            },
+          ],
+    ),
   );
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Hotels");

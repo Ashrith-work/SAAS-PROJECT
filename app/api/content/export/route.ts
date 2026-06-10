@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { utmContentFor } from "@/lib/utm";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
+import { sanitizeRows } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -129,24 +130,26 @@ export async function GET(request: Request) {
   }
 
   const ws = XLSX.utils.json_to_sheet(
-    rows.length
-      ? rows
-      : [
-          {
-            Content: "",
-            Hotel: "",
-            Type: "",
-            Platform: "",
-            Influencer: "",
-            Coupon: "",
-            Status: "",
-            Created: "",
-            Clicks: 0,
-            Visits: 0,
-            Bookings: 0,
-            Link: "",
-          },
-        ],
+    sanitizeRows(
+      rows.length
+        ? rows
+        : [
+            {
+              Content: "",
+              Hotel: "",
+              Type: "",
+              Platform: "",
+              Influencer: "",
+              Coupon: "",
+              Status: "",
+              Created: "",
+              Clicks: 0,
+              Visits: 0,
+              Bookings: 0,
+              Link: "",
+            },
+          ],
+    ),
   );
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Content Library");

@@ -40,7 +40,15 @@ export async function POST(request: Request) {
     return reply(400, { error: "Invalid JSON" });
   }
 
-  const str = (v: unknown) => (typeof v === "string" && v.length ? v.slice(0, 512) : null);
+  // Coerce to a bounded, clean string. Defense in depth for spreadsheet-formula
+  // / CSV injection (audit H-1): strip ASCII control chars (incl. TAB/CR/LF that
+  // can trigger a formula) and cap length. The real fix is export-time
+  // neutralization in lib/xlsx.ts — this only trims the attack surface.
+  const str = (v: unknown) => {
+    if (typeof v !== "string" || !v.length) return null;
+    const cleaned = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127).join("").slice(0, 512);
+    return cleaned.length ? cleaned : null;
+  };
 
   const siteId = str(body.siteId);
   const type =

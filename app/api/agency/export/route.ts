@@ -3,6 +3,7 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { csvResponse, slugForFile, toCsv } from "@/lib/csv";
+import { sanitizeAoa, sanitizeRows } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,21 +101,23 @@ export async function GET(request: Request) {
     ["Total Meta Ad Spend", Number(totalSpend.toFixed(2))],
     ["ROAS", roas == null ? "—" : Number(roas.toFixed(2))],
   ];
-  const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa);
+  const ws1 = XLSX.utils.aoa_to_sheet(sanitizeAoa(summaryAoa));
   const ws2 = XLSX.utils.json_to_sheet(
-    hotelRows.length
-      ? hotelRows
-      : [
-          {
-            Hotel: "",
-            Website: "",
-            "Snippet Status": "",
-            "Last Synced": "",
-            "Visits (30d)": 0,
-            "Bookings (30d)": 0,
-            "Revenue (30d)": 0,
-          },
-        ],
+    sanitizeRows(
+      hotelRows.length
+        ? hotelRows
+        : [
+            {
+              Hotel: "",
+              Website: "",
+              "Snippet Status": "",
+              "Last Synced": "",
+              "Visits (30d)": 0,
+              "Bookings (30d)": 0,
+              "Revenue (30d)": 0,
+            },
+          ],
+    ),
   );
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, "Summary");
