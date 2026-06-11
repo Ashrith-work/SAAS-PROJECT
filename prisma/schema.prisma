@@ -347,6 +347,13 @@ model Touchpoint {
   @@index([conversionId])
 }
 
+// How a MetaToken was obtained. Both produce the same end state (an encrypted,
+// validated agency token); OAUTH tokens can be auto-refreshed, manual ones can't.
+enum MetaTokenSource {
+  OAUTH
+  MANUAL_LONG_LIVED
+}
+
 model MetaToken {
   id             String   @id @default(cuid())
   agencyId       String
@@ -354,6 +361,19 @@ model MetaToken {
   tokenExpiresAt DateTime
   status         String   @default("disconnected")
   createdAt      DateTime @default(now())
+
+  // Connection method + OAuth metadata. tokenSource defaults to MANUAL so every
+  // pre-existing row keeps its meaning after the migration.
+  tokenSource               MetaTokenSource @default(MANUAL_LONG_LIVED)
+  oauthScopes               String[]        @default([])
+  refreshableViaOAuth       Boolean         @default(false)
+  connectedFacebookUserId   String?
+  connectedFacebookUserName String?
+  // Soft-disconnect bookkeeping + refresh/expiry-warning state.
+  disconnectedAt     DateTime?
+  lastRefreshedAt    DateTime?
+  // Dedup for manual-token expiry emails: null | "14d" | "7d" | "expired".
+  expiryWarningStage String?
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 

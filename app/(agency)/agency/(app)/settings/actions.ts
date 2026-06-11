@@ -5,7 +5,8 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
-import { validateToken } from "@/lib/meta";
+import { getTokenForApiCall } from "@/lib/token-access";
+import { validateToken, revokeAppAccess } from "@/lib/meta";
 import { queueBackfillJob } from "@/lib/backfill";
 import { syncHotelAds } from "@/lib/meta-sync";
 import { archiveOnAccountChange } from "@/lib/meta-archive";
@@ -59,6 +60,23 @@ export async function saveMetaToken(
   });
   const tokenExpiresAt = validation.expiresAt ?? NEVER_EXPIRES;
 
+  // This is the MANUAL path: stamp the source + clear any OAuth metadata so a
+  // connection that was previously OAuth (and any soft-disconnect / expiry-warning
+  // state) is correctly reclassified. Manual tokens can't be auto-refreshed.
+  const data = {
+    encryptedToken,
+    tokenExpiresAt,
+    status: "connected",
+    tokenSource: "MANUAL_LONG_LIVED" as const,
+    oauthScopes: validation.scopes ?? [],
+    refreshableViaOAuth: false,
+    connectedFacebookUserId: validation.userId ?? null,
+    connectedFacebookUserName: validation.userName ?? null,
+    disconnectedAt: null,
+    lastRefreshedAt: null,
+    expiryWarningStage: null,
+  };
+
   // Scoped to this agency (multi-tenant). agencyId isn't unique on MetaToken, so
   // find-then-update keeps exactly one connection row per agency.
   const existing = await agencyScoped(prisma.metaToken).findFirst({
@@ -68,16 +86,11 @@ export async function saveMetaToken(
   if (existing) {
     await agencyScoped(prisma.metaToken).update({
       where: { id: existing.id },
-      data: { encryptedToken, tokenExpiresAt, status: "connected" },
+      data,
     });
   } else {
     await agencyScoped(prisma.metaToken).create({
-      data: {
-        agencyId: member.agencyId,
-        encryptedToken,
-        tokenExpiresAt,
-        status: "connected",
-      },
+      data: { agencyId: member.agencyId, ...data },
     });
   }
 
@@ -98,14 +111,47 @@ export async function saveMetaToken(
 }
 
 /**
- * Removes this agency's Meta connection entirely, deleting the encrypted token
- * at rest. The user reconnects by pasting a fresh token.
+ * Soft-disconnects this agency's Meta connection: status → "disconnected" with a
+ * disconnectedAt stamp, keeping the row (and its OAuth metadata) so the UI can
+ * show how it was connected and a reconnect can update it in place. Historical
+ * AdSnapshot data is preserved (the sync just stops, since it only reads
+ * status="connected"). For OAuth connections we also best-effort revoke our
+ * app's access at Meta. The token at rest stays encrypted.
  */
 export async function disconnectMetaToken(): Promise<void> {
   const member = await getCurrentMember();
   if (!member) return;
 
-  await agencyScoped(prisma.metaToken).deleteMany();
+  const token = await agencyScoped(prisma.metaToken).findFirst({
+    select: { id: true, status: true, tokenSource: true, connectedFacebookUserId: true },
+  });
+  if (!token) return;
+
+  // Best-effort revoke for OAuth connections (keeps the user's Facebook
+  // "Business Integrations" list tidy). Never blocks the local disconnect.
+  if (
+    token.tokenSource === "OAUTH" &&
+    token.connectedFacebookUserId &&
+    token.status === "connected"
+  ) {
+    try {
+      const secret = await getTokenForApiCall("meta_ads", token.id, {
+        agencyId: member.agencyId,
+        source: "action:disconnectMetaToken-revoke",
+      });
+      await revokeAppAccess(token.connectedFacebookUserId, secret.reveal());
+    } catch (err) {
+      console.warn(
+        "[META-OAUTH] disconnect: revoke failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  await agencyScoped(prisma.metaToken).update({
+    where: { id: token.id },
+    data: { status: "disconnected", disconnectedAt: new Date() },
+  });
   await logTokenAudit({
     agencyId: member.agencyId,
     tokenType: "meta_ads",

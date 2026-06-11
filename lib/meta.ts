@@ -511,3 +511,149 @@ function pickFirst(actions: ActionStat[], matchers: string[]): number {
   }
   return 0;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OAuth — Facebook Login for Business
+//
+// The OAuth path produces the SAME end state as the manual paste: a validated,
+// encrypted, agency-scoped token. It only adds the authorize-URL builder and the
+// two server-to-server exchanges. Ad-account identity + expiry are read with the
+// existing validateToken()/getAdAccounts() so there's one Graph client.
+//
+// Scopes: ads_read (read ad insights) + business_management (enumerate
+// Business-Manager-owned ad accounts, which agency accounts almost always are).
+// We deliberately do NOT request pages_show_list — HotelTrack's Meta integration
+// is ad-ROI only and never touches Pages — nor any Instagram scope (that lives in
+// a separate Meta app). Fewer scopes ⇒ faster App Review.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const META_OAUTH_SCOPES = ["ads_read", "business_management"] as const;
+
+// A non-expiring token reports no expiry; the non-null tokenExpiresAt column
+// stores this far-future sentinel for those (mirrors the manual flow).
+export const META_NEVER_EXPIRES = new Date("2999-12-31T00:00:00.000Z");
+
+function oauthEnv(): { appId: string; appSecret: string; redirectUri: string } {
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  const redirectUri = process.env.META_OAUTH_REDIRECT_URI;
+  if (!appId) throw new Error("META_APP_ID is not configured.");
+  if (!appSecret) throw new Error("META_APP_SECRET is not configured.");
+  if (!redirectUri) throw new Error("META_OAUTH_REDIRECT_URI is not configured.");
+  return { appId, appSecret, redirectUri };
+}
+
+/**
+ * Builds the Facebook authorize URL for the given signed state. The redirect_uri
+ * is the EXACT one registered in the Meta app (no dynamic redirects) — Meta
+ * rejects the request on its own screen if it doesn't match a whitelisted URI.
+ * Throws if the Meta app env vars are missing.
+ */
+export function buildMetaAuthorizeUrl(state: string): string {
+  const { appId, redirectUri } = oauthEnv();
+  const u = new URL(`https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth`);
+  u.searchParams.set("client_id", appId);
+  u.searchParams.set("redirect_uri", redirectUri);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", META_OAUTH_SCOPES.join(","));
+  u.searchParams.set("state", state);
+  return u.toString();
+}
+
+export type TokenExchange = {
+  accessToken: string;
+  /** Expiry derived from expires_in, or null when Meta returns a non-expiring token. */
+  expiresAt: Date | null;
+};
+
+// Both exchanges hit /oauth/access_token with client creds in the query string
+// (these are token-MINTING calls, so there's no bearer token yet — that's how
+// Meta's OAuth endpoint works). NEVER log the returned access_token.
+async function oauthTokenFetch(params: GraphParams): Promise<TokenExchange> {
+  const url = new URL(`${GRAPH_BASE}/oauth/access_token`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+
+  const res = await fetch(url, { cache: "no-store" });
+  const json = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: { message?: string; code?: number; type?: string };
+  };
+
+  if (!res.ok || json.error || !json.access_token) {
+    const err = json.error ?? {};
+    if (err.code === 190 || err.code === 102) throw new MetaAuthError(err.message || undefined);
+    throw new MetaApiError(err.message || `Meta OAuth token request failed (HTTP ${res.status}).`);
+  }
+
+  const expiresAt =
+    typeof json.expires_in === "number" && json.expires_in > 0
+      ? new Date(Date.now() + json.expires_in * 1000)
+      : null;
+  return { accessToken: json.access_token, expiresAt };
+}
+
+/** Exchanges an authorization code for a short-lived user access token. */
+export function exchangeCodeForToken(code: string): Promise<TokenExchange> {
+  const { appId, appSecret, redirectUri } = oauthEnv();
+  return oauthTokenFetch({
+    client_id: appId,
+    client_secret: appSecret,
+    redirect_uri: redirectUri,
+    code,
+  });
+}
+
+/**
+ * Exchanges a short-lived token for a long-lived (~60-day) one. Also used by the
+ * refresh cron: passing a still-valid long-lived token returns a fresh 60-day
+ * token, which is how Meta "refreshes" user tokens.
+ */
+export function exchangeForLongLivedToken(currentToken: string): Promise<TokenExchange> {
+  const { appId, appSecret } = oauthEnv();
+  return oauthTokenFetch({
+    grant_type: "fb_exchange_token",
+    client_id: appId,
+    client_secret: appSecret,
+    fb_exchange_token: currentToken,
+  });
+}
+
+/**
+ * Best-effort revoke of our app's access for a Facebook user (used on disconnect
+ * of an OAuth connection). Never throws — disconnect must always succeed locally.
+ */
+export async function revokeAppAccess(
+  facebookUserId: string,
+  accessToken: string,
+): Promise<void> {
+  try {
+    await fetch(new URL(`${GRAPH_BASE}/${facebookUserId}/permissions`), {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+  } catch {
+    // Revoking is courtesy cleanup at Meta's end; failure is non-fatal.
+  }
+}
+
+export type ExpiryWarning = "14d" | "7d" | "expired";
+
+/**
+ * Decides which manual-token expiry warning (if any) is due now, given days to
+ * expiry and the last stage already sent. Pure + monotonic so the daily cron
+ * sends each stage at most once. Order of severity: expired > 7d > 14d.
+ */
+export function nextExpiryWarning(
+  daysToExpiry: number,
+  currentStage: string | null,
+): ExpiryWarning | null {
+  const sent = currentStage ?? "";
+  if (daysToExpiry <= 0) return sent === "expired" ? null : "expired";
+  if (daysToExpiry <= 7) return sent === "7d" || sent === "expired" ? null : "7d";
+  if (daysToExpiry <= 14) {
+    return sent === "14d" || sent === "7d" || sent === "expired" ? null : "14d";
+  }
+  return null;
+}

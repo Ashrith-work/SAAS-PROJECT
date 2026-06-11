@@ -6,6 +6,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/meta/refresh-tokens",
+      "schedule": "0 6 * * *"
+    },
+    {
       "path": "/api/instagram/sync",
       "schedule": "0 3 * * *"
     },
