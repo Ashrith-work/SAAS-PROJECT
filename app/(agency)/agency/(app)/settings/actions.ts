@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
@@ -10,6 +11,12 @@ import { validateToken, revokeAppAccess } from "@/lib/meta";
 import { queueBackfillJob } from "@/lib/backfill";
 import { syncHotelAds } from "@/lib/meta-sync";
 import { archiveOnAccountChange } from "@/lib/meta-archive";
+import {
+  softDeleteHotelCore,
+  restoreHotelCore,
+  HotelDeleteError,
+  type HotelDeleteErrorCode,
+} from "@/lib/hotel-delete";
 
 // A non-expiring Meta token (e.g. a system-user token) reports expires_at = 0.
 // The MetaToken.tokenExpiresAt column is non-null, so we store this far-future
@@ -286,4 +293,73 @@ export async function mapAdAccount(
   revalidatePath(`/agency/hotel/${hotel.id}`);
   revalidatePath("/agency/settings");
   return { error: null, ok: true };
+}
+
+// ── Hotel soft delete / restore (admin only) ─────────────────────────────────
+
+export type DeleteHotelState = {
+  // null = no error yet; "SESSION" = signed out; otherwise a HotelDeleteErrorCode.
+  error: HotelDeleteErrorCode | "SESSION" | null;
+  ok: boolean;
+};
+
+/**
+ * Soft-deletes a hotel (admin-only; enforced in softDeleteHotelCore). Used by the
+ * Danger Zone modal via useActionState — returns a typed error on failure, and on
+ * success redirects to the agency dashboard with a ?deleted=<name> flag the
+ * dashboard turns into a confirmation banner. Data + tokens are preserved.
+ */
+export async function softDeleteHotel(
+  _prev: DeleteHotelState,
+  formData: FormData,
+): Promise<DeleteHotelState> {
+  const member = await getCurrentMember();
+  if (!member) return { error: "SESSION", ok: false };
+
+  const hotelClientId = String(formData.get("hotelClientId") ?? "");
+  const confirmationName = String(formData.get("confirmationName") ?? "");
+  const reason = ((formData.get("reason") as string | null) ?? "").trim() || null;
+
+  let name: string;
+  try {
+    const res = await softDeleteHotelCore(
+      { agencyId: member.agencyId, memberId: member.id, role: member.role },
+      { hotelClientId, confirmationName, reason },
+    );
+    name = res.name;
+  } catch (err) {
+    if (err instanceof HotelDeleteError) return { error: err.code, ok: false };
+    throw err;
+  }
+
+  revalidatePath("/agency/dashboard");
+  revalidatePath("/agency/hotels");
+  revalidatePath("/agency/hotel/" + hotelClientId);
+  // Throws NEXT_REDIRECT — must stay outside the try/catch above.
+  redirect(`/agency/dashboard?deleted=${encodeURIComponent(name)}`);
+}
+
+/**
+ * Restores a soft-deleted hotel (admin only). No self-service UI yet — called by
+ * scripts/restore-hotel.ts (and a future admin restore page). Idempotent.
+ */
+export async function restoreHotel(
+  hotelClientId: string,
+): Promise<{ ok: boolean; error?: HotelDeleteErrorCode | "SESSION" }> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "SESSION" };
+
+  try {
+    await restoreHotelCore(
+      { agencyId: member.agencyId, memberId: member.id, role: member.role },
+      hotelClientId,
+    );
+  } catch (err) {
+    if (err instanceof HotelDeleteError) return { ok: false, error: err.code };
+    throw err;
+  }
+
+  revalidatePath("/agency/dashboard");
+  revalidatePath("/agency/hotels");
+  return { ok: true };
 }

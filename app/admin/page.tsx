@@ -55,13 +55,13 @@ export default async function AdminOverviewPage() {
           createdAt: true,
         },
       }),
-      prisma.hotelClient.groupBy({ by: ["agencyId"], _count: { _all: true } }),
+      prisma.hotelClient.groupBy({ by: ["agencyId"], where: { deletedAt: null }, _count: { _all: true } }),
       prisma.trackingEvent.groupBy({
         by: ["agencyId"],
         where: { eventType: "conversion" },
         _count: { _all: true },
       }),
-      prisma.hotelClient.count(),
+      prisma.hotelClient.count({ where: { deletedAt: null } }),
       prisma.trackingEvent.count(),
     ]);
 

@@ -70,7 +70,7 @@ export async function GET(request: Request) {
     agenciesProcessed += 1;
 
     const hotels = await prisma.hotelClient.findMany({
-      where: { agencyId: token.agencyId, metaAdAccountId: { not: null } },
+      where: { agencyId: token.agencyId, metaAdAccountId: { not: null }, deletedAt: null },
       select: { id: true, metaAdAccountId: true },
     });
     if (hotels.length === 0) continue;

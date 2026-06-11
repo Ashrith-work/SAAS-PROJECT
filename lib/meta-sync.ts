@@ -39,9 +39,13 @@ export async function syncHotelAds(
 
   const hotel = await prisma.hotelClient.findUnique({
     where: { id: hotelClientId },
-    select: { id: true, name: true, agencyId: true, metaAdAccountId: true },
+    select: { id: true, name: true, agencyId: true, metaAdAccountId: true, deletedAt: true },
   });
   if (!hotel) return { ok: false, error: "Hotel not found." };
+  // Soft-deleted hotels never sync (data is preserved, just paused).
+  if (hotel.deletedAt) {
+    return { ok: false, hotelName: hotel.name, error: "This hotel has been deleted." };
+  }
   if (!hotel.metaAdAccountId) {
     return {
       ok: false,

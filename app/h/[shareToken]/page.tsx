@@ -163,13 +163,14 @@ export default async function PublicHotelDashboard({
       shareTokenRevoked: true,
       showAdSpendToHotel: true,
       lastSyncedAt: true,
+      deletedAt: true,
       agency: { select: { name: true, suspendedAt: true } },
     },
   });
 
-  // Unknown token, revoked, or a suspended agency → neutral "inactive" message.
-  // We never reveal which reason, and never another hotel's data.
-  if (!hotel || hotel.shareTokenRevoked || hotel.agency.suspendedAt) {
+  // Unknown token, revoked, soft-deleted, or a suspended agency → neutral
+  // "inactive" message. We never reveal which reason, and never another hotel's data.
+  if (!hotel || hotel.shareTokenRevoked || hotel.deletedAt || hotel.agency.suspendedAt) {
     return <InactiveLink />;
   }
 

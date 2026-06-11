@@ -326,6 +326,7 @@ export async function runGa4Sync(
     where: {
       status: "ACTIVE",
       propertyId: { not: "" }, // skip connections still awaiting property selection
+      hotelClient: { deletedAt: null }, // never sync soft-deleted hotels
       ...(opts.agencyId ? { agencyId: opts.agencyId } : {}),
       ...(opts.hotelClientId ? { hotelClientId: opts.hotelClientId } : {}),
     },

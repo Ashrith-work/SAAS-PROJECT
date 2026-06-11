@@ -16,6 +16,32 @@ function scopeKeyFor(model: unknown): "id" | "agencyId" {
   return model === prisma.agency ? "id" : "agencyId";
 }
 
+// Read operations that should default to active (non-soft-deleted) hotels only.
+// Writes (update/delete/upsert/create) are intentionally excluded so the
+// soft-delete and restore paths can still target deleted rows.
+const HOTEL_READ_OPS = new Set([
+  "findUnique",
+  "findUniqueOrThrow",
+  "findFirst",
+  "findFirstOrThrow",
+  "findMany",
+  "count",
+  "aggregate",
+  "groupBy",
+]);
+
+// For HotelClient reads, default-exclude soft-deleted rows (deletedAt: null)
+// unless the caller passes { includeDeleted: true } or already constrains
+// deletedAt themselves. The flag is stripped before the args reach Prisma.
+function withSoftDeleteFilter(prop: string, args: AnyArgs): AnyArgs {
+  if (!HOTEL_READ_OPS.has(prop)) return args;
+  const { includeDeleted, ...rest } = args as AnyArgs & { includeDeleted?: boolean };
+  if (includeDeleted) return rest;
+  const where = (rest.where ?? {}) as Record<string, unknown>;
+  if ("deletedAt" in where) return rest;
+  return { ...rest, where: { ...where, deletedAt: null } };
+}
+
 type AnyArgs = Record<string, unknown> & {
   where?: Record<string, unknown>;
   data?: Record<string, unknown> | Record<string, unknown>[];
@@ -70,6 +96,7 @@ function withScopedUpsert(args: AnyArgs, key: string, agencyId: string): AnyArgs
  */
 export function agencyScopedFor<D>(agencyId: string, model: D): D {
   const key = scopeKeyFor(model);
+  const isHotelClient = model === prisma.hotelClient;
   const target = model as Record<string, unknown>;
 
   return new Proxy(target, {
@@ -78,7 +105,9 @@ export function agencyScopedFor<D>(agencyId: string, model: D): D {
       if (typeof orig !== "function") return orig;
       const fn = orig as (args?: unknown) => unknown;
 
-      return (args: AnyArgs = {}) => {
+      return (rawArgs: AnyArgs = {}) => {
+        // HotelClient reads default to active hotels only (soft-delete aware).
+        const args = isHotelClient ? withSoftDeleteFilter(prop, rawArgs) : rawArgs;
         switch (prop) {
           // Unique lookups can't carry a non-unique filter — reroute to findFirst.
           case "findUnique":

@@ -311,6 +311,7 @@ export async function runInstagramSync(
     where: {
       status: "active",
       tokenType: "igaa_direct",
+      hotelClient: { deletedAt: null }, // never sync soft-deleted hotels
       ...(opts.agencyId ? { agencyId: opts.agencyId } : {}),
     },
     orderBy: { lastSyncedAt: "asc" }, // stale connections first; nulls sort first

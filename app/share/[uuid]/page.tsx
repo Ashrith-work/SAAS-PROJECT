@@ -48,7 +48,7 @@ export default async function SharePage({
       passwordHash: true,
       expiresAt: true,
       revokedAt: true,
-      hotelClient: { select: { name: true, websiteUrl: true } },
+      hotelClient: { select: { name: true, websiteUrl: true, deletedAt: true } },
       agency: { select: { name: true, suspendedAt: true } },
     },
   });
@@ -59,6 +59,16 @@ export default async function SharePage({
       <ShareMessage
         title="Link unavailable"
         body="This report link is no longer active. Please ask the agency for a new one."
+      />
+    );
+  }
+  // Hotel soft-deleted → the data is intentionally inaccessible (akin to 410 Gone;
+  // a Server Component can't set a custom status, so we render the message).
+  if (link.hotelClient.deletedAt) {
+    return (
+      <ShareMessage
+        title="No longer available"
+        body="This hotel's data is no longer accessible."
       />
     );
   }

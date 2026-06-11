@@ -110,9 +110,16 @@ function pctChange(current: number, prior: number): number | null {
   return (current - prior) / prior;
 }
 
-export default async function AgencyDashboardPage() {
+export default async function AgencyDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
+
+  const sp = await searchParams;
+  const deletedName = typeof sp.deleted === "string" ? sp.deleted : null;
 
   const pixelMode = isPixelMode();
   const now = new Date();
@@ -261,6 +268,12 @@ export default async function AgencyDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {deletedName && (
+        <div className="rounded-lg border-l-4 border-success bg-success/10 p-3 text-sm text-ink-secondary">
+          <span className="font-medium text-ink">{deletedName}</span> has been
+          deleted. Data preserved.
+        </div>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">

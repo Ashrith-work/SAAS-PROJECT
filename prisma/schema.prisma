@@ -70,6 +70,10 @@ enum TokenAuditAction {
   rotated
   deleted
   failed_decrypt
+  // Hotel lifecycle (soft delete / restore). Lowercase to match the values
+  // above; the server actions log these for the audit trail.
+  hotel_soft_deleted
+  hotel_restored
 }
 
 // How an agency obtained/shared the setup guide PDF, for usage analytics.
@@ -209,6 +213,14 @@ model HotelClient {
   shareTokenCreatedAt DateTime?
   shareTokenRevoked   Boolean         @default(false)
   showAdSpendToHotel  Boolean         @default(false)
+  // ── Soft delete (admin-only; reversible via restoreHotel) ──
+  // deletedAt null = active. When set, the hotel is hidden everywhere and all
+  // syncing stops, but every row (tokens, events, attribution, snapshots) is
+  // preserved so it can be restored. deletedByAgencyMemberId records which admin
+  // performed it; deletionReason is an optional note (capped to 500 chars).
+  deletedAt               DateTime?
+  deletedByAgencyMemberId String?
+  deletionReason          String?
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)

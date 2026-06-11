@@ -56,6 +56,7 @@ import { FollowerChart } from "@/components/report/FollowerChart";
 import { type SourceSlice } from "@/components/report/SourcePieChart";
 import { ReportMenu } from "./ReportMenu";
 import { HotelShareManager } from "./HotelShareManager";
+import { DeleteHotelDangerZone } from "./DeleteHotelDangerZone";
 import { hotelShareUrl } from "@/lib/hotel-share";
 import { getBudgetStatus } from "@/lib/budget";
 import { BudgetStatusCard } from "@/components/dashboard/BudgetStatusCard";
@@ -1947,6 +1948,12 @@ export default async function HotelDashboardPage({
           access={shareAccess}
         />
       </SectionCard>
+
+      {/* Danger Zone — admins only. Analysts never see it (UX); the action
+          re-checks the role server-side regardless. */}
+      {member.role === "admin" && (
+        <DeleteHotelDangerZone hotelId={hotel.id} hotelName={hotel.name} />
+      )}
     </div>
   );
 }

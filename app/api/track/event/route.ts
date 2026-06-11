@@ -75,7 +75,7 @@ export async function POST(request: Request) {
   try {
     hotel = await prisma.hotelClient.findUnique({
       where: { siteId },
-      select: { id: true, agencyId: true, snippetStatus: true },
+      select: { id: true, agencyId: true, snippetStatus: true, deletedAt: true },
     });
   } catch {
     return reply(503, { error: "Temporarily unavailable" });
@@ -83,6 +83,13 @@ export async function POST(request: Request) {
 
   // Validate the Hotel Site ID — reject unknown IDs.
   if (!hotel) return reply(403, { error: "Unknown site id" });
+
+  // A soft-deleted hotel's snippet may still be on its live site. Keep accepting
+  // events (so nothing is lost if the agency reactivates) but flag it, so we can
+  // later decide whether to stop. For now: accept silently, just log the flag.
+  if (hotel.deletedAt) {
+    console.log("[TRACK] hotel_deleted", JSON.stringify({ hotelClientId: hotel.id, type }));
+  }
 
   let conversionValue: string | null = null;
   if (type === "conversion" && body.value != null) {

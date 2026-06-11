@@ -215,7 +215,7 @@ export async function computeAgencyBackfillRange(
       select: { id: true },
     }),
     prisma.hotelClient.findMany({
-      where: { agencyId, metaAdAccountId: { not: null } },
+      where: { agencyId, metaAdAccountId: { not: null }, deletedAt: null },
       select: { id: true },
     }),
     prisma.instagramConnection.findMany({
@@ -372,7 +372,7 @@ async function backfillAds(
   }
 
   const hotels = await prisma.hotelClient.findMany({
-    where: { agencyId, metaAdAccountId: { not: null } },
+    where: { agencyId, metaAdAccountId: { not: null }, deletedAt: null },
     select: { id: true, metaAdAccountId: true },
   });
 

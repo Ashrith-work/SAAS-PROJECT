@@ -28,7 +28,9 @@ export type TokenAuditActionValue =
   | "refreshed"
   | "rotated"
   | "deleted"
-  | "failed_decrypt";
+  | "failed_decrypt"
+  | "hotel_soft_deleted"
+  | "hotel_restored";
 
 export type AuditContext = {
   agencyId: string;

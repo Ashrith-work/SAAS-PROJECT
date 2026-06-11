@@ -250,7 +250,7 @@ async function checkPerformanceDrop(
 
   const [hotels, thisWeek, priorWeek] = await Promise.all([
     prisma.hotelClient.findMany({
-      where: { agencyId: agency.id },
+      where: { agencyId: agency.id, deletedAt: null },
       select: { id: true, name: true },
     }),
     prisma.trackingEvent.groupBy({
@@ -346,6 +346,7 @@ async function checkSnippetError(
   const silent = await prisma.hotelClient.findMany({
     where: {
       agencyId: agency.id,
+      deletedAt: null,
       snippetStatus: "live",
       lastEventAt: { not: null, lt: cutoff },
     },
@@ -493,7 +494,7 @@ async function checkWeeklySummary(
 
   const [hotels, eventsThis, bookingsPrior, spendThis] = await Promise.all([
     prisma.hotelClient.findMany({
-      where: { agencyId: agency.id },
+      where: { agencyId: agency.id, deletedAt: null },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     }),
