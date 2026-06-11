@@ -664,6 +664,11 @@ model InstagramConnection {
   lastSyncedAt   DateTime?
   // When the weekly refresh cron last rolled the 60-day IGAA token forward.
   lastRefreshedAt DateTime?
+  // Defensive surfacing: set true when an API call returns an auth failure so the
+  // dashboard can show a one-click reconnect banner. lastErrorReason captures the
+  // raw provider error. Cleared on a successful (re)connect or sync.
+  requiresReconnect Boolean  @default(false)
+  lastErrorReason   String?
   createdAt      DateTime  @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -892,6 +897,13 @@ model Ga4Connection {
   status          GA4Status @default(ACTIVE)
   lastSyncedAt    DateTime?
   lastSyncError   String?
+  // Defensive surfacing: set true when token refresh / a data call returns an
+  // OAuth/auth failure (e.g. a Google client-id swap orphans the refresh token)
+  // so the dashboard can show a one-click reconnect banner. lastErrorReason holds
+  // the raw Google error (invalid_grant / invalid_client / …). Cleared on a
+  // successful (re)connect or sync.
+  requiresReconnect Boolean @default(false)
+  lastErrorReason   String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

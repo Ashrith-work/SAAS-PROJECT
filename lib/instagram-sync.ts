@@ -238,7 +238,13 @@ export async function syncInstagramConnection(
 
     await prisma.instagramConnection.update({
       where: { id: conn.id },
-      data: { lastSyncedAt: new Date(), status: "active", errorMessage: null },
+      data: {
+        lastSyncedAt: new Date(),
+        status: "active",
+        errorMessage: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
+      },
     });
 
     return { ok: true, followers: profile.followersCount, daysSynced: daily.length, postsSynced };
@@ -249,10 +255,20 @@ export async function syncInstagramConnection(
     if (authFailed) {
       // ONLY a genuine token failure (401 / Graph code 190 / 102) means the
       // user must reconnect. Mark the connection broken + surface it (UI badge
-      // flips to "Token Expired — Reconnect Needed", SyncFailure, email).
+      // flips to "Token Expired — Reconnect Needed", reconnect banner, SyncFailure,
+      // email).
+      console.error(
+        "[INSTAGRAM-OAUTH-FAILURE]",
+        JSON.stringify({ hotelClientId: conn.hotelClientId, connId: conn.id, message }),
+      );
       await prisma.instagramConnection.update({
         where: { id: conn.id },
-        data: { status: "error", errorMessage: message },
+        data: {
+          status: "error",
+          errorMessage: message,
+          requiresReconnect: true,
+          lastErrorReason: message.slice(0, 200),
+        },
       });
       await recordSyncFailure(conn.agencyId, conn.hotelClientId, "instagram", message);
       await notifyAgencySyncFailure(conn.agencyId, conn.hotelClientId, message);

@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import { validatePlatformEnv } from "@/lib/env-validation";
+
+// Fail loud at startup if platform integration credentials are missing/empty or
+// partially configured (the silent-broken state that orphaned connections). Runs
+// once per server instance at module load.
+validatePlatformEnv();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

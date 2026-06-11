@@ -68,6 +68,8 @@ export async function GET(request: Request) {
           encryptedToken,
           tokenExpiresAt: next.expiresAt,
           lastRefreshedAt: new Date(),
+          requiresReconnect: false,
+          lastErrorReason: null,
         },
       });
       refreshed += 1;
@@ -77,9 +79,18 @@ export async function GET(request: Request) {
       // A dead token can't be refreshed — flag the connection so the UI prompts
       // a reconnect; other errors leave it active for the next weekly attempt.
       if (err instanceof InstagramAuthError) {
+        console.error(
+          "[INSTAGRAM-OAUTH-FAILURE]",
+          JSON.stringify({ hotelClientId: conn.hotelClientId, connId: conn.id, message }),
+        );
         await prisma.instagramConnection.update({
           where: { id: conn.id },
-          data: { status: "error", errorMessage: message },
+          data: {
+            status: "error",
+            errorMessage: message,
+            requiresReconnect: true,
+            lastErrorReason: message.slice(0, 200),
+          },
         });
       }
       errors.push({ hotelClientId: conn.hotelClientId, error: message });

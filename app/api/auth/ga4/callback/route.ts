@@ -155,6 +155,8 @@ export async function GET(request: Request) {
         scope,
         status: "ACTIVE",
         lastSyncError: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
       },
       update: {
         propertyId: selected?.propertyId ?? "",
@@ -165,6 +167,8 @@ export async function GET(request: Request) {
         scope,
         status: "ACTIVE",
         lastSyncError: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
       },
       select: { id: true },
     });

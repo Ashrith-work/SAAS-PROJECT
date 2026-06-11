@@ -23,6 +23,16 @@ const TLOG = "[GA4-TOKEN]";
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Pulls Google's machine error code (invalid_grant, invalid_client, …) out of a
+// GaOAuthError message for structured logging + the reconnect banner. Falls back
+// to a trimmed message when no known code is present.
+function googleErrorCode(message: string): string {
+  const m = message.match(
+    /\b(invalid_grant|invalid_client|invalid_request|unauthorized_client|invalid_scope|access_denied)\b/,
+  );
+  return m ? m[1] : message.slice(0, 200);
+}
+
 // "20260608" → Date(UTC midnight). GA's `date` dimension is YYYYMMDD.
 function gaDateToUtc(yyyymmdd: string): Date {
   const y = Number(yyyymmdd.slice(0, 4));
@@ -65,10 +75,22 @@ async function getValidAccessToken(conn: Conn): Promise<string> {
     refreshed = await refreshAccessToken(rt.reveal());
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown";
-    console.error(`${TLOG} refresh FAILED for conn ${conn.id}: ${msg}`);
+    const code = googleErrorCode(msg);
+    // Refresh tokens are bound to the OAuth client that minted them; the usual
+    // cause here is a GOOGLE_OAUTH_CLIENT_ID/SECRET change orphaning this token
+    // (invalid_grant / invalid_client). Flag it for a one-click reconnect.
+    console.error(
+      "[GA4-OAUTH-FAILURE]",
+      JSON.stringify({ hotelClientId: conn.hotelClientId, connId: conn.id, googleError: code, message: msg }),
+    );
     await prisma.ga4Connection.update({
       where: { id: conn.id },
-      data: { status: "TOKEN_EXPIRED", lastSyncError: `Token refresh failed: ${msg}` },
+      data: {
+        status: "TOKEN_EXPIRED",
+        lastSyncError: `Token refresh failed: ${msg}`,
+        requiresReconnect: true,
+        lastErrorReason: code,
+      },
     });
     throw err instanceof GaOAuthError ? err : new GaOAuthError(msg);
   }
@@ -80,7 +102,13 @@ async function getValidAccessToken(conn: Conn): Promise<string> {
   });
   await prisma.ga4Connection.update({
     where: { id: conn.id },
-    data: { accessToken: enc, tokenExpiresAt: refreshed.expiresAt, status: "ACTIVE" },
+    data: {
+      accessToken: enc,
+      tokenExpiresAt: refreshed.expiresAt,
+      status: "ACTIVE",
+      requiresReconnect: false,
+      lastErrorReason: null,
+    },
   });
   console.log(`${TLOG} refreshed OK conn ${conn.id} (new token ${mask(refreshed.accessToken)}, exp ${refreshed.expiresAt.toISOString()})`);
   return refreshed.accessToken;
@@ -247,7 +275,13 @@ export async function syncGa4Connection(conn: Conn, days = 30): Promise<Ga4Accou
 
     await prisma.ga4Connection.update({
       where: { id: conn.id },
-      data: { lastSyncedAt: new Date(), status: "ACTIVE", lastSyncError: null },
+      data: {
+        lastSyncedAt: new Date(),
+        status: "ACTIVE",
+        lastSyncError: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
+      },
     });
     console.log(`${LOG} ${conn.hotelClientId}: ${daysSynced} days upserted`);
     return { ok: true, daysSynced };
@@ -255,9 +289,21 @@ export async function syncGa4Connection(conn: Conn, days = 30): Promise<Ga4Accou
     const msg = err instanceof Error ? err.message : "Unknown GA4 sync error.";
     const tokenExpired = err instanceof GaAuthExpiredError;
     console.error(`${LOG} ${conn.hotelClientId} FAILED: ${msg}`);
+    if (tokenExpired) {
+      console.error(
+        "[GA4-OAUTH-FAILURE]",
+        JSON.stringify({ hotelClientId: conn.hotelClientId, connId: conn.id, googleError: "auth_expired", message: msg }),
+      );
+    }
     await prisma.ga4Connection.update({
       where: { id: conn.id },
-      data: { status: tokenExpired ? "TOKEN_EXPIRED" : "ERROR", lastSyncError: msg },
+      data: {
+        status: tokenExpired ? "TOKEN_EXPIRED" : "ERROR",
+        lastSyncError: msg,
+        // Only an auth failure means the user must reconnect; a transient data
+        // error keeps the connection usable, so don't flag it.
+        ...(tokenExpired ? { requiresReconnect: true, lastErrorReason: googleErrorCode(msg) } : {}),
+      },
     });
     return { ok: false, tokenExpired, error: msg };
   }

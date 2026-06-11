@@ -173,6 +173,8 @@ export async function GET(request: Request) {
         tokenExpiresAt,
         status: "active",
         errorMessage: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
       },
       update: {
         tokenType: "igaa_direct",
@@ -184,6 +186,8 @@ export async function GET(request: Request) {
         tokenExpiresAt,
         status: "active",
         errorMessage: null,
+        requiresReconnect: false,
+        lastErrorReason: null,
       },
       select: { id: true },
     });

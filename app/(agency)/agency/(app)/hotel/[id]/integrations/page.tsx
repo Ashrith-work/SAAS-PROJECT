@@ -229,6 +229,8 @@ export default async function HotelIntegrationsPage({
       tokenExpiresAt: true,
       lastSyncedAt: true,
       errorMessage: true,
+      requiresReconnect: true,
+      lastErrorReason: true,
     },
   });
   const igSt = instagramState(ig, now);
@@ -268,7 +270,16 @@ export default async function HotelIntegrationsPage({
   // ── Google Analytics 4 (per-hotel, OAuth) ──────────────────────────────────
   const ga4 = await agencyScoped(prisma.ga4Connection).findFirst({
     where: { hotelClientId: hotel.id },
-    select: { id: true, status: true, propertyId: true, propertyName: true, lastSyncedAt: true, lastSyncError: true },
+    select: {
+      id: true,
+      status: true,
+      propertyId: true,
+      propertyName: true,
+      lastSyncedAt: true,
+      lastSyncError: true,
+      requiresReconnect: true,
+      lastErrorReason: true,
+    },
   });
   const ga4Status: Ga4CardStatus = !ga4
     ? "none"
@@ -525,6 +536,12 @@ export default async function HotelIntegrationsPage({
             <SyncFailureNotice failedAt={igFailure.failedAt} now={now} />
           </div>
         )}
+        {ig?.requiresReconnect && (
+          <ReconnectBanner
+            href={`/api/auth/instagram/start?hotelClientId=${hotel.id}`}
+            reason={ig.lastErrorReason}
+          />
+        )}
         {igConnected ? (
           <div className="space-y-5">
             <div className="flex items-center gap-3">
@@ -748,6 +765,12 @@ export default async function HotelIntegrationsPage({
         subtitle="Traffic sources, Google Ads, geographic breakdown"
         badge={<IntegrationStatusBadge tone={gaTone(gaSummaryState)} label={GA_LABELS[gaSummaryState]} />}
       >
+        {ga4?.requiresReconnect && (
+          <ReconnectBanner
+            href={`/api/auth/ga4/start?hotelClientId=${hotel.id}`}
+            reason={ga4.lastErrorReason}
+          />
+        )}
         <Ga4Card
           hotelId={hotel.id}
           status={ga4Status}
@@ -758,6 +781,27 @@ export default async function HotelIntegrationsPage({
           properties={ga4Properties}
         />
       </IntegrationCard>
+    </div>
+  );
+}
+
+// Surfaced when a connection's stored token has gone invalid (requiresReconnect).
+// One-click reconnect re-runs the provider's OAuth /start, which clears the flag.
+function ReconnectBanner({ href, reason }: { href: string; reason: string | null }) {
+  return (
+    <div className="mb-4 rounded-lg border-l-4 border-danger bg-danger/10 p-3 text-sm text-ink-secondary">
+      <p className="font-semibold text-ink">Reconnect needed</p>
+      <p className="mt-1">
+        This connection&apos;s token is no longer valid
+        {reason ? <> (<span className="font-mono text-xs">{reason}</span>)</> : null} — its
+        data has stopped flowing. Reconnect to resume.
+      </p>
+      <a
+        href={href}
+        className="mt-2 inline-flex items-center gap-1 rounded-lg bg-danger px-3 py-1.5 text-sm font-medium text-white hover:bg-danger/90"
+      >
+        Reconnect now →
+      </a>
     </div>
   );
 }
