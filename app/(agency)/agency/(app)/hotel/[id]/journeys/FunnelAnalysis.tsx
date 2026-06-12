@@ -1,12 +1,15 @@
 "use client";
 
-import { Funnel, FunnelChart, LabelList, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency, formatDuration, formatNumber, formatPercent } from "@/lib/format";
 import type { FunnelStage } from "@/lib/funnel";
 
-// Funnel Analysis — a horizontal funnel (Recharts) + per-stage stats + the top
+// Funnel Analysis — a proportional funnel visual + per-stage stats + the top
 // drop-off pages per stage. All data is computed server-side (agency-scoped) and
 // passed serialized; this component only renders.
+//
+// The funnel is drawn with plain CSS bars (width ∝ visitors, centered so it reads
+// as a narrowing funnel) rather than Recharts' FunnelChart, which renders blank
+// inside a ResponsiveContainer in this stack.
 
 export type FunnelStageView = {
   stage: FunnelStage;
@@ -48,12 +51,6 @@ export function FunnelAnalysis({ funnel }: { funnel: FunnelView }) {
     );
   }
 
-  const chartData = funnel.stages.map((s) => ({
-    name: s.label,
-    value: s.visitors,
-    fill: STAGE_FILL[s.stage],
-  }));
-
   return (
     <div className="space-y-5">
       {/* Headline */}
@@ -68,26 +65,26 @@ export function FunnelAnalysis({ funnel }: { funnel: FunnelView }) {
         </div>
       </div>
 
-      {/* Funnel chart */}
-      <div className="h-56 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart>
-            <Tooltip
-              formatter={(value) => [formatNumber(Number(value) || 0), "Visitors"] as [string, string]}
-              contentStyle={{
-                borderRadius: 8,
-                border: "1px solid #374151",
-                backgroundColor: "#1f2937",
-                color: "#f9fafb",
-                fontSize: 12,
-              }}
-            />
-            <Funnel dataKey="value" data={chartData} isAnimationActive={false}>
-              <LabelList position="right" fill="#f9fafb" stroke="none" dataKey="name" fontSize={12} />
-              <LabelList position="left" fill="#9ca3af" stroke="none" dataKey="value" fontSize={12} />
-            </Funnel>
-          </FunnelChart>
-        </ResponsiveContainer>
+      {/* Funnel visual — centered bars, width ∝ visitors (narrowing = funnel). */}
+      <div className="space-y-2 py-1">
+        {funnel.stages.map((s) => {
+          // Min 6% so a small-but-nonzero stage still shows a visible sliver.
+          const pct = awareness > 0 ? Math.max(6, (s.visitors / awareness) * 100) : 0;
+          return (
+            <div key={s.stage} className="flex items-center gap-3">
+              <span className="w-28 shrink-0 text-xs text-ink-tertiary">{s.label}</span>
+              <div className="flex-1">
+                <div
+                  className="mx-auto flex h-9 min-w-[2.5rem] items-center justify-center rounded-md px-2 text-xs font-semibold text-white"
+                  style={{ width: `${pct}%`, backgroundColor: STAGE_FILL[s.stage] }}
+                  title={`${s.label}: ${formatNumber(s.visitors)} visitors`}
+                >
+                  {formatNumber(s.visitors)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Per-stage stats */}
