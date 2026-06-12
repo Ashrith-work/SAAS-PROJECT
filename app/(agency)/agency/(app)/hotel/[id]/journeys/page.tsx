@@ -4,8 +4,10 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { resolveRange } from "@/lib/attribution";
+import { computeFunnel, stageRank, STAGES, type FunnelStage } from "@/lib/funnel";
 import { JourneyFilters } from "./JourneyFilters";
 import { JourneyList, type JourneySession } from "./JourneyList";
+import { FunnelAnalysis, type FunnelView } from "./FunnelAnalysis";
 
 // Per-hotel "Recent Visitor Journeys" — the full page-by-page journey for each
 // session (snippet v2 Session/PageView). Every read is agency-scoped (auto
@@ -154,6 +156,104 @@ export default async function HotelJourneysPage({
   const utmOptions = utmGroups.map((g) => g.utmSource).filter((v): v is string => !!v).sort();
   const landingOptions = landingGroups.map((g) => g.landingPath).sort().slice(0, 100);
 
+  // ── Funnel Analysis — respects the date/UTM/landing filters (not converted-only). ──
+  const funnelWhere = {
+    hotelClientId: hotel.id,
+    startedAt: { gte: range.since, lte: range.until },
+    ...(utmSource ? { utmSource } : {}),
+    ...(landing ? { landingPath: landing } : {}),
+  };
+  const [stageGroups, revenueAgg, dropoffGroups, stageRows] = await Promise.all([
+    agencyScoped(prisma.session).groupBy({
+      by: ["highestStageReached"],
+      where: funnelWhere,
+      _count: { _all: true },
+    }),
+    agencyScoped(prisma.trackingEvent).aggregate({
+      where: {
+        hotelClientId: hotel.id,
+        eventType: "conversion",
+        createdAt: { gte: range.since, lte: range.until },
+      },
+      _sum: { conversionValue: true },
+    }),
+    agencyScoped(prisma.session).groupBy({
+      by: ["highestStageReached", "exitPath"],
+      where: funnelWhere,
+      _count: { _all: true },
+    }),
+    agencyScoped(prisma.stageReached).findMany({
+      where: { hotelClientId: hotel.id, reachedAt: { gte: range.since, lte: range.until } },
+      select: { sessionId: true, stage: true, reachedAt: true },
+    }),
+  ]);
+
+  // Sessions whose HIGHEST stage is exactly rank r (computeFunnel makes it cumulative).
+  const reachedByRank: Record<number, number> = {};
+  for (const g of stageGroups) {
+    const r = stageRank(g.highestStageReached);
+    if (r > 0) reachedByRank[r] = (reachedByRank[r] ?? 0) + g._count._all;
+  }
+
+  // Avg time from each stage to the next, from StageReached timestamps.
+  const stageDeltas: Record<string, number[]> = {};
+  {
+    const bySession = new Map<string, Map<number, number>>(); // sessionId → rank → ms
+    for (const sr of stageRows) {
+      const r = stageRank(sr.stage);
+      if (r <= 0) continue;
+      const m = bySession.get(sr.sessionId) ?? new Map<number, number>();
+      m.set(r, sr.reachedAt.getTime());
+      bySession.set(sr.sessionId, m);
+    }
+    for (const m of bySession.values()) {
+      for (let r = 1; r < STAGES.length; r++) {
+        const a = m.get(r);
+        const b = m.get(r + 1);
+        if (a != null && b != null && b >= a) (stageDeltas[STAGES[r - 1]] ??= []).push(b - a);
+      }
+    }
+  }
+  const avgTimeToNextMs: Partial<Record<FunnelStage, number | null>> = {};
+  for (const stage of STAGES) {
+    const arr = stageDeltas[stage];
+    avgTimeToNextMs[stage] = arr?.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : null;
+  }
+
+  // Top drop-off pages: exitPath grouped by the stage sessions got stuck at
+  // (booking = success, so it's excluded — those visitors didn't drop off).
+  const dropOffPages: Record<string, { path: string; count: number }[]> = {};
+  {
+    const byStage: Record<string, Map<string, number>> = {};
+    for (const g of dropoffGroups) {
+      const stage = g.highestStageReached;
+      if (!stage || stage === "booking") continue;
+      const path = g.exitPath ?? "—";
+      (byStage[stage] ??= new Map<string, number>()).set(
+        path,
+        (byStage[stage].get(path) ?? 0) + g._count._all,
+      );
+    }
+    for (const stage of STAGES) {
+      const m = byStage[stage];
+      if (m) {
+        dropOffPages[stage] = [...m.entries()]
+          .map(([path, count]) => ({ path, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+      }
+    }
+  }
+
+  const funnelView: FunnelView = {
+    ...computeFunnel({
+      reachedByRank,
+      revenue: Number(revenueAgg._sum.conversionValue ?? 0),
+      avgTimeToNextMs,
+    }),
+    dropOffPages,
+  };
+
   // Build a query string for pagination links, preserving the active filters.
   const baseParams = new URLSearchParams();
   if (range.key === "custom") {
@@ -199,6 +299,20 @@ export default async function HotelJourneysPage({
         utmOptions={utmOptions}
         landingOptions={landingOptions}
       />
+
+      {/* Funnel Analysis — aggregate stage funnel + drop-off (Phase 2) */}
+      <section className="overflow-hidden rounded-xl border border-line">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="font-medium">Funnel Analysis</h2>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
+            How many visitors reached each funnel stage, where they dropped off, and the
+            bottleneck pages.
+          </p>
+        </div>
+        <div className="p-4">
+          <FunnelAnalysis funnel={funnelView} />
+        </div>
+      </section>
 
       <JourneyList sessions={items} />
 

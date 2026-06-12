@@ -23,9 +23,11 @@
     var base = src.origin;
     var DEBUG = src.searchParams.get("debug") === "1";
 
-    var VERSION = "2.0.0"; // snippet version (sent as `v`); v1 sent "visit" events.
+    var VERSION = "2.1.0"; // v2.1 adds funnel stages; v2.0 = journeys; v1 = visit.
     var converted = false, observer = null, cfg = null, pending = false;
     var UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+    // Funnel stages in order; rank = index + 1 (awareness=1 … booking=4).
+    var STAGES = ["awareness", "consideration", "intent", "booking"];
 
     function log(t, p) {
       if (!DEBUG && !(typeof window !== "undefined" && window.HT_DEBUG)) return;
@@ -85,7 +87,10 @@
     function ensureSession() {
       var last = parseInt(ssGet("ht_session_last") || "0", 10);
       var cur = ssGet("ht_session_id");
-      if (!cur || !(last > 0) || (Date.now() - last) > IDLE_MS) cur = newSid();
+      if (!cur || !(last > 0) || (Date.now() - last) > IDLE_MS) {
+        cur = newSid();
+        ssSet("ht_max_stage", "0"); // new session → reset funnel progress
+      }
       sid = cur; ssSet("ht_session_id", sid); touchSession();
     }
     ensureSession();
@@ -163,6 +168,34 @@
       log(type, payload);
     }
 
+    // ── Funnel stages (snippet v2.1): detect this page's stage + fire
+    //    stage_reached when the session reaches a NEW highest stage. ──
+    function detectStage() {
+      try {
+        var el = document.querySelector("[data-ht-stage]");
+        if (!el) return null;
+        var s = (el.getAttribute("data-ht-stage") || "").toLowerCase().trim();
+        return STAGES.indexOf(s) >= 0 ? s : null;
+      } catch (e) { return null; }
+    }
+    function sendStageReached(stage) {
+      var payload = {
+        siteId: siteId, type: "stage_reached", v: VERSION,
+        sessionId: sid, visitorId: vid, stage: stage, timestamp: Date.now()
+      };
+      post(JSON.stringify(payload));
+      log("stage_reached", payload);
+    }
+    // Fire at most once per stage per session, and only for a HIGHER stage than
+    // the session's current max (going back to a lower stage does nothing).
+    function maybeStageReached(stage) {
+      if (!stage) return;
+      var rank = STAGES.indexOf(stage) + 1;
+      if (rank <= 0) return;
+      var cur = parseInt(ssGet("ht_max_stage") || "0", 10);
+      if (rank > cur) { ssSet("ht_max_stage", String(rank)); sendStageReached(stage); }
+    }
+
     // ── Visitor journey (snippet v2): per-page capture within a session. ──
     var curPath = null, enteredAt = 0, lastPvPath = null, lastPvTs = 0, idleTimer = null;
     function resetIdle() {
@@ -177,12 +210,14 @@
       lastPvPath = path; lastPvTs = now;
       ensureSession();
       curPath = path; enteredAt = now;
+      var stage = detectStage();
       var payload = {
         siteId: siteId, type: "pageview", v: VERSION,
         sessionId: sid, visitorId: vid,
         pagePath: path, // path only — NO query string, NO hash
         pageTitle: document.title || null, referrer: document.referrer || null,
         pageUrl: location.href, timestamp: now,
+        funnelStage: stage, // null when the page isn't tagged (server may URL-match)
         viewportWidth: viewportW(), viewportHeight: viewportH(),
         userAgent: navigator.userAgent || null, deviceType: device(),
         // First-touch UTM (captured once on landing) — so the derived visit row +
@@ -193,6 +228,7 @@
       };
       post(JSON.stringify(payload));
       log("pageview", payload);
+      maybeStageReached(stage);
       resetIdle();
     }
     function sendPageExit(reason) {
@@ -430,6 +466,9 @@
           ensureSession: ensureSession,
           getSession: function () { return sid; },
           getVisitor: function () { return vid; },
+          // Funnel internals (v2.1).
+          detectStage: detectStage,
+          maybeStageReached: maybeStageReached,
           VERSION: VERSION
         };
       } catch (e) {}

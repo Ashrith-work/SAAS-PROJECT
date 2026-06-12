@@ -151,6 +151,7 @@ export const MULTI_TENANT_MODELS = [
   "touchpoint",
   "session",
   "pageView",
+  "stageReached",
   "metaToken",
   "adSnapshot",
   "couponRedemption",

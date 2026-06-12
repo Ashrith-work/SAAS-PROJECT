@@ -35,12 +35,33 @@ the minified `public/t.js` that hotels load via `<script src=".../t.js?id=SITE_I
 - **Debounce** — a duplicate pageview for the same path within 500ms is dropped
   (guards against React StrictMode double-mounts and rapid history operations).
 
-## Data attributes
+## Funnel stages (Phase 2, snippet v2.1.0)
 
-**Phase 1 needs none** — journey capture is automatic once the v2 snippet is
-installed. (Booking-value capture still supports the optional `data-ht-value`
-attribute from v1.) Phases 2/3 will introduce `data-ht-stage` to let hotels label
-funnel stages (e.g. `data-ht-stage="room-select"`); it is not used yet.
+Agencies can tag pages with **funnel stages** — `awareness → consideration →
+intent → booking` — to get drop-off analysis. Two ways, no conflict:
+
+- **`data-ht-stage` attribute** (recommended, instant): add it to any element
+  (usually `<body>`) on a page, e.g. `<body data-ht-stage="consideration">`. The
+  snippet reads it on every pageview and, when the session reaches a *new highest*
+  stage, fires a `stage_reached` event (at most once per stage per session — going
+  back to a lower stage does nothing).
+- **URL-pattern rules** (no website edits): on the hotel's Integrations page →
+  **Funnel Stages**, map URL patterns to stages (e.g. `/rooms*` →
+  consideration). `*` is a wildcard. When a pageview arrives without a
+  `data-ht-stage`, the server matches the path against these rules. A "Sensible
+  defaults" button prefills common hotel patterns.
+
+The server resolves + records the stage on **every** pageview (attribute first,
+then URL rules), so funnel data is authoritative even if a `stage_reached` beacon
+is lost. **Funnel Analysis** (visitors per stage, drop-off %, conversion, revenue,
+and the top bottleneck pages) lives on the **Visitor Journeys** page, with a
+compact funnel summary on the hotel dashboard. Existing Phase 1 PageViews are
+tagged retroactively by `npm run backfill:funnel`.
+
+## Other data attributes
+
+Booking-value capture still supports the optional `data-ht-value` attribute from
+v1. Phase 3 may extend `data-ht-stage` with custom sub-stages; not used yet.
 
 ## Privacy
 

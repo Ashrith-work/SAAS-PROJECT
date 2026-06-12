@@ -32,6 +32,8 @@ import { HotelAdAccountSelect } from "./HotelAdAccountSelect";
 import { ConnectionHistory } from "./ConnectionHistory";
 import { archivedAccountSummaries } from "@/lib/meta-archive";
 import { BudgetTracking } from "./BudgetTracking";
+import { FunnelConfig } from "./FunnelConfig";
+import { parseFunnelRules } from "@/lib/funnel";
 import { getBudgetStatus, rupeesFromPaise } from "@/lib/budget";
 import { InstagramActions } from "./InstagramActions";
 import { SendGuideModal } from "./SendGuideModal";
@@ -131,6 +133,7 @@ export default async function HotelIntegrationsPage({
       budgetTrackingEnabled: true,
       monthlyAdBudget: true,
       budgetResetDay: true,
+      funnelStageRules: true,
     },
   });
   if (!hotel) notFound();
@@ -573,6 +576,32 @@ export default async function HotelIntegrationsPage({
             Settings → Notifications
           </Link>
           .
+        </p>
+      </IntegrationCard>
+
+      {/* ── Funnel Stages (Phase 2 journey funnel) ───────────────────────── */}
+      <IntegrationCard
+        icon={<span className="text-base font-bold text-brand">⛢</span>}
+        title="Funnel Stages"
+        subtitle="Tag your website pages with funnel stages so HotelTrack can show drop-off analysis."
+        badge={
+          <IntegrationStatusBadge
+            tone={parseFunnelRules(hotel.funnelStageRules).length > 0 ? "green" : "gray"}
+            label={
+              parseFunnelRules(hotel.funnelStageRules).length > 0
+                ? `${parseFunnelRules(hotel.funnelStageRules).length} rule${parseFunnelRules(hotel.funnelStageRules).length === 1 ? "" : "s"}`
+                : "Not configured"
+            }
+          />
+        }
+      >
+        <FunnelConfig hotelId={hotel.id} initialRules={parseFunnelRules(hotel.funnelStageRules)} />
+        <p className="mt-3 text-xs text-ink-tertiary">
+          See drop-off analysis on the{" "}
+          <Link href={`/agency/hotel/${hotel.id}/journeys`} className="underline">
+            Visitor Journeys
+          </Link>{" "}
+          page.
         </p>
       </IntegrationCard>
 

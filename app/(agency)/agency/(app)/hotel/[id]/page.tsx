@@ -71,6 +71,7 @@ import {
 import type { TokenState } from "@/lib/integration-status";
 import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
+import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -1311,6 +1312,26 @@ export default async function HotelDashboardPage({
         )
       : new Set<string>();
 
+  // ── Compact funnel summary for the dashboard card (Phase 2). Cumulative
+  //    visitor counts per stage over the selected range; links to /journeys. ──
+  const funnelStageGroups = pixelMode
+    ? []
+    : await agencyScoped(prisma.session).groupBy({
+        by: ["highestStageReached"],
+        where: {
+          hotelClientId: hotel.id,
+          startedAt: { gte: range.since, lte: range.until },
+        },
+        _count: { _all: true },
+      });
+  const funnelReachedByRank: Record<number, number> = {};
+  for (const g of funnelStageGroups) {
+    const r = stageRank(g.highestStageReached);
+    if (r > 0) funnelReachedByRank[r] = (funnelReachedByRank[r] ?? 0) + g._count._all;
+  }
+  const funnelSummary = computeFunnel({ reachedByRank: funnelReachedByRank, revenue: 0 });
+  const funnelHasData = (funnelSummary.stages[0]?.visitors ?? 0) > 0;
+
   return (
     <div className="space-y-6">
       {/* Header strip — hotel + last sync (left), period selector + actions (right) */}
@@ -1657,6 +1678,34 @@ export default async function HotelDashboardPage({
           title="Recent Visitor Journeys"
           subtitle="The page-by-page path each visitor took, with time on page and drop-off."
         >
+          {funnelHasData && (
+            <div className="border-b border-line px-4 py-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                  Funnel · {range.label.toLowerCase()}
+                </p>
+                <Link
+                  href={`/agency/hotel/${hotel.id}/journeys`}
+                  className="text-xs font-medium text-brand hover:underline"
+                >
+                  Full funnel analysis →
+                </Link>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {funnelSummary.stages.map((st) => (
+                  <div key={st.stage} className="rounded-lg border border-line p-3">
+                    <p className="text-xs text-ink-tertiary">{STAGE_LABEL[st.stage]}</p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                      {formatNumber(st.visitors)}
+                    </p>
+                    <p className="text-xs text-ink-tertiary tabular-nums">
+                      {st.conversionFromPrev == null ? "—" : formatPercent(st.conversionFromPrev)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {recentSessions.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-ink-tertiary">
               No visitor journeys yet. They appear once this hotel installs the v2

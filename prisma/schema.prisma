@@ -213,6 +213,10 @@ model HotelClient {
   shareTokenCreatedAt DateTime?
   shareTokenRevoked   Boolean         @default(false)
   showAdSpendToHotel  Boolean         @default(false)
+  // ── Funnel-stage URL rules (Phase 2 journey funnel) ──
+  // Optional [{ urlPattern, stage }] used to tag PageViews server-side when a
+  // hotel can't add data-ht-stage attributes to its pages. See lib/funnel.ts.
+  funnelStageRules    Json?
   // ── Soft delete (admin-only; reversible via restoreHotel) ──
   // deletedAt null = active. When set, the hotel is hidden everywhere and all
   // syncing stops, but every row (tokens, events, attribution, snapshots) is
@@ -384,6 +388,9 @@ model Session {
   exitPath      String? // last pagePath seen
   pageViewCount Int       @default(0)
   totalTimeMs   Int       @default(0)
+  // Highest funnel stage reached this session (Phase 2) — denormalized for fast
+  // funnel queries. Null until the session reaches a tagged/matched page.
+  highestStageReached String?
   utmSource     String?
   utmMedium     String?
   utmCampaign   String?
@@ -392,8 +399,9 @@ model Session {
   referrer      String?
   userAgent     String?
 
-  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
-  pageViews   PageView[]
+  hotelClient   HotelClient    @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  pageViews     PageView[]
+  stageReached  StageReached[]
 
   @@index([hotelClientId])
   @@index([agencyId])
@@ -415,6 +423,9 @@ model PageView {
   exitedAt       DateTime? // null until the page_exit event arrives
   timeOnPageMs   Int? // computed when page_exit arrives
   exitReason     String? // 'navigation' | 'unload' | 'inactivity_timeout'
+  // Funnel stage of this page (Phase 2): from the snippet's data-ht-stage
+  // attribute, or matched server-side from the hotel's funnelStageRules.
+  funnelStage    String? // 'awareness' | 'consideration' | 'intent' | 'booking'
   viewportWidth  Int?
   viewportHeight Int?
 
@@ -426,6 +437,29 @@ model PageView {
   @@index([visitorId])
   @@index([enteredAt])
   @@index([pagePath])
+  @@index([hotelClientId, funnelStage]) // funnel aggregation per hotel
+}
+
+// One row per (session, funnel stage) the moment a session first reaches that
+// stage (Phase 2). The @@unique([sessionId, stage]) makes "each session reaches
+// each stage at most once" a DB invariant, so the client beacon and the
+// server-side URL-rule path are idempotent. Multi-tenant: carries agencyId.
+model StageReached {
+  id            String   @id @default(cuid())
+  sessionId     String
+  visitorId     String
+  hotelClientId String
+  agencyId      String
+  stage         String // 'awareness' | 'consideration' | 'intent' | 'booking'
+  reachedAt     DateTime
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, stage]) // each session reaches each stage at most once
+  @@index([hotelClientId])
+  @@index([agencyId])
+  @@index([reachedAt])
+  @@index([stage])
 }
 
 // How a MetaToken was obtained. Both produce the same end state (an encrypted,

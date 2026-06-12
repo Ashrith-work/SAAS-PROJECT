@@ -1,13 +1,23 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import {
+  isFunnelStage,
+  parseFunnelRules,
+  resolveStageFromRules,
+  stageRank,
+  type FunnelStage,
+} from "@/lib/funnel";
 
-// Public ingestion endpoint for the tracking snippet. Handles four event types:
+// Public ingestion endpoint for the tracking snippet. Handles five event types:
 //
-//   visit       — legacy v1 snippet page visit → one TrackingEvent (back-compat).
-//   pageview    — v2 page load → a TrackingEvent visit (so existing dashboards
-//                 keep working) PLUS Session/PageView journey rows.
-//   page_exit   — v2 page leave → closes the open PageView with time-on-page.
-//   conversion  — booking → TrackingEvent conversion + multi-touch Touchpoints.
+//   visit         — legacy v1 snippet page visit → one TrackingEvent (back-compat).
+//   pageview      — v2 page load → a TrackingEvent visit (so existing dashboards
+//                   keep working) PLUS Session/PageView journey rows. v2.1 also
+//                   carries funnelStage (else the server URL-matches it).
+//   page_exit     — v2 page leave → closes the open PageView with time-on-page.
+//   stage_reached — v2.1 funnel: the session reached a new highest funnel stage.
+//   conversion    — booking → TrackingEvent conversion + multi-touch Touchpoints.
 //
 // Events arrive via navigator.sendBeacon as text/plain (no CORS preflight). We
 // resolve the public siteId to a hotel (+ agencyId) and store ONLY UTM + page
@@ -80,7 +90,20 @@ function recentTs(v: unknown): Date | null {
   return new Date(n);
 }
 
-type Hotel = { id: string; agencyId: string; snippetStatus: string; deletedAt: Date | null };
+type Hotel = {
+  id: string;
+  agencyId: string;
+  snippetStatus: string;
+  deletedAt: Date | null;
+  funnelStageRules: Prisma.JsonValue;
+};
+
+// The interactive-transaction client type for our EXTENDED Prisma client (the
+// scrub extension), which differs from the base Prisma.TransactionClient.
+type TxClient = Omit<
+  typeof prisma,
+  "$connect" | "$disconnect" | "$on" | "$use" | "$transaction" | "$extends"
+>;
 
 export async function POST(request: Request) {
   // Resilient parse — never throw on malformed input.
@@ -102,14 +125,16 @@ export async function POST(request: Request) {
         ? "pageview"
         : rawType === "page_exit"
           ? "page_exit"
-          : rawType === "visit"
-            ? "visit"
-            : null;
+          : rawType === "stage_reached"
+            ? "stage_reached"
+            : rawType === "visit"
+              ? "visit"
+              : null;
   if (!siteId || !type) return reply(400, { error: "Missing siteId or type" });
 
   const ip = clientIpFromHeaders(request.headers);
   const visitorId = str(body.visitorId);
-  const isJourney = type === "pageview" || type === "page_exit";
+  const isJourney = type === "pageview" || type === "page_exit" || type === "stage_reached";
 
   // Rate limit — per-visitor for journey events, per-(site+IP) for the rest.
   const rl = isJourney
@@ -126,7 +151,7 @@ export async function POST(request: Request) {
   try {
     hotel = await prisma.hotelClient.findUnique({
       where: { siteId },
-      select: { id: true, agencyId: true, snippetStatus: true, deletedAt: true },
+      select: { id: true, agencyId: true, snippetStatus: true, deletedAt: true, funnelStageRules: true },
     });
   } catch {
     return reply(503, { error: "Temporarily unavailable" });
@@ -142,12 +167,85 @@ export async function POST(request: Request) {
       await handlePageExit(hotel, body);
       return reply(204);
     }
+    if (type === "stage_reached") {
+      // Reject an explicitly-malformed stage (Part 3); ignore other bad fields.
+      if (!isFunnelStage(body.stage)) return reply(400, { error: "Invalid stage" });
+      await handleStageReached(hotel, body, visitorId);
+      return reply(204);
+    }
     await handleVisitLike(hotel, type, body, visitorId);
   } catch {
     return reply(503, { error: "Temporarily unavailable" });
   }
 
   return reply(204);
+}
+
+// ── recordStage: upsert a StageReached row (idempotent via @@unique) and bump
+//    Session.highestStageReached, but only when the rank increases. Hotel-scoped
+//    so a guessed sessionId can't write into another site's funnel. ───────────
+async function recordStage(
+  tx: TxClient,
+  opts: {
+    sessionId: string;
+    hotelClientId: string;
+    agencyId: string;
+    visitorId: string;
+    stage: FunnelStage;
+    at: Date;
+  },
+) {
+  const session = await tx.session.findUnique({
+    where: { id: opts.sessionId },
+    select: { hotelClientId: true, highestStageReached: true },
+  });
+  // The session must exist and belong to THIS hotel.
+  if (!session || session.hotelClientId !== opts.hotelClientId) return;
+
+  // Each (session, stage) at most once — the unique index makes this idempotent.
+  await tx.stageReached.createMany({
+    data: [
+      {
+        sessionId: opts.sessionId,
+        visitorId: opts.visitorId,
+        hotelClientId: opts.hotelClientId,
+        agencyId: opts.agencyId,
+        stage: opts.stage,
+        reachedAt: opts.at,
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  // Advance the denormalized highest stage only when this stage is higher.
+  if (stageRank(opts.stage) > stageRank(session.highestStageReached)) {
+    await tx.session.update({
+      where: { id: opts.sessionId },
+      data: { highestStageReached: opts.stage },
+    });
+  }
+}
+
+// ── stage_reached: the snippet detected a new highest funnel stage. ───────────
+async function handleStageReached(
+  hotel: Hotel,
+  body: Record<string, unknown>,
+  visitorId: string | null,
+) {
+  const sessionId = body.sessionId;
+  const stage = body.stage;
+  if (!isSessionId(sessionId) || !isVisitorId(visitorId) || !isFunnelStage(stage)) return;
+  const ts = recentTs(body.timestamp) ?? new Date();
+  await prisma.$transaction((tx) =>
+    recordStage(tx, {
+      sessionId,
+      hotelClientId: hotel.id,
+      agencyId: hotel.agencyId,
+      visitorId,
+      stage,
+      at: ts,
+    }),
+  );
 }
 
 // ── page_exit: close the open PageView for this session + hotel ───────────────
@@ -303,6 +401,15 @@ async function handleVisitLike(
           },
           update: { pageViewCount: { increment: 1 }, exitPath: pagePath as string },
         });
+
+        // Funnel stage for this page: the snippet's data-ht-stage (payload), else
+        // the hotel's server-side URL rules. Stored on the PageView and recorded
+        // as a StageReached when it's a new highest stage for the session.
+        const payloadStage = isFunnelStage(body.funnelStage) ? body.funnelStage : null;
+        const stage =
+          payloadStage ??
+          resolveStageFromRules(parseFunnelRules(hotel.funnelStageRules), pagePath as string);
+
         await tx.pageView.create({
           data: {
             sessionId: sessionId as string,
@@ -313,10 +420,22 @@ async function handleVisitLike(
             pageTitle: str(body.pageTitle),
             referrer: str(body.referrer),
             enteredAt: ts as Date,
+            funnelStage: stage,
             viewportWidth: intOf(body.viewportWidth),
             viewportHeight: intOf(body.viewportHeight),
           },
         });
+
+        if (stage) {
+          await recordStage(tx, {
+            sessionId: sessionId as string,
+            hotelClientId: hotel.id,
+            agencyId: hotel.agencyId,
+            visitorId: visitorId as string,
+            stage,
+            at: ts as Date,
+          });
+        }
       }
     }
 
