@@ -340,6 +340,7 @@ model TrackingEvent {
   @@index([agencyId])
   @@index([hotelClientId])
   @@index([hotelClientId, eventType, createdAt]) // funnel queries over time
+  @@index([agencyId, eventType, createdAt]) // agency-wide revenue rollups (R3)
   @@index([sessionId]) // stitch a visit to its later conversion
 }
 

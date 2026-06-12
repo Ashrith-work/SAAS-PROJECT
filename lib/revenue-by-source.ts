@@ -27,10 +27,25 @@ export type ConversionRow = {
    * both a UTM source and a coupon counts ONCE, under influencer (no double-count).
    */
   couponCode?: string | null;
+  /** Hotel this booking belongs to (Phase R3 agency rollup). When present, each
+   *  group reports how many distinct hotels contributed (hotelCount). */
+  hotelClientId?: string | null;
 };
 
 /** Source key used for any coupon-attributed (influencer) booking. */
 export const INFLUENCER_SOURCE = "influencer";
+
+/** A row's effective source-level key (coupon ⇒ influencer, else normalized UTM
+ *  source). Matches the group key at `source` granularity. */
+export function rowSourceKey(row: ConversionRow): string {
+  return row.couponCode && row.couponCode.trim() ? INFLUENCER_SOURCE : normalizeSource(row.utmSource);
+}
+
+/** A row's effective source TYPE (coupon ⇒ influencer, else classified by UTM).
+ *  Used by the source-type chip filter so it agrees with the aggregation. */
+export function rowSourceType(row: ConversionRow): SourceType {
+  return row.couponCode && row.couponCode.trim() ? "influencer" : classifySourceType(row);
+}
 
 export type RevenueGroup = {
   /** Display key: "instagram", "instagram/reel", or "instagram/reel/monsoon". */
@@ -44,6 +59,9 @@ export type RevenueGroup = {
   revenue: number;
   averageBookingValue: number;
   percentOfTotal: number; // 0–100
+  /** Distinct hotels that contributed to this group (R3 agency rollup; 0 when
+   *  rows carry no hotelClientId, i.e. the R1 per-hotel call). */
+  hotelCount: number;
   /** Daily revenue across the range (one entry per day, in date order). */
   sparkline: number[];
 };
@@ -53,7 +71,7 @@ export type DailyPoint = { date: string; byType: Partial<Record<SourceType, numb
 export type RevenueBySource = {
   granularity: Granularity;
   groups: RevenueGroup[];
-  totals: { revenue: number; bookings: number; averageBookingValue: number };
+  totals: { revenue: number; bookings: number; averageBookingValue: number; hotelCount: number };
   topSource: { key: string; revenue: number; percentOfTotal: number } | null;
   daily: DailyPoint[];
   /** Distinct group count BEFORE the top-100 cap, plus whether we truncated. */
@@ -98,6 +116,7 @@ type Acc = {
   revenue: number;
   sparkline: number[];
   typeRevenue: Map<SourceType, number>;
+  hotels: Set<string>;
 };
 
 /**
@@ -115,6 +134,7 @@ export function aggregateRevenueBySource(
 
   const accs = new Map<string, Acc>();
   const daily: DailyPoint[] = days.map((date) => ({ date, byType: {} }));
+  const allHotels = new Set<string>();
   let totalRevenue = 0;
   let totalBookings = 0;
 
@@ -131,6 +151,7 @@ export function aggregateRevenueBySource(
     const value = Number.isFinite(row.value) && row.value > 0 ? row.value : 0;
     const dayKey = row.occurredAt.toISOString().slice(0, 10);
     const di = dayIndex.get(dayKey);
+    if (row.hotelClientId) allHotels.add(row.hotelClientId);
 
     totalRevenue += value;
     totalBookings += 1;
@@ -147,11 +168,13 @@ export function aggregateRevenueBySource(
         revenue: 0,
         sparkline: new Array(days.length).fill(0),
         typeRevenue: new Map(),
+        hotels: new Set(),
       };
       accs.set(f.key, acc);
     }
     acc.bookings += 1;
     acc.revenue += value;
+    if (row.hotelClientId) acc.hotels.add(row.hotelClientId);
     if (di !== undefined) acc.sparkline[di] += value;
     // Track revenue per source type so the badge shows the dominant one. Count a
     // baseline 1 per booking too, so a group of all-zero-value rows still resolves
@@ -183,6 +206,7 @@ export function aggregateRevenueBySource(
     revenue: a.revenue,
     averageBookingValue: a.bookings > 0 ? a.revenue / a.bookings : 0,
     percentOfTotal: totalRevenue > 0 ? (a.revenue / totalRevenue) * 100 : 0,
+    hotelCount: a.hotels.size,
     sparkline: a.sparkline,
   }));
 
@@ -204,6 +228,7 @@ export function aggregateRevenueBySource(
       revenue: totalRevenue,
       bookings: totalBookings,
       averageBookingValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
+      hotelCount: allHotels.size,
     },
     topSource: top ? { key: top.key, revenue: top.revenue, percentOfTotal: top.percentOfTotal } : null,
     daily,

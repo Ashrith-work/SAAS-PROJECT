@@ -8,6 +8,7 @@ import { ExportMenu } from "@/components/ui/ExportMenu";
 import { RevenueTrendChart } from "@/components/dashboard/RevenueTrendChart";
 import { RevenueByHotelChart } from "@/components/dashboard/RevenueByHotelChart";
 import { TrafficSourceChart } from "@/components/dashboard/TrafficSourceChart";
+import { AgencyRevenueRollup } from "@/components/dashboard/AgencyRevenueRollup";
 import { isPixelMode } from "@/lib/tracking-mode";
 import {
   formatCurrency,
@@ -293,6 +294,19 @@ export default async function AgencyDashboardPage({
           </Link>
         </div>
       </div>
+
+      {/* Agency revenue rollup (Phase R3) — revenue across all hotels by source,
+          with drill-down. Sits above the existing per-hotel summary + charts. */}
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold tracking-tight">Revenue across all hotels</h2>
+          <p className="text-sm text-ink-tertiary">
+            Total agency performance by source — click a source to see which hotels drive it, or a
+            hotel to open its dashboard.
+          </p>
+        </div>
+        <AgencyRevenueRollup hotels={hotels} />
+      </section>
 
       {/* Summary KPIs across all hotels */}
       {pixelMode ? (
