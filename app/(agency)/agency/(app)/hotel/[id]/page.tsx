@@ -1277,24 +1277,24 @@ export default async function HotelDashboardPage({
   };
 
   // ── Recent visitor journeys (snippet v2) — compact preview; full page-by-page
-  //    view lives at /agency/hotel/[id]/journeys. Hidden in Pixel mode (no
-  //    snippet sessions). All reads agency-scoped + hotel-scoped. ──
-  const recentSessions = pixelMode
-    ? []
-    : await agencyScoped(prisma.session).findMany({
-        where: { hotelClientId: hotel.id },
-        orderBy: { startedAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          visitorId: true,
-          startedAt: true,
-          totalTimeMs: true,
-          pageViewCount: true,
-          landingPath: true,
-          exitPath: true,
-        },
-      });
+  //    view lives at /agency/hotel/[id]/journeys. Journey/funnel data comes from
+  //    the v2 snippet and exists independently of the Pixel-vs-attribution
+  //    distinction, so it is NOT gated on pixel mode (the card self-handles the
+  //    empty state). All reads agency-scoped + hotel-scoped. ──
+  const recentSessions = await agencyScoped(prisma.session).findMany({
+    where: { hotelClientId: hotel.id },
+    orderBy: { startedAt: "desc" },
+    take: 5,
+    select: {
+      id: true,
+      visitorId: true,
+      startedAt: true,
+      totalTimeMs: true,
+      pageViewCount: true,
+      landingPath: true,
+      exitPath: true,
+    },
+  });
   const recentSessionIds = recentSessions.map((s) => s.id);
   const convertedSessionIds =
     recentSessionIds.length > 0
@@ -1314,16 +1314,14 @@ export default async function HotelDashboardPage({
 
   // ── Compact funnel summary for the dashboard card (Phase 2). Cumulative
   //    visitor counts per stage over the selected range; links to /journeys. ──
-  const funnelStageGroups = pixelMode
-    ? []
-    : await agencyScoped(prisma.session).groupBy({
-        by: ["highestStageReached"],
-        where: {
-          hotelClientId: hotel.id,
-          startedAt: { gte: range.since, lte: range.until },
-        },
-        _count: { _all: true },
-      });
+  const funnelStageGroups = await agencyScoped(prisma.session).groupBy({
+    by: ["highestStageReached"],
+    where: {
+      hotelClientId: hotel.id,
+      startedAt: { gte: range.since, lte: range.until },
+    },
+    _count: { _all: true },
+  });
   const funnelReachedByRank: Record<number, number> = {};
   for (const g of funnelStageGroups) {
     const r = stageRank(g.highestStageReached);
@@ -1672,8 +1670,10 @@ export default async function HotelDashboardPage({
         </SectionCard>
       )}
 
-      {/* Recent Visitor Journeys (snippet v2) — compact preview, full view at /journeys */}
-      {!pixelMode && (
+      {/* Recent Visitor Journeys (snippet v2) — compact preview, full view at
+          /journeys. Shown regardless of pixel mode (journey data is snippet-
+          driven and independent of the attribution-vs-Pixel distinction). */}
+      {(
         <SectionCard
           title="Recent Visitor Journeys"
           subtitle="The page-by-page path each visitor took, with time on page and drop-off."
