@@ -321,6 +321,11 @@ model TrackingEvent {
   // Nullable: pre-multi-touch rows and old snippet payloads have none.
   visitorId       String?
   deviceType      String
+  // Which attribution model assigned this conversion's UTM credit. The snippet
+  // stores FIRST-touch UTM on the event, so conversions are first_touch today;
+  // the column lets last_touch / u_shaped credit be recorded per-row later
+  // (Revenue by Source). Nullable + defaulted so existing rows read as first_touch.
+  attributionModel String?  @default("first_touch")
   createdAt       DateTime  @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)

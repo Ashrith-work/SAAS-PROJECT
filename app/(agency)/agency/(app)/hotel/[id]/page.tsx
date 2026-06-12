@@ -72,6 +72,7 @@ import type { TokenState } from "@/lib/integration-status";
 import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
+import { RevenueBySource } from "@/components/dashboard/RevenueBySource";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -1749,6 +1750,17 @@ export default async function HotelDashboardPage({
           )}
         </SectionCard>
       )}
+
+      {/* Revenue by Source — how much booking revenue came from each marketing
+          source, at three granularities. Client-fetched (toggles/date/chips). */}
+      <SectionCard
+        title="Revenue by Source"
+        subtitle="Booking revenue and counts per marketing source, with source / medium / campaign drill-down."
+      >
+        <div className="p-4">
+          <RevenueBySource hotelId={hotel.id} />
+        </div>
+      </SectionCard>
 
       {/* Section 4 — Influencer impact */}
       <SectionCard
