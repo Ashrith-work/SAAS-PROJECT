@@ -42,6 +42,20 @@ export function formatPercent(ratio: number, digits = 1): string {
   return `${(ratio * 100).toFixed(digits)}%`;
 }
 
+/**
+ * A duration in milliseconds as a compact human string:
+ *   1500 -> "1s", 204000 -> "3m 24s", 3661000 -> "1h 1m". 0/negative -> "0s".
+ */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s}s`;
+}
+
 /** A ROAS multiple, e.g. 3.2 -> "3.2×". Pass null for "—". */
 export function formatMultiple(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(2)}×`;

@@ -23,6 +23,7 @@
     var base = src.origin;
     var DEBUG = src.searchParams.get("debug") === "1";
 
+    var VERSION = "2.0.0"; // snippet version (sent as `v`); v1 sent "visit" events.
     var converted = false, observer = null, cfg = null, pending = false;
     var UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
@@ -44,6 +45,14 @@
       document.cookie = n + "=" + encodeURIComponent(v) + exp + "; path=/; SameSite=Lax";
     }
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+    function uuid() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+      // RFC4122-ish fallback for browsers without crypto.randomUUID.
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+        var r = (Math.random() * 16) | 0, v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
     function device() {
       var ua = navigator.userAgent || "";
       if (/iPad|Tablet|PlayBook|Silk|Android(?!.*Mobile)/i.test(ua)) return "tablet";
@@ -64,16 +73,30 @@
     }
     attr = attr || {};
 
-    // Session id (per browsing session) + "already converted" flag.
-    var sid = getCookie("_ht_sid");
-    if (!sid) { sid = uid(); setCookie("_ht_sid", sid, null); }
+    // Session id — per-tab browsing session held in sessionStorage, with a
+    // 30-minute inactivity window. A new tab (fresh sessionStorage) or being idle
+    // for >30 min starts a new session. "ht_session_last" records the last event
+    // time for the idle check. Format: "sess_" + uuid.
+    var IDLE_MS = 30 * 60 * 1000, sid = null;
+    function newSid() { return "sess_" + uuid(); }
+    function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+    function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+    function touchSession() { ssSet("ht_session_last", String(Date.now())); }
+    function ensureSession() {
+      var last = parseInt(ssGet("ht_session_last") || "0", 10);
+      var cur = ssGet("ht_session_id");
+      if (!cur || !(last > 0) || (Date.now() - last) > IDLE_MS) cur = newSid();
+      sid = cur; ssSet("ht_session_id", sid); touchSession();
+    }
+    ensureSession();
     converted = getCookie("_ht_conv") === sid;
 
-    // Persistent visitor id — survives across sessions for multi-touch grouping.
-    // 30-day SLIDING window: re-stamped on every load so an active visitor never
-    // expires mid-journey.
-    var vid = getCookie("_ht_vid") || uid();
-    setCookie("_ht_vid", vid, 30);
+    // Persistent visitor id — survives across sessions (365-day cookie). Seeds
+    // from the legacy _ht_vid cookie when present so returning visitors keep their
+    // identity. Format: "vis_" + (legacy id | uuid).
+    var vid = getCookie("ht_visitor_id");
+    if (!vid) { var legacyVid = getCookie("_ht_vid"); vid = "vis_" + (legacyVid || uuid()); }
+    setCookie("ht_visitor_id", vid, 365);
 
     // Multi-touch journey: append one touchpoint per page load that carries new
     // info (a UTM, or an external referrer, or the very first touch), de-duping
@@ -108,32 +131,108 @@
     }
     setCookie(JKEY, JSON.stringify(journey), 30); // sliding 30-day expiry
 
-    // Send an event (sendBeacon -> simple request, no preflight; fetch fallback).
+    // Transport — sendBeacon (no CORS preflight, survives unload) → fetch keepalive.
+    var ENDPOINT = base + "/api/track/event";
+    function post(data) {
+      try {
+        if (navigator.sendBeacon) navigator.sendBeacon(ENDPOINT, new Blob([data], { type: "text/plain;charset=UTF-8" }));
+        else fetch(ENDPOINT, { method: "POST", body: data, headers: { "Content-Type": "text/plain;charset=UTF-8" }, mode: "cors", keepalive: true });
+      } catch (e) {}
+    }
+    function viewportW() { return window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 0; }
+    function viewportH() { return window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 0; }
+
+    // Conversion event (TrackingEvent). Carries first-touch UTM so attribution is
+    // unchanged, and attaches the multi-touch journey. Uses the v2 session/visitor
+    // ids so a session can be linked to its booking.
     function send(type, value) {
+      ensureSession();
       var payload = {
-        siteId: siteId, type: type, visitorId: vid,
+        siteId: siteId, type: type, v: VERSION, visitorId: vid,
         utmSource: attr.utm_source || null, utmMedium: attr.utm_medium || null,
         utmCampaign: attr.utm_campaign || null, utmContent: attr.utm_content || null,
         utmTerm: attr.utm_term || null,
         pageUrl: location.href, sessionId: sid, deviceType: device(),
         value: value == null ? null : value
       };
-      // On conversion, attach the whole journey (re-read for the freshest copy
-      // in case more touches accumulated across page loads this session).
       if (type === "conversion") {
         var j = parse(getCookie(JKEY) || "");
         payload.journey = (j instanceof Array) ? j : journey;
       }
-      var url = base + "/api/track/event", data = JSON.stringify(payload);
-      try {
-        if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([data], { type: "text/plain;charset=UTF-8" }));
-        else fetch(url, { method: "POST", body: data, headers: { "Content-Type": "text/plain;charset=UTF-8" }, mode: "cors", keepalive: true });
-      } catch (e) {}
+      post(JSON.stringify(payload));
       log(type, payload);
     }
 
-    // 5. Every page load fires a "visit".
-    send("visit");
+    // ── Visitor journey (snippet v2): per-page capture within a session. ──
+    var curPath = null, enteredAt = 0, lastPvPath = null, lastPvTs = 0, idleTimer = null;
+    function resetIdle() {
+      if (idleTimer) { try { clearTimeout(idleTimer); } catch (e) {} }
+      idleTimer = setTimeout(function () { sendPageExit("inactivity_timeout"); }, IDLE_MS);
+    }
+    function sendPageview(path) {
+      // Debounce a duplicate pageview for the same path (React StrictMode double
+      // mount / rapid history ops) within 500ms.
+      var now = Date.now();
+      if (path === lastPvPath && (now - lastPvTs) < 500) return;
+      lastPvPath = path; lastPvTs = now;
+      ensureSession();
+      curPath = path; enteredAt = now;
+      var payload = {
+        siteId: siteId, type: "pageview", v: VERSION,
+        sessionId: sid, visitorId: vid,
+        pagePath: path, // path only — NO query string, NO hash
+        pageTitle: document.title || null, referrer: document.referrer || null,
+        pageUrl: location.href, timestamp: now,
+        viewportWidth: viewportW(), viewportHeight: viewportH(),
+        userAgent: navigator.userAgent || null, deviceType: device(),
+        // First-touch UTM (captured once on landing) — so the derived visit row +
+        // the session's landing UTM match the legacy behavior. NOT re-read per page.
+        utmSource: attr.utm_source || null, utmMedium: attr.utm_medium || null,
+        utmCampaign: attr.utm_campaign || null, utmContent: attr.utm_content || null,
+        utmTerm: attr.utm_term || null
+      };
+      post(JSON.stringify(payload));
+      log("pageview", payload);
+      resetIdle();
+    }
+    function sendPageExit(reason) {
+      if (!curPath || !enteredAt) return; // nothing open to exit
+      var dur = Date.now() - enteredAt;
+      var payload = {
+        siteId: siteId, type: "page_exit", v: VERSION,
+        sessionId: sid, visitorId: vid,
+        pagePath: curPath, timeOnPageMs: dur < 0 ? 0 : dur,
+        exitReason: reason, timestamp: Date.now()
+      };
+      post(JSON.stringify(payload));
+      log("page_exit", payload);
+      enteredAt = 0; // guard against a duplicate exit (navigation then unload)
+    }
+
+    // Shared SPA-navigation dispatcher: wrap history ONCE and fan out to listeners.
+    // Both journey capture and conversion detection subscribe via onSpaNav().
+    var navFns = [];
+    function onSpaNav(fn) { navFns.push(fn); }
+    function fireNav() { for (var i = 0; i < navFns.length; i++) { try { navFns[i](); } catch (e) {} } }
+    ["pushState", "replaceState"].forEach(function (m) {
+      var orig = history[m];
+      if (orig) history[m] = function () { var r = orig.apply(this, arguments); setTimeout(fireNav, 0); return r; };
+    });
+    addEventListener("popstate", function () { setTimeout(fireNav, 0); });
+    addEventListener("hashchange", function () { setTimeout(fireNav, 0); });
+
+    // Journey: on a real path change, exit the old page then view the new one.
+    onSpaNav(function () {
+      var p = location.pathname;
+      if (p === curPath) return; // query/hash-only change — not a new page
+      sendPageExit("navigation");
+      sendPageview(p);
+    });
+    // Final exit when the tab closes / navigates away (beacon survives unload).
+    addEventListener("pagehide", function () { sendPageExit("unload"); });
+
+    // 5. First page of the load fires a pageview (replaces the v1 "visit").
+    sendPageview(location.pathname);
 
     // 8. Read the booking value from page data only — never names, emails, or
     // form contents. Three strategies, tried in order; the first that yields a
@@ -296,16 +395,11 @@
 
     function setup(c) {
       cfg = c;
-      // url_change (and "both"): check now + watch SPA navigations.
+      // url_change (and "both"): check now + watch SPA navigations. History is
+      // already wrapped once at init — reuse the shared dispatcher (no double-wrap).
       if (c.method === "url_change" || c.method === "both") {
         checkUrl();
-        var hook = function () { setTimeout(checkUrl, 0); };
-        ["pushState", "replaceState"].forEach(function (m) {
-          var orig = history[m];
-          if (orig) history[m] = function () { var r = orig.apply(this, arguments); hook(); return r; };
-        });
-        addEventListener("popstate", hook);
-        addEventListener("hashchange", hook);
+        onSpaNav(function () { setTimeout(checkUrl, 0); });
       }
       // same_page (and "both", as fallback): check now + observe the DOM.
       if (c.method === "same_page" || c.method === "both") {
@@ -329,7 +423,14 @@
           extractBookingValue: extractBookingValue,
           waitForBookingValue: waitForBookingValue,
           parseAmount: parseAmount,
-          convert: convert
+          convert: convert,
+          // Journey internals (v2) for tests/inspection.
+          sendPageview: sendPageview,
+          sendPageExit: sendPageExit,
+          ensureSession: ensureSession,
+          getSession: function () { return sid; },
+          getVisitor: function () { return vid; },
+          VERSION: VERSION
         };
       } catch (e) {}
     }

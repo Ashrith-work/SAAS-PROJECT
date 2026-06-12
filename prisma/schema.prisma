@@ -228,6 +228,7 @@ model HotelClient {
   contentPieces  ContentPiece[]
   trackingEvents TrackingEvent[]
   touchpoints    Touchpoint[]
+  sessions       Session[]
   adSnapshots    AdSnapshot[]
   reports         Report[]
   alerts          Alert[]
@@ -358,6 +359,73 @@ model Touchpoint {
   @@index([hotelClientId])
   @@index([visitorId])
   @@index([conversionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Visitor journey tracking (snippet v2) — page-by-page capture per session.
+//
+// A Session is one browsing session (snippet `sess_…` id from sessionStorage,
+// 30-min inactivity window). Each PageView is one page within that session with
+// its time-on-page and exit reason. This is ADDITIVE to TrackingEvent (every
+// pageview still writes a `visit` TrackingEvent, so existing dashboards keep
+// working). Multi-tenant: both carry agencyId (denormalized for fast scoped
+// reads) like every other table. `id` is the snippet-supplied string — NOT a
+// cuid — so a session can be upserted by the id the browser already holds.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Session {
+  id            String    @id // 'sess_' + uuid (snippet-supplied)
+  visitorId     String
+  hotelClientId String
+  agencyId      String // denormalized for fast tenant-scoped queries
+  startedAt     DateTime
+  endedAt       DateTime? // null while the session is still active
+  landingPath   String // first pagePath of the session
+  exitPath      String? // last pagePath seen
+  pageViewCount Int       @default(0)
+  totalTimeMs   Int       @default(0)
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
+  referrer      String?
+  userAgent     String?
+
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  pageViews   PageView[]
+
+  @@index([hotelClientId])
+  @@index([agencyId])
+  @@index([visitorId])
+  @@index([startedAt])
+  @@index([hotelClientId, startedAt]) // the dashboard's per-hotel "recent sessions" read
+}
+
+model PageView {
+  id             String    @id @default(cuid())
+  sessionId      String
+  visitorId      String
+  hotelClientId  String
+  agencyId       String
+  pagePath       String
+  pageTitle      String?
+  referrer       String?
+  enteredAt      DateTime
+  exitedAt       DateTime? // null until the page_exit event arrives
+  timeOnPageMs   Int? // computed when page_exit arrives
+  exitReason     String? // 'navigation' | 'unload' | 'inactivity_timeout'
+  viewportWidth  Int?
+  viewportHeight Int?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([hotelClientId])
+  @@index([agencyId])
+  @@index([visitorId])
+  @@index([enteredAt])
+  @@index([pagePath])
 }
 
 // How a MetaToken was obtained. Both produce the same end state (an encrypted,

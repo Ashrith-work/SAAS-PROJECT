@@ -25,6 +25,7 @@ import {
 import {
   formatCurrency,
   formatCurrencyCents,
+  formatDuration,
   formatMultiple,
   formatNumber,
   formatPercent,
@@ -1274,6 +1275,42 @@ export default async function HotelDashboardPage({
     },
   };
 
+  // ── Recent visitor journeys (snippet v2) — compact preview; full page-by-page
+  //    view lives at /agency/hotel/[id]/journeys. Hidden in Pixel mode (no
+  //    snippet sessions). All reads agency-scoped + hotel-scoped. ──
+  const recentSessions = pixelMode
+    ? []
+    : await agencyScoped(prisma.session).findMany({
+        where: { hotelClientId: hotel.id },
+        orderBy: { startedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          visitorId: true,
+          startedAt: true,
+          totalTimeMs: true,
+          pageViewCount: true,
+          landingPath: true,
+          exitPath: true,
+        },
+      });
+  const recentSessionIds = recentSessions.map((s) => s.id);
+  const convertedSessionIds =
+    recentSessionIds.length > 0
+      ? new Set(
+          (
+            await agencyScoped(prisma.trackingEvent).findMany({
+              where: {
+                hotelClientId: hotel.id,
+                eventType: "conversion",
+                sessionId: { in: recentSessionIds },
+              },
+              select: { sessionId: true },
+            })
+          ).map((r) => r.sessionId),
+        )
+      : new Set<string>();
+
   return (
     <div className="space-y-6">
       {/* Header strip — hotel + last sync (left), period selector + actions (right) */}
@@ -1611,6 +1648,56 @@ export default async function HotelDashboardPage({
             </p>
             <ConversionJourneys journeys={journeys} />
           </div>
+        </SectionCard>
+      )}
+
+      {/* Recent Visitor Journeys (snippet v2) — compact preview, full view at /journeys */}
+      {!pixelMode && (
+        <SectionCard
+          title="Recent Visitor Journeys"
+          subtitle="The page-by-page path each visitor took, with time on page and drop-off."
+        >
+          {recentSessions.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              No visitor journeys yet. They appear once this hotel installs the v2
+              tracking snippet and visitors browse the site.
+            </p>
+          ) : (
+            <>
+              <ul className="divide-y divide-line">
+                {recentSessions.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <code className="text-xs text-ink-tertiary" title={s.visitorId}>
+                        {s.visitorId.length > 14 ? `${s.visitorId.slice(0, 14)}…` : s.visitorId}
+                      </code>
+                      {convertedSessionIds.has(s.id) && (
+                        <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
+                          Converted
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-ink-secondary tabular-nums">
+                      <span className="truncate text-ink-tertiary" title={`${s.landingPath} → ${s.exitPath ?? "—"}`}>
+                        {s.landingPath}
+                        {s.exitPath && s.exitPath !== s.landingPath ? ` → ${s.exitPath}` : ""}
+                      </span>
+                      <span>{s.pageViewCount} pg</span>
+                      <span>{formatDuration(s.totalTimeMs)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t border-line px-4 py-3 text-sm">
+                <Link
+                  href={`/agency/hotel/${hotel.id}/journeys`}
+                  className="font-medium text-brand hover:underline"
+                >
+                  View all journeys →
+                </Link>
+              </div>
+            </>
+          )}
         </SectionCard>
       )}
 

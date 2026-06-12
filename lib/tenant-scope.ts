@@ -149,6 +149,8 @@ export const MULTI_TENANT_MODELS = [
   "contentPiece",
   "trackingEvent",
   "touchpoint",
+  "session",
+  "pageView",
   "metaToken",
   "adSnapshot",
   "couponRedemption",
