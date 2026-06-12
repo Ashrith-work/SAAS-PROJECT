@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { saltedHash } from "@/lib/pii";
 import {
   isFunnelStage,
   parseFunnelRules,
@@ -9,26 +10,37 @@ import {
   type FunnelStage,
 } from "@/lib/funnel";
 
-// Public ingestion endpoint for the tracking snippet. Handles five event types:
+// Public ingestion endpoint for the tracking snippet. Handles these event types:
 //
-//   visit         — legacy v1 snippet page visit → one TrackingEvent (back-compat).
-//   pageview      — v2 page load → a TrackingEvent visit (so existing dashboards
-//                   keep working) PLUS Session/PageView journey rows. v2.1 also
-//                   carries funnelStage (else the server URL-matches it).
-//   page_exit     — v2 page leave → closes the open PageView with time-on-page.
-//   stage_reached — v2.1 funnel: the session reached a new highest funnel stage.
-//   conversion    — booking → TrackingEvent conversion + multi-touch Touchpoints.
+//   visit              — legacy v1 page visit → one TrackingEvent (back-compat).
+//   pageview           — v2 page load → a TrackingEvent visit (so existing
+//                        dashboards keep working) PLUS Session/PageView journey
+//                        rows. v2.1 also carries funnelStage (else server matches).
+//   page_exit          — v2 page leave → closes the open PageView with time.
+//   stage_reached      — v2.1 funnel: session reached a new highest funnel stage.
+//   conversion         — booking → TrackingEvent conversion + multi-touch rows.
+//   click              — v2.2: a [data-ht-click] element was clicked → ClickEvent.
+//   form_field_focused — v2.2: a [data-ht-form-field] field was focused.
+//   form_field_blurred — v2.2: a tagged field was blurred (hasValue only).
+//   identify           — v2.2: visitor self-identified → upsert VisitorIdentity
+//                        with the CLIENT-hashed email/phone (raw never reaches us).
 //
 // Events arrive via navigator.sendBeacon as text/plain (no CORS preflight). We
 // resolve the public siteId to a hotel (+ agencyId) and store ONLY UTM + page
-// data — never personal data. Fast + resilient: validates input, never throws.
+// data and (for identify) a SALTED hash of already-client-hashed PII — never raw
+// personal data. Fast + resilient: validates input, never throws.
 
 // Per-(siteId + IP) cap for visit/conversion. Generous for a real user, tight
 // enough to stop a flood.
 const RATE_LIMIT_PER_MIN = 60;
-// Journey events (pageview/page_exit) fire on every page, so they get a higher,
-// per-visitor cap (Part 2: 200/min per visitorId).
+// Journey events (pageview/page_exit/click/form/identify) fire on every page, so
+// they get a higher, per-visitor cap (Part 2: 200/min per visitorId).
 const JOURNEY_RATE_LIMIT_PER_MIN = 200;
+// Fine per-SESSION caps (Part 3): beyond these, click/form events drop silently.
+// Enforced over the session-idle window so one session's events count together.
+const CLICK_CAP_PER_SESSION = 50;
+const FORM_CAP_PER_SESSION = 100;
+const SESSION_CAP_WINDOW_MS = 30 * 60_000;
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -118,23 +130,33 @@ export async function POST(request: Request) {
 
   const siteId = str(body.siteId);
   const rawType = body.type;
-  const type =
-    rawType === "conversion"
-      ? "conversion"
-      : rawType === "pageview"
-        ? "pageview"
-        : rawType === "page_exit"
-          ? "page_exit"
-          : rawType === "stage_reached"
-            ? "stage_reached"
-            : rawType === "visit"
-              ? "visit"
-              : null;
+  const KNOWN_TYPES = [
+    "conversion",
+    "pageview",
+    "page_exit",
+    "stage_reached",
+    "visit",
+    "click",
+    "form_field_focused",
+    "form_field_blurred",
+    "identify",
+  ] as const;
+  const type = (KNOWN_TYPES as readonly string[]).includes(rawType as string)
+    ? (rawType as (typeof KNOWN_TYPES)[number])
+    : null;
   if (!siteId || !type) return reply(400, { error: "Missing siteId or type" });
 
   const ip = clientIpFromHeaders(request.headers);
   const visitorId = str(body.visitorId);
-  const isJourney = type === "pageview" || type === "page_exit" || type === "stage_reached";
+  // Journey-class events (fire per page/interaction) → per-visitor/min cap.
+  const isJourney =
+    type === "pageview" ||
+    type === "page_exit" ||
+    type === "stage_reached" ||
+    type === "click" ||
+    type === "form_field_focused" ||
+    type === "form_field_blurred" ||
+    type === "identify";
 
   // Rate limit — per-visitor for journey events, per-(site+IP) for the rest.
   const rl = isJourney
@@ -171,6 +193,18 @@ export async function POST(request: Request) {
       // Reject an explicitly-malformed stage (Part 3); ignore other bad fields.
       if (!isFunnelStage(body.stage)) return reply(400, { error: "Invalid stage" });
       await handleStageReached(hotel, body, visitorId);
+      return reply(204);
+    }
+    if (type === "click") {
+      await handleClick(hotel, body, visitorId);
+      return reply(204);
+    }
+    if (type === "form_field_focused" || type === "form_field_blurred") {
+      await handleFormField(hotel, type, body, visitorId);
+      return reply(204);
+    }
+    if (type === "identify") {
+      await handleIdentify(hotel, body, visitorId);
       return reply(204);
     }
     await handleVisitLike(hotel, type, body, visitorId);
@@ -246,6 +280,155 @@ async function handleStageReached(
       at: ts,
     }),
   );
+}
+
+// Cap a (possibly null) string to n chars. str() already stripped control chars.
+function cap(s: string | null, n: number): string | null {
+  return s == null ? null : s.slice(0, n);
+}
+
+// The session must exist AND belong to THIS hotel, else we don't write the
+// interaction (also satisfies the ClickEvent/FormFieldEvent FK to Session).
+async function sessionOwnedBy(
+  tx: TxClient,
+  sessionId: string,
+  hotelClientId: string,
+): Promise<boolean> {
+  const s = await tx.session.findUnique({
+    where: { id: sessionId },
+    select: { hotelClientId: true },
+  });
+  return !!s && s.hotelClientId === hotelClientId;
+}
+
+// ── click: a [data-ht-click] element was clicked → one ClickEvent ─────────────
+async function handleClick(
+  hotel: Hotel,
+  body: Record<string, unknown>,
+  visitorId: string | null,
+) {
+  const sessionId = body.sessionId;
+  const pagePath = pagePathOf(body.pagePath);
+  const clickTarget = cap(str(body.clickTarget), 100);
+  if (!isSessionId(sessionId) || !isVisitorId(visitorId) || !pagePath || !clickTarget) return;
+  const ts = recentTs(body.timestamp) ?? new Date();
+
+  // Per-session cap — drop silently beyond CLICK_CAP_PER_SESSION (Part 3).
+  if (!checkRateLimit(`click:${sessionId}`, { limit: CLICK_CAP_PER_SESSION, windowMs: SESSION_CAP_WINDOW_MS }).ok) return;
+
+  await prisma.$transaction(async (tx) => {
+    if (!(await sessionOwnedBy(tx, sessionId, hotel.id))) return;
+    await tx.clickEvent.create({
+      data: {
+        sessionId,
+        visitorId,
+        hotelClientId: hotel.id,
+        agencyId: hotel.agencyId,
+        pagePath,
+        clickTarget,
+        elementTag: cap(str(body.elementTag), 32),
+        elementText: cap(str(body.elementText), 100), // PII minimization
+        occurredAt: ts,
+      },
+    });
+  });
+}
+
+// ── form_field_focused / form_field_blurred → one FormFieldEvent ──────────────
+async function handleFormField(
+  hotel: Hotel,
+  type: "form_field_focused" | "form_field_blurred",
+  body: Record<string, unknown>,
+  visitorId: string | null,
+) {
+  const sessionId = body.sessionId;
+  const pagePath = pagePathOf(body.pagePath);
+  const fieldName = cap(str(body.fieldName), 100);
+  if (!isSessionId(sessionId) || !isVisitorId(visitorId) || !pagePath || !fieldName) return;
+  const ts = recentTs(body.timestamp) ?? new Date();
+  const action = type === "form_field_focused" ? "focused" : "blurred";
+  // hasValue only carries meaning on blur; never the value itself.
+  const hasValue =
+    action === "blurred" && typeof body.hasValue === "boolean" ? body.hasValue : null;
+
+  if (!checkRateLimit(`form:${sessionId}`, { limit: FORM_CAP_PER_SESSION, windowMs: SESSION_CAP_WINDOW_MS }).ok) return;
+
+  await prisma.$transaction(async (tx) => {
+    if (!(await sessionOwnedBy(tx, sessionId, hotel.id))) return;
+    await tx.formFieldEvent.create({
+      data: {
+        sessionId,
+        visitorId,
+        hotelClientId: hotel.id,
+        agencyId: hotel.agencyId,
+        pagePath,
+        fieldName,
+        action,
+        hasValue,
+        occurredAt: ts,
+      },
+    });
+  });
+}
+
+// ── identify: visitor self-identified → upsert VisitorIdentity ────────────────
+// emailHash/phoneHash arrive ALREADY client-side SHA-256-hashed; we apply the
+// salted server layer (lib/pii) and store that. Raw email/phone are never read,
+// so they can never reach the DB. name/customerId are stored as-is.
+async function handleIdentify(
+  hotel: Hotel,
+  body: Record<string, unknown>,
+  visitorId: string | null,
+) {
+  if (!isVisitorId(visitorId)) return;
+  const sessionId = isSessionId(body.sessionId) ? (body.sessionId as string) : null;
+  const ts = recentTs(body.timestamp) ?? new Date();
+
+  const emailHash = saltedHash(typeof body.emailHash === "string" ? body.emailHash : null);
+  const phoneHash = saltedHash(typeof body.phoneHash === "string" ? body.phoneHash : null);
+  const name = cap(str(body.name), 200);
+  const customerId = cap(str(body.customerId), 200);
+
+  // Nothing actually identifying → ignore.
+  if (!emailHash && !phoneHash && !name && !customerId) return;
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.visitorIdentity.findUnique({
+      where: { visitorId },
+      select: { hotelClientId: true },
+    });
+    // Cross-tenant guard: a visitorId already owned by another hotel is left alone.
+    if (existing && existing.hotelClientId !== hotel.id) return;
+
+    if (existing) {
+      await tx.visitorIdentity.update({
+        where: { visitorId },
+        data: {
+          // Only overwrite a field when this event actually provides it.
+          ...(name ? { name } : {}),
+          ...(emailHash ? { emailHash } : {}),
+          ...(phoneHash ? { phoneHash } : {}),
+          ...(customerId ? { customerId } : {}),
+          identifiedAt: ts,
+          ...(sessionId ? { identifiedInSessionId: sessionId } : {}),
+        },
+      });
+    } else {
+      await tx.visitorIdentity.create({
+        data: {
+          visitorId,
+          hotelClientId: hotel.id,
+          agencyId: hotel.agencyId,
+          name,
+          emailHash,
+          phoneHash,
+          customerId,
+          identifiedAt: ts,
+          identifiedInSessionId: sessionId,
+        },
+      });
+    }
+  });
 }
 
 // ── page_exit: close the open PageView for this session + hotel ───────────────

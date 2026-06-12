@@ -23,7 +23,7 @@
     var base = src.origin;
     var DEBUG = src.searchParams.get("debug") === "1";
 
-    var VERSION = "2.1.0"; // v2.1 adds funnel stages; v2.0 = journeys; v1 = visit.
+    var VERSION = "2.2.0"; // v2.2 adds click/form/identify; v2.1 = funnel stages; v2.0 = journeys; v1 = visit.
     var converted = false, observer = null, cfg = null, pending = false;
     var UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
     // Funnel stages in order; rank = index + 1 (awareness=1 … booking=4).
@@ -90,6 +90,9 @@
       if (!cur || !(last > 0) || (Date.now() - last) > IDLE_MS) {
         cur = newSid();
         ssSet("ht_max_stage", "0"); // new session → reset funnel progress
+        ssSet("ht_click_n", "0");   // new session → reset click/form client caps
+        ssSet("ht_form_n", "0");
+        ssSet("ht_identified", ""); // new session → re-link known identity once
       }
       sid = cur; ssSet("ht_session_id", sid); touchSession();
     }
@@ -450,6 +453,176 @@
       }
     }
 
+    // ── Click / form-field / identity tracking (snippet v2.2) ──
+    // Three additive behaviors. Click + form events use a light per-session client
+    // cap (sessionStorage) that mirrors the server limits so a runaway page can't
+    // flood the beacon; the server enforces the authoritative cap regardless.
+    function underClientCap(key, max) {
+      try {
+        var n = parseInt(ssGet(key) || "0", 10) + 1;
+        if (n > max) return false;
+        ssSet(key, String(n));
+        return true;
+      } catch (e) { return true; }
+    }
+
+    // SHA-256 hex via Web Crypto (async). Used to hash PII on the client so the
+    // RAW email/phone NEVER leaves the browser. Calls back with null when the
+    // platform lacks crypto.subtle (e.g. an insecure-context http: page).
+    function sha256Hex(strv, cb) {
+      try {
+        if (window.crypto && crypto.subtle && window.TextEncoder) {
+          var data = new TextEncoder().encode(strv);
+          crypto.subtle.digest("SHA-256", data).then(function (buf) {
+            var a = new Uint8Array(buf), hex = "";
+            for (var i = 0; i < a.length; i++) hex += ("0" + a[i].toString(16)).slice(-2);
+            cb(hex);
+          }, function () { cb(null); });
+        } else { cb(null); }
+      } catch (e) { cb(null); }
+    }
+
+    // Click: walk up from the clicked node (capped) for the nearest [data-ht-click].
+    function closestClickTarget(node) {
+      for (var i = 0; i < 25 && node && node.getAttribute; i++) {
+        var v = node.getAttribute("data-ht-click");
+        if (v != null && v !== "") return { el: node, target: clip(v, 100) };
+        node = node.parentElement;
+      }
+      return null;
+    }
+    function onBodyClick(e) {
+      try {
+        var hit = closestClickTarget(e.target);
+        if (!hit) return;
+        if (!underClientCap("ht_click_n", 50)) return;
+        ensureSession();
+        var raw = (hit.el.textContent || "").replace(/\s+/g, " ").trim();
+        var payload = {
+          siteId: siteId, type: "click", v: VERSION,
+          sessionId: sid, visitorId: vid, pagePath: location.pathname,
+          clickTarget: hit.target,
+          elementTag: hit.el.tagName || null,
+          elementText: raw ? clip(raw, 100) : null, // truncate — PII minimization
+          timestamp: Date.now()
+        };
+        post(JSON.stringify(payload));
+        log("click", payload);
+      } catch (e) {}
+    }
+
+    // Form fields: only INPUT/TEXTAREA/SELECT tagged with [data-ht-form-field].
+    function fieldNameOf(node) {
+      try {
+        if (!node || !node.getAttribute) return null;
+        var tag = node.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return null;
+        var v = node.getAttribute("data-ht-form-field");
+        return (v != null && v !== "") ? clip(v, 100) : null;
+      } catch (e) { return null; }
+    }
+    function sendForm(action, name, hasValue) {
+      try {
+        if (!underClientCap("ht_form_n", 100)) return;
+        ensureSession();
+        var payload = {
+          siteId: siteId, type: "form_field_" + action, v: VERSION,
+          sessionId: sid, visitorId: vid, pagePath: location.pathname,
+          fieldName: name, hasValue: hasValue, // value itself is NEVER captured
+          timestamp: Date.now()
+        };
+        post(JSON.stringify(payload));
+        log("form_field_" + action, payload);
+      } catch (e) {}
+    }
+    function onFieldFocus(e) {
+      var fn = fieldNameOf(e.target);
+      if (fn) sendForm("focused", fn, null);
+    }
+    function onFieldBlur(e) {
+      var el = e.target, fn = fieldNameOf(el);
+      if (!fn) return;
+      var has = false;
+      try { has = (el.value != null ? String(el.value) : "").trim().length > 0; } catch (e2) {}
+      sendForm("blurred", fn, has); // record ONLY whether it had content
+    }
+
+    // Delegated listeners on document.body (capture phase, so a stopPropagation()
+    // on the page can't blind us and focus/blur — which don't bubble — are seen).
+    function attachInteractionListeners() {
+      var root = document.body || document;
+      try {
+        root.addEventListener("click", onBodyClick, true);
+        root.addEventListener("focus", onFieldFocus, true);
+        root.addEventListener("blur", onFieldBlur, true);
+      } catch (e) {}
+    }
+    if (document.body) attachInteractionListeners();
+    else addEventListener("DOMContentLoaded", attachInteractionListeners);
+
+    // Visitor identification. window.htIdentify({ name, email, phone, customerId }).
+    // Email + phone are SHA-256-hashed in the browser before sending — the raw
+    // value never reaches our backend. Name + customerId are sent as-is (names are
+    // less sensitive). The (already-hashed) identity is stored in the
+    // 'ht_visitor_identity' cookie so later sessions can be re-linked to it.
+    var IDKEY = "ht_visitor_identity";
+    function sendIdentify(idt) {
+      ensureSession();
+      var payload = {
+        siteId: siteId, type: "identify", v: VERSION,
+        sessionId: sid, visitorId: vid,
+        name: idt.name || null, customerId: idt.customerId || null,
+        emailHash: idt.emailHash || null, phoneHash: idt.phoneHash || null,
+        timestamp: Date.now()
+      };
+      post(JSON.stringify(payload));
+      log("identify", payload);
+    }
+    function storeIdentity(idt) {
+      // Persist ONLY name + hashes + customerId — never raw email/phone.
+      try {
+        setCookie(IDKEY, JSON.stringify({
+          name: idt.name || null, emailHash: idt.emailHash || null,
+          phoneHash: idt.phoneHash || null, customerId: idt.customerId || null
+        }), 365);
+      } catch (e) {}
+    }
+    window.htIdentify = function (info) {
+      try {
+        info = info || {};
+        var idt = {
+          name: info.name ? clip(String(info.name), 200) : null,
+          customerId: info.customerId ? clip(String(info.customerId), 200) : null,
+          emailHash: null, phoneHash: null
+        };
+        var emailRaw = info.email ? String(info.email).trim().toLowerCase() : "";
+        var phoneRaw = info.phone ? String(info.phone).replace(/[^0-9]/g, "") : "";
+        var pending = 0, done = false;
+        function finish() {
+          if (done || pending > 0) return;
+          done = true;
+          storeIdentity(idt);
+          sendIdentify(idt);
+          ssSet("ht_identified", sid);
+        }
+        if (emailRaw) { pending++; sha256Hex(emailRaw, function (h) { idt.emailHash = h; pending--; finish(); }); }
+        if (phoneRaw) { pending++; sha256Hex(phoneRaw, function (h) { idt.phoneHash = h; pending--; finish(); }); }
+        finish(); // fires synchronously when there was nothing to hash
+      } catch (e) {}
+    };
+    // Returning identified visitor: re-link each NEW session once (so the new
+    // session's journey is attributed to the known visitor). No re-hashing needed.
+    (function reidentify() {
+      try {
+        if (ssGet("ht_identified") === sid) return;
+        var stored = parse(getCookie(IDKEY) || "");
+        if (stored && (stored.name || stored.emailHash || stored.phoneHash || stored.customerId)) {
+          sendIdentify(stored);
+          ssSet("ht_identified", sid);
+        }
+      } catch (e) {}
+    })();
+
     // Debug aid: expose the conversion-timing internals so they can be unit-
     // tested and inspected from the console. Gated on debug mode — never exposed
     // on a normal (non-debug) production page load.
@@ -469,6 +642,14 @@
           // Funnel internals (v2.1).
           detectStage: detectStage,
           maybeStageReached: maybeStageReached,
+          // Click / form / identity internals (v2.2).
+          onBodyClick: onBodyClick,
+          onFieldFocus: onFieldFocus,
+          onFieldBlur: onFieldBlur,
+          closestClickTarget: closestClickTarget,
+          fieldNameOf: fieldNameOf,
+          sha256Hex: sha256Hex,
+          htIdentify: window.htIdentify,
           VERSION: VERSION
         };
       } catch (e) {}

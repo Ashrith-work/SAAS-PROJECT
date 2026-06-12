@@ -58,10 +58,21 @@ and the top bottleneck pages) lives on the **Visitor Journeys** page, with a
 compact funnel summary on the hotel dashboard. Existing Phase 1 PageViews are
 tagged retroactively by `npm run backfill:funnel`.
 
+## Click, form & identity tracking (Phase 3, snippet v2.2.0)
+
+Phase 3 adds **click tracking** (`data-ht-click`), **form-field tracking**
+(`data-ht-form-field`, captures only *whether* a field had content — never the
+value), and **visitor identification** (`window.htIdentify({ name, email, phone,
+customerId })`, with email/phone hashed in the browser). These power the **Clicks
+Analytics**, **Form Abandonment**, and **Customer Journey Lookup** sections on the
+Visitor Journeys page, and surface the visitor's name + a Returning badge on
+session cards. See **[JOURNEY_TRACKING.md](../JOURNEY_TRACKING.md)** for the full
+tagging guide, privacy details, and best practices.
+
 ## Other data attributes
 
 Booking-value capture still supports the optional `data-ht-value` attribute from
-v1. Phase 3 may extend `data-ht-stage` with custom sub-stages; not used yet.
+v1.
 
 ## Privacy
 

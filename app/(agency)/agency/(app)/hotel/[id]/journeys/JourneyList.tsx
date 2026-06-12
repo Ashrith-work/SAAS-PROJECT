@@ -10,6 +10,11 @@ import { formatDuration } from "@/lib/format";
 export type JourneySession = {
   id: string;
   visitorId: string;
+  /** Name from VisitorIdentity (snippet v2.2 htIdentify), when the visitor
+   *  self-identified via a form. Null for anonymous visitors. */
+  identityName: string | null;
+  /** True when this visitorId has more than one session with the hotel. */
+  returning: boolean;
   startedAtLabel: string; // relative, e.g. "2 hours ago"
   startedAtISO: string; // absolute (tooltip)
   durationMs: number;
@@ -71,14 +76,27 @@ export function JourneyList({ sessions }: { sessions: JourneySession[] }) {
             className="rounded-xl border border-line bg-card p-4 text-left transition hover:border-line-strong hover:bg-elevated"
           >
             <div className="flex items-center justify-between gap-2">
-              <code className="text-xs text-ink-tertiary" title={s.visitorId}>
-                {shortVisitor(s.visitorId)}
-              </code>
-              {s.converted && (
-                <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
-                  Converted
+              {s.identityName ? (
+                <span className="truncate text-sm font-semibold text-ink" title={s.visitorId}>
+                  {s.identityName}
                 </span>
+              ) : (
+                <code className="text-xs text-ink-tertiary" title={s.visitorId}>
+                  {shortVisitor(s.visitorId)}
+                </code>
               )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {s.returning && (
+                  <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold text-brand">
+                    Returning
+                  </span>
+                )}
+                {s.converted && (
+                  <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
+                    Converted
+                  </span>
+                )}
+              </div>
             </div>
             <p className="mt-1 text-xs text-ink-tertiary" title={new Date(s.startedAtISO).toLocaleString()}>
               {s.startedAtLabel}
@@ -128,7 +146,12 @@ export function JourneyList({ sessions }: { sessions: JourneySession[] }) {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-ink">Visitor journey</h3>
+                <h3 className="text-lg font-semibold text-ink">
+                  {open.identityName ?? "Visitor journey"}
+                  {open.returning && (
+                    <span className="ml-2 align-middle text-xs font-semibold text-brand">Returning</span>
+                  )}
+                </h3>
                 <p className="mt-0.5 text-xs text-ink-tertiary">
                   <code title={open.visitorId}>{shortVisitor(open.visitorId)}</code> ·{" "}
                   {open.pageViewCount} page{open.pageViewCount === 1 ? "" : "s"} ·{" "}

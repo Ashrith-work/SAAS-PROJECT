@@ -19,6 +19,7 @@ const selectCls =
 export function JourneyFilters({
   rangeKey,
   convertedOnly,
+  identifiedOnly,
   utmSource,
   landing,
   utmOptions,
@@ -26,6 +27,7 @@ export function JourneyFilters({
 }: {
   rangeKey: string;
   convertedOnly: boolean;
+  identifiedOnly: boolean;
   utmSource: string | null;
   landing: string | null;
   utmOptions: string[];
@@ -75,6 +77,17 @@ export function JourneyFilters({
           className="h-4 w-4 rounded border-line-strong"
         />
         Converted only
+      </label>
+
+      {/* Identified visitors only */}
+      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink-secondary">
+        <input
+          type="checkbox"
+          checked={identifiedOnly}
+          onChange={(e) => update({ identified: e.target.checked ? "1" : null })}
+          className="h-4 w-4 rounded border-line-strong"
+        />
+        Identified only
       </label>
 
       {/* UTM source */}

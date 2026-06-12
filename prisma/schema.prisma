@@ -253,6 +253,7 @@ model HotelClient {
   budgetAlerts         BudgetAlert[]
   ga4Connection        Ga4Connection?
   ga4Snapshots         Ga4Snapshot[]
+  visitorIdentities    VisitorIdentity[]
 
   @@index([agencyId])
 }
@@ -402,6 +403,8 @@ model Session {
   hotelClient   HotelClient    @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
   pageViews     PageView[]
   stageReached  StageReached[]
+  clickEvents     ClickEvent[]
+  formFieldEvents FormFieldEvent[]
 
   @@index([hotelClientId])
   @@index([agencyId])
@@ -460,6 +463,82 @@ model StageReached {
   @@index([agencyId])
   @@index([reachedAt])
   @@index([stage])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Click / form-field / identity tracking (snippet v2.2) — Phase 3.
+//
+// ClickEvent      — one row per click on a [data-ht-click]-tagged element.
+// FormFieldEvent  — focus/blur on a [data-ht-form-field]-tagged input; hasValue
+//                   records ONLY whether the field had content (never the value),
+//                   so form abandonment is measurable without capturing PII.
+// VisitorIdentity — links an anonymous visitorId to a name / hashed email+phone /
+//                   external customerId, set when a visitor self-identifies via a
+//                   form (window.htIdentify). Email & phone are stored ONLY as a
+//                   salted SHA-256 (the server never sees the raw value); names are
+//                   stored as-is (less sensitive). One row per visitor (@@unique).
+//
+// All three are multi-tenant: agencyId + RLS, like every other table. ClickEvent
+// and FormFieldEvent cascade-delete with their Session (so the 90-day journey
+// retention cron sweeps them too); VisitorIdentity persists by design.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ClickEvent {
+  id            String   @id @default(cuid())
+  sessionId     String
+  visitorId     String
+  hotelClientId String
+  agencyId      String
+  pagePath      String
+  clickTarget   String // data-ht-click value, e.g. "book-now-button"
+  elementTag    String? // BUTTON / A / DIV …
+  elementText   String? // clicked text, truncated to 100 chars (PII minimization)
+  occurredAt    DateTime
+  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([hotelClientId])
+  @@index([sessionId])
+  @@index([clickTarget])
+  @@index([occurredAt])
+  @@index([agencyId])
+}
+
+model FormFieldEvent {
+  id            String   @id @default(cuid())
+  sessionId     String
+  visitorId     String
+  hotelClientId String
+  agencyId      String
+  pagePath      String
+  fieldName     String // data-ht-form-field value
+  action        String // 'focused' | 'blurred'
+  hasValue      Boolean? // blurred events: did the field have content?
+  occurredAt    DateTime
+  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([hotelClientId])
+  @@index([sessionId])
+  @@index([fieldName])
+  @@index([agencyId])
+}
+
+model VisitorIdentity {
+  id                    String   @id @default(cuid())
+  visitorId             String   @unique
+  hotelClientId         String
+  agencyId              String
+  name                  String?
+  emailHash             String? // salted SHA-256 — never the raw email
+  phoneHash             String? // salted SHA-256 — never the raw phone
+  customerId            String? // optional external id
+  identifiedAt          DateTime
+  identifiedInSessionId String?
+  hotelClient           HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([emailHash])
+  @@index([phoneHash])
+  @@index([hotelClientId])
+  @@index([agencyId])
 }
 
 // How a MetaToken was obtained. Both produce the same end state (an encrypted,

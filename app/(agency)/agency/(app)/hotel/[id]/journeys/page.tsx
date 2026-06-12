@@ -8,6 +8,10 @@ import { computeFunnel, stageRank, STAGES, type FunnelStage } from "@/lib/funnel
 import { JourneyFilters } from "./JourneyFilters";
 import { JourneyList, type JourneySession } from "./JourneyList";
 import { FunnelAnalysis, type FunnelView } from "./FunnelAnalysis";
+import { ClicksAnalytics } from "./ClicksAnalytics";
+import { FormAbandonment } from "./FormAbandonment";
+import { CustomerJourneyLookup } from "./CustomerJourneyLookup";
+import { computeClickAnalytics, computeFormAbandonment } from "@/lib/interaction-analytics";
 
 // Per-hotel "Recent Visitor Journeys" — the full page-by-page journey for each
 // session (snippet v2 Session/PageView). Every read is agency-scoped (auto
@@ -48,10 +52,24 @@ export default async function HotelJourneysPage({
   // Default range for journeys is the last 7 days.
   const range = resolveRange({ range: one(sp.range) ?? "7", from: one(sp.from), to: one(sp.to) });
   const convertedOnly = one(sp.converted) === "1";
+  const identifiedOnly = one(sp.identified) === "1";
   const utmSource = one(sp.utmSource) || null;
   const landing = one(sp.landing) || null;
   const pageNum = Math.max(1, Number(one(sp.page)) || 1);
   const now = new Date();
+
+  // VisitorIdentity map (Part 6) — name per visitorId + the set of identified
+  // visitors (drives the name badge and the "Identified only" filter). Scoped.
+  const identityRows = await agencyScoped(prisma.visitorIdentity).findMany({
+    where: { hotelClientId: hotel.id },
+    select: { visitorId: true, name: true },
+  });
+  const nameByVisitor = new Map<string, string | null>();
+  const identifiedVisitorIds: string[] = [];
+  for (const r of identityRows) {
+    nameByVisitor.set(r.visitorId, r.name);
+    identifiedVisitorIds.push(r.visitorId);
+  }
 
   // Conversion session ids in range (for the "Converted" badge + the filter).
   const convRows = await agencyScoped(prisma.trackingEvent).findMany({
@@ -71,6 +89,7 @@ export default async function HotelJourneysPage({
     ...(utmSource ? { utmSource } : {}),
     ...(landing ? { landingPath: landing } : {}),
     ...(convertedOnly ? { id: { in: [...convertedIds] } } : {}),
+    ...(identifiedOnly ? { visitorId: { in: identifiedVisitorIds } } : {}),
   };
 
   const [total, sessions, utmGroups, landingGroups] = await Promise.all([
@@ -136,9 +155,24 @@ export default async function HotelJourneysPage({
     pagesBySession.set(p.sessionId, list);
   }
 
+  // Returning-visitor badge (Part 6): a visitorId with >1 session at this hotel
+  // (all-time, scoped). Computed only for the visible page's visitors.
+  const visibleVisitorIds = [...new Set(sessions.map((s) => s.visitorId))];
+  const sessionCountByVisitor = new Map<string, number>();
+  if (visibleVisitorIds.length > 0) {
+    const counts = await agencyScoped(prisma.session).groupBy({
+      by: ["visitorId"],
+      where: { hotelClientId: hotel.id, visitorId: { in: visibleVisitorIds } },
+      _count: { _all: true },
+    });
+    for (const c of counts) sessionCountByVisitor.set(c.visitorId, c._count._all);
+  }
+
   const items: JourneySession[] = sessions.map((s) => ({
     id: s.id,
     visitorId: s.visitorId,
+    identityName: nameByVisitor.get(s.visitorId) ?? null,
+    returning: (sessionCountByVisitor.get(s.visitorId) ?? 0) > 1,
     startedAtLabel: relativeAgo(s.startedAt, now),
     startedAtISO: s.startedAt.toISOString(),
     durationMs: s.totalTimeMs,
@@ -151,6 +185,21 @@ export default async function HotelJourneysPage({
     converted: convertedIds.has(s.id),
     pages: pagesBySession.get(s.id) ?? [],
   }));
+
+  // ── Clicks Analytics (Part 4) + Form Abandonment (Part 5) — range-scoped for
+  //    this hotel. Conversion rate per click target reuses convertedIds. ──
+  const [clickEventRows, formEventRows] = await Promise.all([
+    agencyScoped(prisma.clickEvent).findMany({
+      where: { hotelClientId: hotel.id, occurredAt: { gte: range.since, lte: range.until } },
+      select: { clickTarget: true, sessionId: true },
+    }),
+    agencyScoped(prisma.formFieldEvent).findMany({
+      where: { hotelClientId: hotel.id, occurredAt: { gte: range.since, lte: range.until } },
+      select: { fieldName: true, sessionId: true, action: true, hasValue: true },
+    }),
+  ]);
+  const clickAnalytics = computeClickAnalytics(clickEventRows, convertedIds);
+  const formAbandonment = computeFormAbandonment(formEventRows);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const utmOptions = utmGroups.map((g) => g.utmSource).filter((v): v is string => !!v).sort();
@@ -263,6 +312,7 @@ export default async function HotelJourneysPage({
     baseParams.set("range", range.key);
   }
   if (convertedOnly) baseParams.set("converted", "1");
+  if (identifiedOnly) baseParams.set("identified", "1");
   if (utmSource) baseParams.set("utmSource", utmSource);
   if (landing) baseParams.set("landing", landing);
   const pageHref = (p: number) => {
@@ -294,6 +344,7 @@ export default async function HotelJourneysPage({
       <JourneyFilters
         rangeKey={range.key}
         convertedOnly={convertedOnly}
+        identifiedOnly={identifiedOnly}
         utmSource={utmSource}
         landing={landing}
         utmOptions={utmOptions}
@@ -314,7 +365,47 @@ export default async function HotelJourneysPage({
         </div>
       </section>
 
+      {/* Clicks Analytics (Phase 3, Part 4) */}
+      <section className="overflow-hidden rounded-xl border border-line">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="font-medium">Clicks Analytics</h2>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
+            Which tagged buttons &amp; links visitors click, and how often those clicks lead
+            to a booking.
+          </p>
+        </div>
+        <ClicksAnalytics rows={clickAnalytics} />
+      </section>
+
+      {/* Form Abandonment (Phase 3, Part 5) */}
+      <section className="overflow-hidden rounded-xl border border-line">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="font-medium">Form Abandonment</h2>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
+            Where visitors drop off inside your booking form — which fields they enter and
+            which they leave empty.
+          </p>
+        </div>
+        <div className="p-4">
+          <FormAbandonment rows={formAbandonment} />
+        </div>
+      </section>
+
       <JourneyList sessions={items} />
+
+      {/* Customer Journey Lookup (Phase 3, Part 6) — the "VIP customer view". */}
+      <section className="overflow-hidden rounded-xl border border-line">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="font-medium">Customer Journey Lookup</h2>
+          <p className="mt-0.5 text-sm text-ink-tertiary">
+            Look up a specific visitor by name, email, or phone to see their complete history
+            with the hotel — every visit, page, click, and form interaction.
+          </p>
+        </div>
+        <div className="p-4">
+          <CustomerJourneyLookup hotelId={hotel.id} />
+        </div>
+      </section>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
