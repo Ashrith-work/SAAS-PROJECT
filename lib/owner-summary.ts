@@ -1,0 +1,222 @@
+import "server-only";
+
+import { prisma } from "@/lib/prisma";
+import { agencyScoped } from "@/lib/tenant";
+import { aggregateRevenueBySource, type ConversionRow } from "@/lib/revenue-by-source";
+import { calculateSavings, DEFAULT_OTA_RATE } from "@/lib/savings";
+import { formatCurrency } from "@/lib/format";
+import { templateFor, renderTemplate, type Pattern, type Period } from "@/lib/summary-templates";
+
+// Owner Summary (Part 2) — a 3–4 line plain-English read of a hotel's recent
+// performance, computed from existing TrackingEvent / InfluencerRedemption /
+// AdSnapshot data. Read-only + multi-tenant (agency-scoped). Honest tone driven
+// by the `pattern` (no-data / strong / slight-decline / significant-decline).
+
+export type { Period, Pattern };
+
+export const PERIOD_LABEL: Record<Period, string> = {
+  "1d": "yesterday",
+  "7d": "last 7 days",
+  "30d": "last 30 days",
+};
+
+export type SummaryMetrics = {
+  revenue: number;
+  bookings: number;
+  avgBookingValue: number;
+  revenueChangePct: number | null;
+  bookingsChangePct: number | null;
+  avgValueChangePct: number | null;
+  topSource: { name: string; revenue: number; bookings: number } | null;
+  topInfluencer: { name: string; revenue: number; bookings: number } | null;
+  adSpend: number;
+  roas: number | null;
+  savings: number;
+};
+
+export type SummaryResult = {
+  hotelId: string;
+  period: Period;
+  periodLabel: string;
+  summary: string;
+  metrics: SummaryMetrics;
+  pattern: Pattern;
+  generatedAt: string;
+};
+
+const IST_MS = 5.5 * 3600 * 1000; // India is the audience → IST date boundaries.
+const PERIOD_DAYS: Record<Period, number> = { "1d": 1, "7d": 7, "30d": 30 };
+
+const SOURCE_LABEL: Record<string, string> = {
+  instagram: "Instagram", facebook: "Facebook", google: "Google", youtube: "YouTube",
+  whatsapp: "WhatsApp", email: "Email", direct: "Direct", influencer: "Influencer", newsletter: "Newsletter",
+};
+function sourceLabel(key: string): string {
+  return SOURCE_LABEL[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+/** Midnight IST of (today − daysAgo), as a UTC instant. */
+function istMidnight(daysAgo: number): Date {
+  const ist = new Date(Date.now() + IST_MS);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() - daysAgo) - IST_MS);
+}
+
+/**
+ * The period windows. Periods count only COMPLETED days (ending at the end of
+ * yesterday IST), with the same-length immediately-preceding period.
+ */
+export function periodWindows(period: Period): { start: Date; end: Date; prevStart: Date; prevEnd: Date } {
+  const n = PERIOD_DAYS[period];
+  const todayStart = istMidnight(0); // start of today IST
+  return {
+    start: istMidnight(n), // n complete days ago … yesterday
+    end: new Date(todayStart.getTime() - 1),
+    prevStart: istMidnight(2 * n),
+    prevEnd: new Date(istMidnight(n).getTime() - 1),
+  };
+}
+
+function pct(cur: number, prev: number): number | null {
+  if (prev <= 0) return null;
+  return ((cur - prev) / prev) * 100;
+}
+function fmt(n: number): string {
+  return formatCurrency(n, { compact: true });
+}
+
+/**
+ * Generate a summary for a hotel + period. Returns null when the hotel is not the
+ * caller's agency's (so the route can 404 without leaking existence).
+ */
+export async function generateSummary(hotelClientId: string, period: Period): Promise<SummaryResult | null> {
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelClientId },
+    select: { otaCommissionRate: true },
+  });
+  if (!hotel) return null;
+  const otaRate = hotel.otaCommissionRate == null ? DEFAULT_OTA_RATE : Number(hotel.otaCommissionRate);
+
+  const { start, end, prevStart, prevEnd } = periodWindows(period);
+
+  const [events, visitsCur, visitsPrev, adAgg, infGroups] = await Promise.all([
+    agencyScoped(prisma.trackingEvent).findMany({
+      where: { hotelClientId, eventType: "conversion", createdAt: { gte: prevStart, lte: end } },
+      select: { utmSource: true, utmMedium: true, utmCampaign: true, utmContent: true, conversionValue: true, couponCodeUsed: true, createdAt: true },
+    }),
+    agencyScoped(prisma.trackingEvent).count({ where: { hotelClientId, eventType: "visit", createdAt: { gte: start, lte: end } } }),
+    agencyScoped(prisma.trackingEvent).count({ where: { hotelClientId, eventType: "visit", createdAt: { gte: prevStart, lte: prevEnd } } }),
+    agencyScoped(prisma.adSnapshot).aggregate({ where: { hotelClientId, archived: false, date: { gte: start, lte: end } }, _sum: { spend: true } }),
+    agencyScoped(prisma.influencerRedemption).groupBy({
+      by: ["influencerId"],
+      where: { hotelClientId, redeemedAt: { gte: start, lte: end } },
+      _sum: { bookingValue: true },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const toRow = (e: (typeof events)[number]): ConversionRow => ({
+    utmSource: e.utmSource, utmMedium: e.utmMedium, utmCampaign: e.utmCampaign, utmContent: e.utmContent,
+    value: e.conversionValue == null ? 0 : Number(e.conversionValue), occurredAt: e.createdAt, couponCode: e.couponCodeUsed,
+  });
+  const curRows = events.filter((e) => e.createdAt >= start && e.createdAt <= end).map(toRow);
+  const prevRows = events.filter((e) => e.createdAt >= prevStart && e.createdAt <= prevEnd).map(toRow);
+
+  const revenue = curRows.reduce((s, r) => s + r.value, 0);
+  const bookings = curRows.length;
+  const avgBookingValue = bookings > 0 ? revenue / bookings : 0;
+  const prevRevenue = prevRows.reduce((s, r) => s + r.value, 0);
+  const prevBookings = prevRows.length;
+  const prevAvg = prevBookings > 0 ? prevRevenue / prevBookings : 0;
+  const hasPrevious = prevBookings > 0;
+
+  const revenueChangePct = pct(revenue, prevRevenue);
+  const bookingsChangePct = pct(bookings, prevBookings);
+  const avgValueChangePct = prevAvg > 0 ? pct(avgBookingValue, prevAvg) : null;
+
+  // Top source via the shared aggregation (coupon-aware).
+  const agg = aggregateRevenueBySource(curRows, "source", { start, end });
+  const top = agg.groups[0];
+  const topSource = top ? { name: sourceLabel(top.key), revenue: top.revenue, bookings: top.bookings } : null;
+
+  // Top influencer — only if meaningful (>5% of revenue or >₹10K).
+  let topInfluencer: SummaryMetrics["topInfluencer"] = null;
+  if (infGroups.length > 0) {
+    const sorted = [...infGroups].sort((a, b) => Number(b._sum.bookingValue ?? 0) - Number(a._sum.bookingValue ?? 0));
+    const best = sorted[0];
+    const infRev = Number(best._sum.bookingValue ?? 0);
+    if (infRev > 0 && (infRev >= 10000 || (revenue > 0 && infRev / revenue > 0.05))) {
+      const inf = await agencyScoped(prisma.influencer).findFirst({ where: { id: best.influencerId }, select: { name: true } });
+      topInfluencer = { name: inf?.name ?? "An influencer", revenue: infRev, bookings: best._count._all };
+    }
+  }
+
+  const adSpend = Number(adAgg._sum.spend ?? 0);
+  const roas = adSpend > 0 ? revenue / adSpend : null;
+  const savings = calculateSavings(revenue, otaRate);
+  const visitsChangePct = pct(visitsCur, visitsPrev);
+
+  const metrics: SummaryMetrics = {
+    revenue, bookings, avgBookingValue, revenueChangePct, bookingsChangePct, avgValueChangePct,
+    topSource, topInfluencer, adSpend, roas, savings,
+  };
+
+  // ── Pattern ──
+  let pattern: Pattern;
+  if (bookings === 0) pattern = "no_data";
+  else if (!hasPrevious || revenueChangePct == null) pattern = "strong"; // first period — positive, no comparison
+  else if (revenueChangePct > 0) pattern = "strong";
+  else if (revenueChangePct > -20) pattern = "flat_or_slight_decline";
+  else pattern = "significant_decline";
+
+  const summary = renderSummary(pattern, period, metrics, {
+    hasPrevious, prevRevenue, avgValueChangePct, visitsChangePct,
+  });
+
+  return {
+    hotelId: hotelClientId,
+    period,
+    periodLabel: PERIOD_LABEL[period],
+    summary,
+    metrics,
+    pattern,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function renderSummary(
+  pattern: Pattern,
+  period: Period,
+  m: SummaryMetrics,
+  extra: { hasPrevious: boolean; prevRevenue: number; avgValueChangePct: number | null; visitsChangePct: number | null },
+): string {
+  const avgUp = (extra.avgValueChangePct ?? 0) > 0;
+  const avgShown = extra.avgValueChangePct != null && Math.abs(extra.avgValueChangePct) >= 1;
+  const values: Record<string, string | number> = {
+    revenue: fmt(m.revenue),
+    bookings: m.bookings,
+    avgBookingValue: fmt(m.avgBookingValue),
+    revenueChangePct: m.revenueChangePct == null ? "" : Math.round(Math.abs(m.revenueChangePct)),
+    previousRevenue: fmt(extra.prevRevenue),
+    topSource: m.topSource?.name ?? "Direct",
+    topSourceRevenue: fmt(m.topSource?.revenue ?? 0),
+    topSourceBookings: m.topSource?.bookings ?? 0,
+    roas: m.roas == null ? "" : `${m.roas.toFixed(1)}x`,
+    savings: fmt(m.savings),
+    avgValueChangeDirection: avgUp ? "up" : "down",
+    avgValueChangePctAbs: extra.avgValueChangePct == null ? "" : Math.round(Math.abs(extra.avgValueChangePct)),
+    moreOrLess: avgUp ? "more" : "less",
+    influencerName: m.topInfluencer?.name ?? "",
+    influencerRevenue: fmt(m.topInfluencer?.revenue ?? 0),
+  };
+  const flags: Record<string, boolean> = {
+    comparison: extra.hasPrevious && m.revenueChangePct != null,
+    adSpend: m.adSpend > 0 && m.roas != null,
+    savings: m.savings > 0,
+    influencerActive: m.topInfluencer != null,
+    zero: m.bookings === 0,
+    trafficSteady: extra.visitsChangePct != null && extra.visitsChangePct > -15,
+    topSourceStillStrong: !!m.topSource && m.topSource.revenue > 0,
+    avgValueShown: avgShown,
+  };
+  return renderTemplate(templateFor(pattern, period), { values, flags });
+}

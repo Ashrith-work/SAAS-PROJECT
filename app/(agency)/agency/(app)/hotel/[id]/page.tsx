@@ -74,6 +74,7 @@ import { missingAdDays } from "@/lib/backfill";
 import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
 import { RevenueBySource } from "@/components/dashboard/RevenueBySource";
 import { CommissionSavings } from "@/components/dashboard/CommissionSavings";
+import { OwnerSummaryCard } from "@/components/dashboard/OwnerSummaryCard";
 import { loadInfluencerPerformance } from "@/lib/influencer-dashboard";
 import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerformance";
 
@@ -1398,6 +1399,10 @@ export default async function HotelDashboardPage({
           </Link>
         )}
       </div>
+
+      {/* Owner Summary — glanceable plain-English read of recent performance,
+          at the very top of the dashboard (above all sections). */}
+      <OwnerSummaryCard hotelId={hotel.id} />
 
       {/* Integration status badges — click any to manage that integration */}
       <IntegrationBadges
