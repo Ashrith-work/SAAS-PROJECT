@@ -39,7 +39,7 @@ beforeAll(() => {
 
   const internals = (window as unknown as { __htInternals?: { VERSION?: string } }).__htInternals;
   if (!internals) throw new Error("snippet did not expose __htInternals — bootstrap failed");
-  expect(internals.VERSION).toBe("2.2.0");
+  expect(internals.VERSION).toBe("2.3.0");
 });
 
 beforeEach(() => {

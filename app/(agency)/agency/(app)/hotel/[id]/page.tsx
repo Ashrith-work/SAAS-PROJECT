@@ -73,6 +73,8 @@ import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
 import { RevenueBySource } from "@/components/dashboard/RevenueBySource";
+import { loadInfluencerPerformance } from "@/lib/influencer-dashboard";
+import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerformance";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -1331,6 +1333,14 @@ export default async function HotelDashboardPage({
   const funnelSummary = computeFunnel({ reachedByRank: funnelReachedByRank, revenue: 0 });
   const funnelHasData = (funnelSummary.stages[0]?.visitors ?? 0) > 0;
 
+  // Influencer Performance (Phase R2) — per-influencer redemptions + revenue for
+  // this hotel over the selected range. Not pixel-gated (coupon redemptions exist
+  // independently of snippet/Pixel mode, incl. manual entries).
+  const influencerPerformance = await loadInfluencerPerformance(hotel.id, {
+    since: range.since,
+    until: range.until,
+  });
+
   return (
     <div className="space-y-6">
       {/* Header strip — hotel + last sync (left), period selector + actions (right) */}
@@ -1760,6 +1770,14 @@ export default async function HotelDashboardPage({
         <div className="p-4">
           <RevenueBySource hotelId={hotel.id} />
         </div>
+      </SectionCard>
+
+      {/* Influencer Performance (Phase R2) — per-influencer coupon redemptions */}
+      <SectionCard
+        title="Influencer Performance"
+        subtitle="Redemptions and attributed revenue per influencer, from coupon codes (snippet-captured or manually logged)."
+      >
+        <InfluencerPerformance rows={influencerPerformance} />
       </SectionCard>
 
       {/* Section 4 — Influencer impact */}

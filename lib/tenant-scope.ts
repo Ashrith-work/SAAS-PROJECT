@@ -178,4 +178,7 @@ export const MULTI_TENANT_MODELS = [
   "clickEvent",
   "formFieldEvent",
   "visitorIdentity",
+  "influencer",
+  "couponCode",
+  "influencerRedemption",
 ] as const;

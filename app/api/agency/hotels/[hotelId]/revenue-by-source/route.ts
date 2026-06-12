@@ -102,26 +102,59 @@ export async function GET(
         utmCampaign: true,
         utmContent: true,
         conversionValue: true,
+        couponCodeUsed: true,
         createdAt: true,
       },
     });
-    rows = events.map((e) => ({
+    // Snippet/UTM conversions. couponCodeUsed (Phase R2) flips a row to influencer.
+    const trackingRows: ConversionRow[] = events.map((e) => ({
       utmSource: e.utmSource,
       utmMedium: e.utmMedium,
       utmCampaign: e.utmCampaign,
       utmContent: e.utmContent,
       value: e.conversionValue == null ? 0 : Number(e.conversionValue), // NULL-safe
       occurredAt: e.createdAt,
+      couponCode: e.couponCodeUsed,
     }));
+
+    // Manual redemptions (Path B) are bookings that happened OFF-snippet — they
+    // have no TrackingEvent, so they must be UNION-ed in or their revenue is lost.
+    // snippet_auto redemptions are NOT added here (their TrackingEvent already
+    // carries couponCodeUsed and is counted above) — that prevents double-counting.
+    const manual = await agencyScoped(prisma.influencerRedemption).findMany({
+      where: {
+        hotelClientId: hotelId,
+        redemptionSource: "manual_entry",
+        OR: [
+          { bookingDate: { gte: start, lte: end } },
+          { AND: [{ bookingDate: null }, { redeemedAt: { gte: start, lte: end } }] },
+        ],
+      },
+      select: { bookingValue: true, bookingDate: true, redeemedAt: true, couponCode: { select: { code: true } } },
+    });
+    const manualRows: ConversionRow[] = manual.map((m) => ({
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      utmContent: null,
+      value: Number(m.bookingValue),
+      occurredAt: m.bookingDate ?? m.redeemedAt,
+      couponCode: m.couponCode?.code ?? "manual",
+    }));
+
+    rows = [...trackingRows, ...manualRows];
   } catch {
     return Response.json({ error: "Temporarily unavailable" }, { status: 503 });
   }
 
+  // A row's effective source type is coupon-aware (influencer wins over UTM) so the
+  // chip filter agrees with the aggregation.
+  const effectiveType = (r: ConversionRow) =>
+    r.couponCode && r.couponCode.trim() ? ("influencer" as const) : classifySourceType(r);
+
   // Chip filter is row-level: classify, keep only selected types, then aggregate
   // so the table + KPIs + chart are all consistent with the active filter.
-  const filtered = sourceTypeFilter
-    ? rows.filter((r) => sourceTypeFilter.has(classifySourceType(r)))
-    : rows;
+  const filtered = sourceTypeFilter ? rows.filter((r) => sourceTypeFilter.has(effectiveType(r))) : rows;
 
   const result = aggregateRevenueBySource(filtered, granularity, { start, end });
 

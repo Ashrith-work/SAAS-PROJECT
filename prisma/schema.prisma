@@ -326,6 +326,10 @@ model TrackingEvent {
   // the column lets last_touch / u_shaped credit be recorded per-row later
   // (Revenue by Source). Nullable + defaulted so existing rows read as first_touch.
   attributionModel String?  @default("first_touch")
+  // Raw coupon code captured by the snippet at booking time (data-ht-coupon-field,
+  // Phase R2). Uppercased/trimmed. Drives influencer attribution; null when no
+  // code was present. Stored even when no matching CouponCode exists (for audit).
+  couponCodeUsed  String?
   createdAt       DateTime  @default(now())
 
   agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -740,6 +744,93 @@ model CouponRedemption {
 
   @@index([agencyId])
   @@index([contentPieceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Influencer coupon attribution (Phase R2) — a FIRST-CLASS influencer/coupon/
+// redemption system, additive to the existing content-piece coupon fields above.
+//
+// Influencer            — a creator, agency-wide or tied to one hotel.
+// CouponCode            — a code (unique per hotel) owned by an influencer.
+// InfluencerRedemption  — one redemption of a code in a booking, captured either
+//                         automatically by the snippet (snippet_auto, linked to a
+//                         TrackingEvent) or entered by hand for off-snippet hotels
+//                         (manual_entry). Dashboards treat both identically.
+//
+// (The spec called the redemption model `CouponRedemption`, but that name is
+// taken by the content-piece model above — so it's `InfluencerRedemption` here.)
+// Multi-tenant: all three carry agencyId; reads are agencyScoped + RLS.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Influencer {
+  id              String   @id @default(cuid())
+  agencyId        String // tenant scope
+  hotelClientId   String? // optional: tied to one hotel, or agency-wide when null
+  name            String
+  instagramHandle String?
+  notes           String?
+  // Soft delete (PART 8): archived influencers are hidden from pickers but their
+  // historical redemptions stay visible. Null = active.
+  archivedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  couponCodes CouponCode[]
+  redemptions InfluencerRedemption[]
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model CouponCode {
+  id            String    @id @default(cuid())
+  code          String // the actual code, e.g. "PRIYA10" (uppercased + trimmed)
+  influencerId  String
+  hotelClientId String // each code is for one specific hotel
+  agencyId      String
+  discountType  String? // 'percentage' | 'flat' | null
+  discountValue Decimal?  @db.Decimal(12, 2) // 10 (for 10%) or 1000 (₹1000 flat)
+  validFrom     DateTime?
+  validUntil    DateTime?
+  status        String    @default("ACTIVE") // 'ACTIVE' | 'EXPIRED' | 'DISABLED'
+  notes         String?
+  createdAt     DateTime  @default(now())
+
+  influencer  Influencer             @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  redemptions InfluencerRedemption[]
+
+  @@unique([hotelClientId, code]) // same code can exist across different hotels
+  @@index([influencerId])
+  @@index([code])
+  @@index([agencyId])
+  @@index([hotelClientId])
+}
+
+model InfluencerRedemption {
+  id                String   @id @default(cuid())
+  couponCodeId      String
+  influencerId      String // denormalized for fast queries
+  hotelClientId     String
+  agencyId          String
+  bookingValue      Decimal  @db.Decimal(12, 2) // revenue from this booking
+  bookingReference  String? // optional: hotel's booking id for cross-reference
+  guestName         String? // optional PII — show only to authorized members
+  bookingDate       DateTime?
+  redemptionSource  String // 'snippet_auto' | 'manual_entry'
+  trackingEventId   String? // link to TrackingEvent when captured by the snippet
+  sessionId         String? // link to Session when captured by the snippet
+  notes             String?
+  enteredByMemberId String? // which agency member logged a manual_entry
+  redeemedAt        DateTime @default(now())
+
+  couponCode CouponCode @relation(fields: [couponCodeId], references: [id], onDelete: Cascade)
+  influencer Influencer @relation(fields: [influencerId], references: [id])
+
+  @@index([agencyId])
+  @@index([hotelClientId])
+  @@index([influencerId])
+  @@index([redeemedAt])
+  @@index([trackingEventId])
 }
 
 model Report {

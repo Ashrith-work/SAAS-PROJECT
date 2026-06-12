@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { saltedHash } from "@/lib/pii";
+import { cleanCode, isCouponRedeemable, couponRejectReason } from "@/lib/coupon";
 import {
   isFunnelStage,
   parseFunnelRules,
@@ -490,6 +491,9 @@ async function handleVisitLike(
     if (Number.isFinite(n) && n >= 0) conversionValue = n.toFixed(2);
   }
 
+  // Coupon code captured by the snippet (Phase R2) — only on conversions.
+  const couponCodeUsed = type === "conversion" ? cleanCode(str(body.couponCodeUsed)) : null;
+
   const teData = {
     agencyId: hotel.agencyId,
     hotelClientId: hotel.id,
@@ -501,6 +505,7 @@ async function handleVisitLike(
     utmTerm: str(body.utmTerm),
     pageUrl: str(body.pageUrl) ?? "",
     conversionValue,
+    couponCodeUsed,
     sessionId: str(body.sessionId) ?? "",
     visitorId,
     deviceType: str(body.deviceType) ?? "unknown",
@@ -623,6 +628,42 @@ async function handleVisitLike(
     }
 
     const ev = await tx.trackingEvent.create({ data: teData, select: { id: true } });
+
+    // Path A (Phase R2): if the booking carried a coupon code, attribute it to the
+    // influencer that owns that code FOR THIS HOTEL. The TrackingEvent is always
+    // written (above) — a missing/expired/disabled code just falls back to UTM and
+    // logs [COUPON-MISMATCH]; it never errors the booking.
+    if (type === "conversion" && couponCodeUsed) {
+      const now = new Date();
+      const coupon = await tx.couponCode.findUnique({
+        where: { hotelClientId_code: { hotelClientId: hotel.id, code: couponCodeUsed } },
+        select: { id: true, influencerId: true, status: true, validFrom: true, validUntil: true },
+      });
+      if (coupon && isCouponRedeemable(coupon, now)) {
+        await tx.influencerRedemption.create({
+          data: {
+            couponCodeId: coupon.id,
+            influencerId: coupon.influencerId,
+            hotelClientId: hotel.id,
+            agencyId: hotel.agencyId,
+            bookingValue: conversionValue ?? "0",
+            redemptionSource: "snippet_auto",
+            trackingEventId: ev.id,
+            sessionId: str(body.sessionId),
+            redeemedAt: now,
+          },
+        });
+      } else {
+        console.log(
+          "[COUPON-MISMATCH]",
+          JSON.stringify({
+            code: couponCodeUsed,
+            hotelClientId: hotel.id,
+            reason: coupon ? couponRejectReason(coupon, now) : "not_found",
+          }),
+        );
+      }
+    }
 
     if (touches.length > 0) {
       await tx.touchpoint.createMany({

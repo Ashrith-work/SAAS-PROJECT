@@ -20,7 +20,17 @@ export type ConversionRow = {
   /** Revenue for this booking; NULL conversionValue must be passed as 0. */
   value: number;
   occurredAt: Date;
+  /**
+   * Coupon code on this booking (Phase R2). When present, the booking is
+   * INFLUENCER-attributed: it groups under source "influencer" (medium/campaign =
+   * the code) with sourceType "influencer", regardless of UTM — so a booking with
+   * both a UTM source and a coupon counts ONCE, under influencer (no double-count).
+   */
+  couponCode?: string | null;
 };
+
+/** Source key used for any coupon-attributed (influencer) booking. */
+export const INFLUENCER_SOURCE = "influencer";
 
 export type RevenueGroup = {
   /** Display key: "instagram", "instagram/reel", or "instagram/reel/monsoon". */
@@ -109,10 +119,15 @@ export function aggregateRevenueBySource(
   let totalBookings = 0;
 
   for (const row of rows) {
-    const source = normalizeSource(row.utmSource);
-    const medium = normalizeMedium(row.utmMedium);
-    const campaign = normalizeCampaign(row.utmCampaign);
-    const sourceType = classifySourceType(row);
+    // Coupon (influencer) attribution wins over UTM, so a booking with both is
+    // counted once under "influencer". The code becomes the medium/campaign so the
+    // finer granularities show WHICH code drove the revenue.
+    const coupon = row.couponCode ? row.couponCode.trim().toLowerCase() : "";
+    const isInfluencer = coupon.length > 0;
+    const source = isInfluencer ? INFLUENCER_SOURCE : normalizeSource(row.utmSource);
+    const medium = isInfluencer ? coupon : normalizeMedium(row.utmMedium);
+    const campaign = isInfluencer ? coupon : normalizeCampaign(row.utmCampaign);
+    const sourceType = isInfluencer ? "influencer" : classifySourceType(row);
     const value = Number.isFinite(row.value) && row.value > 0 ? row.value : 0;
     const dayKey = row.occurredAt.toISOString().slice(0, 10);
     const di = dayIndex.get(dayKey);

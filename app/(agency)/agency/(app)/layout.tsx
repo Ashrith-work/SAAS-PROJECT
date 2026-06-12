@@ -45,6 +45,7 @@ export default async function AgencyAppLayout({
                 { href: "/agency/dashboard", label: "Dashboard" },
                 { href: "/agency/hotels", label: "Hotel Clients" },
                 { href: "/agency/content", label: "Content" },
+                { href: "/agency/influencers", label: "Influencers" },
                 { href: "/agency/alerts", label: "Alerts" },
                 { href: "/agency/settings", label: "Settings" },
                 { href: "/agency/billing", label: "Billing" },

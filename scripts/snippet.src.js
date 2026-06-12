@@ -23,7 +23,7 @@
     var base = src.origin;
     var DEBUG = src.searchParams.get("debug") === "1";
 
-    var VERSION = "2.2.0"; // v2.2 adds click/form/identify; v2.1 = funnel stages; v2.0 = journeys; v1 = visit.
+    var VERSION = "2.3.0"; // v2.3 adds coupon capture; v2.2 = click/form/identify; v2.1 = funnel stages; v2.0 = journeys; v1 = visit.
     var converted = false, observer = null, cfg = null, pending = false;
     var UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
     // Funnel stages in order; rank = index + 1 (awareness=1 … booking=4).
@@ -166,6 +166,9 @@
       if (type === "conversion") {
         var j = parse(getCookie(JKEY) || "");
         payload.journey = (j instanceof Array) ? j : journey;
+        // Coupon (v2.3): live read on the page, else the stash from the form page.
+        var coupon = couponForConversion();
+        if (coupon) payload.couponCodeUsed = coupon;
       }
       post(JSON.stringify(payload));
       log(type, payload);
@@ -555,6 +558,9 @@
         root.addEventListener("click", onBodyClick, true);
         root.addEventListener("focus", onFieldFocus, true);
         root.addEventListener("blur", onFieldBlur, true);
+        // Coupon capture (v2.3): stash a tagged coupon field's value as it's typed.
+        root.addEventListener("input", onCouponInput, true);
+        root.addEventListener("change", onCouponInput, true);
       } catch (e) {}
     }
     if (document.body) attachInteractionListeners();
@@ -623,6 +629,45 @@
       } catch (e) {}
     })();
 
+    // ── Coupon capture (snippet v2.3) — read [data-ht-coupon-field] and STASH it
+    //    so a booking's code survives the navigation from the booking form to the
+    //    thank-you page (where the field no longer exists). At conversion we use a
+    //    live read if the field is still on the page (same_page), else the stash. ──
+    var COUPON_KEY = "ht_coupon";
+    function normCoupon(v) { return v == null ? "" : String(v).trim().toUpperCase().slice(0, 50); }
+    function couponValueOf(el) {
+      if (!el) return "";
+      var tag = el.tagName;
+      var raw = (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") ? el.value : (el.textContent || "");
+      return normCoupon(raw);
+    }
+    function readCouponField() {
+      try { return couponValueOf(document.querySelector("[data-ht-coupon-field]")); }
+      catch (e) { return ""; }
+    }
+    function stashCoupon() {
+      var c = readCouponField();
+      if (c) ssSet(COUPON_KEY, c);
+    }
+    function couponForConversion() {
+      var live = readCouponField();
+      if (live) return live;
+      return normCoupon(ssGet(COUPON_KEY));
+    }
+    // Stash whenever the visitor edits a tagged coupon field (capture phase).
+    function onCouponInput(e) {
+      try {
+        var t = e.target;
+        if (t && t.getAttribute && t.getAttribute("data-ht-coupon-field") != null) {
+          var c = couponValueOf(t);
+          if (c) ssSet(COUPON_KEY, c);
+        }
+      } catch (e2) {}
+    }
+    // Persist the code across navigation + on unload.
+    onSpaNav(stashCoupon);
+    addEventListener("pagehide", stashCoupon);
+
     // Debug aid: expose the conversion-timing internals so they can be unit-
     // tested and inspected from the console. Gated on debug mode — never exposed
     // on a normal (non-debug) production page load.
@@ -650,6 +695,10 @@
           fieldNameOf: fieldNameOf,
           sha256Hex: sha256Hex,
           htIdentify: window.htIdentify,
+          // Coupon internals (v2.3).
+          readCouponField: readCouponField,
+          couponForConversion: couponForConversion,
+          stashCoupon: stashCoupon,
           VERSION: VERSION
         };
       } catch (e) {}
