@@ -49,10 +49,10 @@ async function main() {
   console.log(`Hotel: ${hotel.name} | acct=${hotel.metaAdAccountId} | lastSyncedAt=${hotel.lastSyncedAt?.toISOString() ?? "never"}`);
 
   const tokenRow = await prisma.metaToken.findFirst({
-    where: { agencyId: hotel.agencyId },
+    where: { agencyId: hotel.agencyId, hotelClientId: hotel.id },
     select: { id: true, status: true, tokenExpiresAt: true },
   });
-  if (!tokenRow) throw new Error("No MetaToken for this agency.");
+  if (!tokenRow) throw new Error("No MetaToken for this hotel.");
   console.log(`Token: status=${tokenRow.status} expires=${tokenRow.tokenExpiresAt?.toISOString() ?? "?"}`);
 
   const raw = await prisma.$queryRawUnsafe<Array<{ ct: string }>>(

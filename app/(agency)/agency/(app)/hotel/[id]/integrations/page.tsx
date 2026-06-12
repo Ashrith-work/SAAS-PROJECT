@@ -25,6 +25,8 @@ import {
 import { CopyButton } from "@/components/ui/CopyButton";
 import { IntegrationCard } from "@/components/ui/IntegrationCard";
 import { IntegrationStatusBadge } from "@/components/ui/IntegrationStatusBadge";
+import { MetaTokenForm } from "@/app/(agency)/agency/(app)/settings/MetaTokenForm";
+import { disconnectMetaToken } from "@/app/(agency)/agency/(app)/settings/actions";
 import { TestConnection } from "../install/TestConnection";
 import { HotelAdAccountSelect } from "./HotelAdAccountSelect";
 import { ConnectionHistory } from "./ConnectionHistory";
@@ -124,6 +126,7 @@ export default async function HotelIntegrationsPage({
       snippetStatus: true,
       lastEventAt: true,
       metaAdAccountId: true,
+      lastSyncedAt: true,
       previousAdAccountIds: true,
       budgetTrackingEnabled: true,
       monthlyAdBudget: true,
@@ -159,6 +162,15 @@ export default async function HotelIntegrationsPage({
     ? GA4_ERROR_MESSAGES[ga4ErrorCode] ?? "GA4 connection failed. Please try again."
     : null;
 
+  // Meta OAuth round-trip feedback (?meta_connected=success / ?meta_error=…).
+  const metaConnectedBanner = sp.meta_connected === "success";
+  const metaErrorCode = typeof sp.meta_error === "string" ? sp.meta_error : null;
+  const metaErrorBanner = metaErrorCode
+    ? metaErrorCode === "access_denied"
+      ? "Facebook connection cancelled. You can try again whenever you're ready."
+      : "We couldn't complete the Facebook connection. Please try again, or paste a long-lived token instead."
+    : null;
+
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://your-domain.com").replace(
     /\/$/,
     "",
@@ -170,12 +182,19 @@ export default async function HotelIntegrationsPage({
     process.env.NEXT_PUBLIC_APP_URL || "https://www.hoteltrack.in"
   ).replace(/\/$/, "");
 
-  // ── Meta Ads (agency-wide EAA token) ───────────────────────────────────────
+  // ── Meta Ads (per-hotel token) ─────────────────────────────────────────────
   const token = await agencyScoped(prisma.metaToken).findFirst({
-    orderBy: { createdAt: "desc" },
+    where: { hotelClientId: hotel.id },
     // Ciphertext is never selected here — only read + decrypted via
     // getTokenForApiCall below, which audits the access.
-    select: { id: true, status: true, tokenExpiresAt: true },
+    select: {
+      id: true,
+      status: true,
+      tokenExpiresAt: true,
+      tokenSource: true,
+      refreshableViaOAuth: true,
+      connectedFacebookUserName: true,
+    },
   });
   let metaSt: TokenState = metaState(token, now);
   let adAccounts: AdAccount[] = [];
@@ -325,7 +344,10 @@ export default async function HotelIntegrationsPage({
     where: { resolvedAt: null },
     select: { tokenType: true, hotelClientId: true, failedAt: true },
   });
-  const metaFailure = syncFailures.find((f) => f.tokenType === "meta_ads") ?? null;
+  const metaFailure =
+    syncFailures.find(
+      (f) => f.tokenType === "meta_ads" && f.hotelClientId === hotel.id,
+    ) ?? null;
   const igFailure =
     syncFailures.find(
       (f) => f.tokenType === "instagram" && f.hotelClientId === hotel.id,
@@ -402,22 +424,25 @@ export default async function HotelIntegrationsPage({
           {ga4ErrorBanner}
         </div>
       )}
+      {metaConnectedBanner && (
+        <div className="rounded-lg border-l-4 border-success bg-success/10 p-4 text-sm text-ink-secondary">
+          Meta connected with Facebook for {hotel.name}. Map the right ad account
+          below to start pulling ad spend &amp; ROI.
+        </div>
+      )}
+      {metaErrorBanner && (
+        <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-4 text-sm text-ink-secondary">
+          {metaErrorBanner}
+        </div>
+      )}
 
-      {/* ── Card 1 — Meta Ads (EAA token, agency-wide) ───────────────────── */}
-      {(metaSt === "expiring" || metaSt === "expired") && (
+      {/* ── Card 1 — Meta Ads (per-hotel token) ──────────────────────────── */}
+      {metaSt === "expiring" && (
         <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-4 text-sm">
           <p className="font-medium text-warning">
-            {metaSt === "expired"
-              ? "Your Meta Ads connection expired or was revoked."
-              : "Your Meta Ads token is expiring soon."}{" "}
-            Ad spend &amp; ROI syncing is at risk for all your hotels.
+            This hotel&apos;s Meta Ads token is expiring soon. Reconnect below to
+            keep ad spend &amp; ROI syncing.
           </p>
-          <Link
-            href="/agency/settings"
-            className="mt-3 inline-block rounded-lg bg-warning px-3 py-1.5 text-sm font-medium text-white hover:bg-warning/90"
-          >
-            Reconnect now →
-          </Link>
         </div>
       )}
       <IntegrationCard
@@ -432,35 +457,61 @@ export default async function HotelIntegrationsPage({
           </div>
         )}
         {metaSt === "not_connected" ? (
-          <div className="space-y-3 text-sm text-ink-secondary">
-            <p>
-              Connect Meta (Facebook) Ads once for your whole agency to bring ad
-              spend and ROI into each hotel&apos;s dashboard. Then map the ad
-              account for this hotel below.
-            </p>
-            <Link
-              href="/agency/settings"
-              className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
-            >
-              Connect Meta in Settings →
-            </Link>
-          </div>
-        ) : metaSt === "expired" ? (
-          <p className="text-sm text-ink-secondary">
-            Reconnect your Meta token on{" "}
-            <Link href="/agency/settings" className="underline">
-              Settings
-            </Link>{" "}
-            to restore ad spend &amp; ROI syncing, then map this hotel&apos;s ad
-            account here.
-          </p>
-        ) : (
           <div className="space-y-4">
             <p className="text-sm text-ink-secondary">
-              Token active · expires:{" "}
-              <span className="font-medium">{fmtExpiry(token?.tokenExpiresAt)}</span>{" "}
-              · <span className="text-ink-tertiary">applies to all your hotels</span>
+              Connect this hotel&apos;s Meta (Facebook) Ads account to bring its ad
+              spend and ROI into the dashboard. Each hotel has its own connection,
+              so hotels in separate Meta accounts stay independent.
             </p>
+            <MetaConnect hotelId={hotel.id} guidePublicUrl={guidePublicUrl} />
+          </div>
+        ) : metaSt === "expired" ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-ink-secondary">
+              This hotel&apos;s Meta connection expired or was revoked — ad spend
+              &amp; ROI syncing is paused. Reconnect to restore it (a backfill
+              refills the gap).
+            </div>
+            <MetaConnect hotelId={hotel.id} guidePublicUrl={guidePublicUrl} reconnect />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1 text-sm text-ink-secondary">
+                {token?.connectedFacebookUserName && (
+                  <p>
+                    Connected by{" "}
+                    <span className="font-medium text-ink-secondary">
+                      {token.connectedFacebookUserName}
+                    </span>{" "}
+                    <span className="text-ink-tertiary">
+                      ({token.tokenSource === "OAUTH" ? "Facebook Login" : "manual token"})
+                    </span>
+                  </p>
+                )}
+                <p>
+                  Token active · expires:{" "}
+                  <span className="font-medium">{fmtExpiry(token?.tokenExpiresAt)}</span>
+                </p>
+                {token?.tokenSource === "OAUTH" && token.refreshableViaOAuth && (
+                  <p className="text-success">Auto-refreshes before expiry.</p>
+                )}
+                {hotel.lastSyncedAt && (
+                  <p className="text-ink-tertiary">
+                    Last synced: {fmtDate(hotel.lastSyncedAt)}
+                  </p>
+                )}
+              </div>
+              <form action={disconnectMetaToken}>
+                <input type="hidden" name="hotelId" value={hotel.id} />
+                <button
+                  type="submit"
+                  className="rounded-lg border border-line-strong bg-elevated px-3 py-1.5 text-sm font-medium text-ink-secondary hover:bg-line-strong"
+                >
+                  Disconnect
+                </button>
+              </form>
+            </div>
             <HotelAdAccountSelect
               hotelId={hotel.id}
               hotelName={hotel.name}
@@ -474,13 +525,14 @@ export default async function HotelIntegrationsPage({
               currentAccountName={hotel.metaAdAccountId ? accountName(hotel.metaAdAccountId) : null}
               previous={connectionHistory}
             />
-            <p className="text-xs text-ink-tertiary">
-              Manage the Meta token (replace / disconnect) on{" "}
-              <Link href="/agency/settings" className="underline">
-                Settings
-              </Link>
-              .
-            </p>
+            <details className="text-sm">
+              <summary className="cursor-pointer text-ink-tertiary hover:text-ink">
+                Reconnect or replace this hotel&apos;s token
+              </summary>
+              <div className="mt-3">
+                <MetaConnect hotelId={hotel.id} guidePublicUrl={guidePublicUrl} reconnect />
+              </div>
+            </details>
           </div>
         )}
       </IntegrationCard>
@@ -811,6 +863,54 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-line p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+// Per-hotel Meta connect options: the recommended "Connect with Facebook" OAuth
+// button (auto-refreshing token) plus a disclosure to paste a long-lived token.
+// Both paths store a token scoped to THIS hotel.
+function MetaConnect({
+  hotelId,
+  guidePublicUrl,
+  reconnect = false,
+}: {
+  hotelId: string;
+  guidePublicUrl: string;
+  reconnect?: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <a
+        href={`/api/auth/meta/start?hotelClientId=${hotelId}`}
+        className="inline-flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#166fe0]"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z" />
+        </svg>
+        {reconnect ? "Reconnect with Facebook" : "Connect with Facebook"}
+      </a>
+      <p className="text-xs text-ink-tertiary">
+        Recommended — Meta handles the login and the token auto-refreshes. Need
+        help?{" "}
+        <a href={`${guidePublicUrl}/setup-guide`} target="_blank" rel="noopener noreferrer" className="underline">
+          View the setup guide
+        </a>
+        .
+      </p>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-ink-tertiary hover:text-ink">
+          Or paste a long-lived access token (advanced)
+        </summary>
+        <div className="mt-3 space-y-2">
+          <p className="text-xs text-ink-tertiary">
+            Paste a Meta access token with <code className="text-xs">ads_read</code>{" "}
+            permission (from the Graph API Explorer or your app&apos;s system user).
+            Manual tokens don&apos;t auto-refresh.
+          </p>
+          <MetaTokenForm hotelId={hotelId} submitLabel={reconnect ? "Reconnect Meta" : "Connect Meta"} />
+        </div>
+      </details>
     </div>
   );
 }

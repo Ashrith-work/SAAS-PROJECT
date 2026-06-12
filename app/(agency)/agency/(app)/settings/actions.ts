@@ -33,10 +33,11 @@ export type SaveTokenState = {
 
 /**
  * Validates a pasted Meta access token with Meta, then stores it encrypted
- * (AES-256-GCM) as this agency's MetaToken. One connection per agency: the
- * existing row is updated in place, otherwise a new one is created. We never
- * persist a token that doesn't validate, so `status` is only ever set
- * "connected" for a live token.
+ * (AES-256-GCM) as ONE hotel's MetaToken. Tokens are hotel-scoped (one per hotel,
+ * @@unique([hotelClientId])), so the existing row for this hotel is updated in
+ * place, otherwise a new one is created. We never persist a token that doesn't
+ * validate, so `status` is only ever set "connected" for a live token. The hotel
+ * is ownership-checked against the caller's agency (multi-tenant safety).
  */
 export async function saveMetaToken(
   _prev: SaveTokenState,
@@ -46,6 +47,16 @@ export async function saveMetaToken(
   if (!member) {
     return { error: "Your session has expired — please sign in again.", ok: false };
   }
+
+  const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
+  if (!hotelId) return { error: "Missing hotel.", ok: false };
+
+  // Multi-tenant guard: never trust a client-supplied hotel id.
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelId },
+    select: { id: true },
+  });
+  if (!hotel) return { error: "That hotel client wasn't found for your agency.", ok: false };
 
   const raw = ((formData.get("accessToken") as string | null) ?? "").trim();
   if (!raw) return { error: "Paste your Meta access token.", ok: false };
@@ -62,6 +73,7 @@ export async function saveMetaToken(
 
   const encryptedToken = await encryptWithAudit(raw, {
     agencyId: member.agencyId,
+    hotelClientId: hotel.id,
     tokenType: "meta_ads",
     source: "action:saveMetaToken",
   });
@@ -84,9 +96,10 @@ export async function saveMetaToken(
     expiryWarningStage: null,
   };
 
-  // Scoped to this agency (multi-tenant). agencyId isn't unique on MetaToken, so
-  // find-then-update keeps exactly one connection row per agency.
+  // Hotel-scoped (multi-tenant). hotelClientId is unique on MetaToken, so
+  // find-then-update keeps exactly one connection row per hotel.
   const existing = await agencyScoped(prisma.metaToken).findFirst({
+    where: { hotelClientId: hotel.id },
     select: { id: true },
   });
 
@@ -97,7 +110,7 @@ export async function saveMetaToken(
     });
   } else {
     await agencyScoped(prisma.metaToken).create({
-      data: { agencyId: member.agencyId, ...data },
+      data: { agencyId: member.agencyId, hotelClientId: hotel.id, ...data },
     });
   }
 
@@ -113,23 +126,30 @@ export async function saveMetaToken(
     // next scheduled sync still keeps recent days fresh.
   }
 
+  revalidatePath(`/agency/hotel/${hotel.id}/integrations`);
+  revalidatePath(`/agency/hotel/${hotel.id}`);
   revalidatePath("/agency/settings");
   return { error: null, ok: true, backfillJobId };
 }
 
 /**
- * Soft-disconnects this agency's Meta connection: status → "disconnected" with a
+ * Soft-disconnects ONE hotel's Meta connection: status → "disconnected" with a
  * disconnectedAt stamp, keeping the row (and its OAuth metadata) so the UI can
  * show how it was connected and a reconnect can update it in place. Historical
  * AdSnapshot data is preserved (the sync just stops, since it only reads
  * status="connected"). For OAuth connections we also best-effort revoke our
- * app's access at Meta. The token at rest stays encrypted.
+ * app's access at Meta. The token at rest stays encrypted. The hotelId is taken
+ * from the form and ownership-checked via the agency-scoped query.
  */
-export async function disconnectMetaToken(): Promise<void> {
+export async function disconnectMetaToken(formData: FormData): Promise<void> {
   const member = await getCurrentMember();
   if (!member) return;
 
+  const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
+  if (!hotelId) return;
+
   const token = await agencyScoped(prisma.metaToken).findFirst({
+    where: { hotelClientId: hotelId },
     select: { id: true, status: true, tokenSource: true, connectedFacebookUserId: true },
   });
   if (!token) return;
@@ -144,6 +164,7 @@ export async function disconnectMetaToken(): Promise<void> {
     try {
       const secret = await getTokenForApiCall("meta_ads", token.id, {
         agencyId: member.agencyId,
+        hotelClientId: hotelId,
         source: "action:disconnectMetaToken-revoke",
       });
       await revokeAppAccess(token.connectedFacebookUserId, secret.reveal());
@@ -161,10 +182,13 @@ export async function disconnectMetaToken(): Promise<void> {
   });
   await logTokenAudit({
     agencyId: member.agencyId,
+    hotelClientId: hotelId,
     tokenType: "meta_ads",
     action: "deleted",
     source: "action:disconnectMetaToken",
   });
+  revalidatePath(`/agency/hotel/${hotelId}/integrations`);
+  revalidatePath(`/agency/hotel/${hotelId}`);
   revalidatePath("/agency/settings");
 }
 

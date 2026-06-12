@@ -10,8 +10,11 @@ const inputCls =
   "w-full rounded-lg border border-line-strong bg-page px-3 py-2 font-mono text-xs text-ink placeholder:text-ink-disabled outline-none focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
 
 export function MetaTokenForm({
+  hotelId,
   submitLabel = "Connect Meta",
 }: {
+  // Meta tokens are hotel-scoped: the token is saved for THIS hotel.
+  hotelId: string;
   submitLabel?: string;
 }) {
   const [state, action, pending] = useActionState(saveMetaToken, initialState);
@@ -29,6 +32,7 @@ export function MetaTokenForm({
 
   return (
     <form ref={formRef} action={action} className="space-y-3">
+      <input type="hidden" name="hotelId" value={hotelId} />
       <textarea
         name="accessToken"
         rows={3}

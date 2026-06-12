@@ -209,13 +209,16 @@ export async function computeAgencyBackfillRange(
   agencyId: string,
 ): Promise<{ start: Date; end: Date } | null> {
   const now = new Date();
-  const [metaToken, adHotels, igAccounts] = await Promise.all([
-    prisma.metaToken.findFirst({
-      where: { agencyId, status: "connected" },
-      select: { id: true },
-    }),
+  const [adHotels, igAccounts] = await Promise.all([
+    // Only hotels whose OWN Meta token is connected contribute ad gaps now that
+    // tokens are hotel-scoped (the relation filter excludes hotels with no token).
     prisma.hotelClient.findMany({
-      where: { agencyId, metaAdAccountId: { not: null }, deletedAt: null },
+      where: {
+        agencyId,
+        metaAdAccountId: { not: null },
+        deletedAt: null,
+        metaToken: { is: { status: "connected" } },
+      },
       select: { id: true },
     }),
     prisma.instagramConnection.findMany({
@@ -228,11 +231,9 @@ export async function computeAgencyBackfillRange(
   const consider = (gap: Gap | null) => {
     if (gap && (!earliest || gap.start < earliest)) earliest = gap.start;
   };
-  if (metaToken) {
-    for (const h of adHotels) {
-      const bounds = await adDateBounds(agencyId, h.id);
-      for (const gap of computeAdGaps(bounds.first, bounds.last, now)) consider(gap);
-    }
+  for (const h of adHotels) {
+    const bounds = await adDateBounds(agencyId, h.id);
+    for (const gap of computeAdGaps(bounds.first, bounds.last, now)) consider(gap);
   }
   for (const a of igAccounts)
     consider(computeGap(await lastSocialDate(agencyId, a.hotelClientId), now));
@@ -355,28 +356,33 @@ async function backfillAds(
   let failedDays = 0;
   let sampleError: string | null = null;
 
-  const token = await prisma.metaToken.findFirst({
-    where: { agencyId, status: "connected" },
-    select: { id: true },
-  });
-  if (!token) return { anySuccess, tokenDead, failedDays, sampleError };
-
-  let secret: SecretToken;
-  try {
-    secret = await getTokenForApiCall("meta_ads", token.id, {
-      agencyId,
-      source: "backfill:ads",
-    });
-  } catch {
-    return { anySuccess, tokenDead, failedDays, sampleError };
-  }
-
+  // Hotels whose OWN Meta token is connected — tokens are hotel-scoped now, so
+  // each hotel decrypts its own (they may live in separate Meta accounts). The
+  // 1-1 relation filter excludes hotels with no/non-connected token.
   const hotels = await prisma.hotelClient.findMany({
-    where: { agencyId, metaAdAccountId: { not: null }, deletedAt: null },
-    select: { id: true, metaAdAccountId: true },
+    where: {
+      agencyId,
+      metaAdAccountId: { not: null },
+      deletedAt: null,
+      metaToken: { is: { status: "connected" } },
+    },
+    select: { id: true, metaAdAccountId: true, metaToken: { select: { id: true } } },
   });
 
   for (const hotel of hotels) {
+    const tokenId = hotel.metaToken!.id;
+    let secret: SecretToken;
+    try {
+      secret = await getTokenForApiCall("meta_ads", tokenId, {
+        agencyId,
+        hotelClientId: hotel.id,
+        source: "backfill:ads",
+      });
+    } catch {
+      // Can't decrypt this hotel's token — skip it, keep going with the others.
+      continue;
+    }
+
     const bounds = await adDateBounds(agencyId, hotel.id);
     // Tail gap first: it lands the most recent days (what the dashboard opens
     // on) before the longer history import starts.
@@ -386,6 +392,7 @@ async function backfillAds(
     if (gaps.length === 0) continue;
     const accountId = hotel.metaAdAccountId!;
     let hotelOk = false;
+    let hotelTokenDead = false;
 
     for (const gap of gaps) {
       try {
@@ -438,24 +445,39 @@ async function backfillAds(
         const message = err instanceof Error ? err.message : "Unknown ad backfill error.";
         sampleError ??= message;
         if (err instanceof MetaAuthError) {
+          // Only THIS hotel's token is dead — mark it expired and record the
+          // failure, then stop this hotel's gaps but continue with other hotels.
           tokenDead = true;
-          await prisma.metaToken.updateMany({
-            where: { agencyId, status: "connected" },
+          hotelTokenDead = true;
+          await prisma.metaToken.update({
+            where: { id: tokenId },
             data: { status: "expired" },
           });
-          await recordSyncFailure(agencyId, null, "meta_ads", err.message);
+          await recordSyncFailure(agencyId, hotel.id, "meta_ads", err.message);
           await logBackfill(agencyId, hotel.id, "ad", gap, "failed", err.message);
-          break; // token is dead for every hotel
+          break; // token is dead for this hotel only
         }
         await logBackfill(agencyId, hotel.id, "ad", gap, "failed", message);
       }
     }
 
     // Campaign-level import for the same gaps (powers the campaign sections).
-    // Runs unless the account-level pass already found the token dead.
-    if (!tokenDead && gaps.length > 0) {
+    // Runs unless this hotel's account-level pass already found the token dead.
+    if (!hotelTokenDead && gaps.length > 0) {
       const camp = await backfillCampaigns(agencyId, hotel.id, accountId, secret.reveal(), gaps);
-      if (camp.tokenDead) tokenDead = true;
+      if (camp.tokenDead) {
+        tokenDead = true;
+        await prisma.metaToken.update({
+          where: { id: tokenId },
+          data: { status: "expired" },
+        });
+        await recordSyncFailure(
+          agencyId,
+          hotel.id,
+          "meta_ads",
+          "Meta token expired/revoked during campaign backfill.",
+        );
+      }
     }
 
     if (hotelOk) {
@@ -464,7 +486,8 @@ async function backfillAds(
         data: { lastSyncedAt: new Date() },
       });
     }
-    if (tokenDead) break;
+    // A dead token affects only this hotel now — do NOT break; continue with the
+    // rest so one bad token can't stall every hotel's backfill.
   }
 
   return { anySuccess, tokenDead, failedDays, sampleError };

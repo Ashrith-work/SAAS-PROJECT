@@ -22,11 +22,11 @@ async function graphGet(path: string, token: string, params: Record<string, stri
 async function main() {
   const hotel = await prisma.hotelClient.findFirst({
     where: { metaAdAccountId: { not: null } },
-    select: { agencyId: true, metaAdAccountId: true, name: true },
+    select: { id: true, agencyId: true, metaAdAccountId: true, name: true },
   });
   if (!hotel) throw new Error("No hotel with ad account.");
   const tokenRow = await prisma.metaToken.findFirst({
-    where: { agencyId: hotel.agencyId, status: "connected" },
+    where: { agencyId: hotel.agencyId, hotelClientId: hotel.id, status: "connected" },
     select: { id: true },
   });
   if (!tokenRow) throw new Error("No connected token.");

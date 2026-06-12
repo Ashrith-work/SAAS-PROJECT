@@ -155,9 +155,10 @@ async function main() {
   });
 
   // ── 3) Meta token expiry: connected token expiring in 7 days ──
+  // Tokens are hotel-scoped — attach the demo token to the `dropping` hotel.
   const expiresAt = new Date(Date.now() + 7 * DAY_MS);
   const existingToken = await prisma.metaToken.findFirst({
-    where: { agencyId: agency.id },
+    where: { agencyId: agency.id, hotelClientId: dropping.id },
     select: { id: true },
   });
   if (existingToken) {
@@ -170,6 +171,7 @@ async function main() {
     await prisma.metaToken.create({
       data: {
         agencyId: agency.id,
+        hotelClientId: dropping.id,
         encryptedToken: encryptToken("alert-demo-token-not-a-real-meta-token"),
         status: "connected",
         tokenExpiresAt: expiresAt,

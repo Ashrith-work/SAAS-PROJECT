@@ -195,7 +195,7 @@ export async function loadHotelStates(opts: {
 
   const [token, social, ga] = await Promise.all([
     agencyScoped(prisma.metaToken).findFirst({
-      orderBy: { createdAt: "desc" },
+      where: { hotelClientId: hotelId },
       select: { status: true, tokenExpiresAt: true },
     }),
     agencyScoped(prisma.instagramConnection).findFirst({
@@ -232,13 +232,15 @@ export async function loadListStates(
   const now = new Date();
   const ids = hotels.map((h) => h.id);
 
-  const [token, socials, gas] =
+  const [tokens, socials, gas] =
     ids.length === 0
-      ? [null, [], []]
+      ? [[], [], []]
       : await Promise.all([
-          agencyScoped(prisma.metaToken).findFirst({
-            orderBy: { createdAt: "desc" },
-            select: { status: true, tokenExpiresAt: true },
+          // Meta tokens are hotel-scoped now: load one per hotel in a single
+          // batched query (no N+1) instead of a single agency-wide token.
+          agencyScoped(prisma.metaToken).findMany({
+            where: { hotelClientId: { in: ids } },
+            select: { hotelClientId: true, status: true, tokenExpiresAt: true },
           }),
           agencyScoped(prisma.instagramConnection).findMany({
             where: { hotelClientId: { in: ids }, tokenType: "igaa_direct" },
@@ -250,9 +252,9 @@ export async function loadListStates(
           }),
         ]);
 
+  const tokenByHotel = new Map(tokens.map((t) => [t.hotelClientId, t]));
   const socialByHotel = new Map(socials.map((s) => [s.hotelClientId, s]));
   const gaByHotel = new Map(gas.map((g) => [g.hotelClientId, g]));
-  const meta = metaState(token, now);
 
   const out = new Map<string, HotelStatusSummary>();
   for (const h of hotels) {
@@ -260,7 +262,7 @@ export async function loadListStates(
       h.id,
       summarize({
         snippet: snippetState(h.snippetStatus, h.lastEventAt),
-        meta,
+        meta: metaState(tokenByHotel.get(h.id) ?? null, now),
         instagram: instagramState(socialByHotel.get(h.id) ?? null, now),
         ga: gaState(gaByHotel.get(h.id) ?? null, planAllowsGa4),
         snippetApplies: !pixelMode,

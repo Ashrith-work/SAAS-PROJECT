@@ -44,7 +44,10 @@ async function setup(hotelId: string) {
   //    the UI has an expired connection to reconnect). The placeholder ciphertext
   //    is never decrypted while expired; reconnecting overwrites it.
   const fiveDaysAgo = new Date(Date.now() - 5 * DAY);
-  const existing = await prisma.metaToken.findFirst({ where: { agencyId: hotel.agencyId } });
+  // Tokens are hotel-scoped — target this hotel's own token.
+  const existing = await prisma.metaToken.findFirst({
+    where: { agencyId: hotel.agencyId, hotelClientId: hotel.id },
+  });
   if (existing) {
     await prisma.metaToken.update({
       where: { id: existing.id },
@@ -54,6 +57,7 @@ async function setup(hotelId: string) {
     await prisma.metaToken.create({
       data: {
         agencyId: hotel.agencyId,
+        hotelClientId: hotel.id,
         encryptedToken: "placeholder-expired-token",
         tokenExpiresAt: fiveDaysAgo,
         status: "expired",
@@ -116,7 +120,7 @@ async function status(hotelId: string) {
   const dates = gapDates();
   const [token, adInGap, socialInGap, adTotal, failures, job] = await Promise.all([
     prisma.metaToken.findFirst({
-      where: { agencyId: hotel.agencyId },
+      where: { agencyId: hotel.agencyId, hotelClientId: hotel.id },
       select: { status: true, tokenExpiresAt: true },
     }),
     prisma.adSnapshot.count({ where: { hotelClientId: hotel.id, date: { in: dates } } }),

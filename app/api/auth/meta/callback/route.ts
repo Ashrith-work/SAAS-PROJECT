@@ -73,12 +73,16 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
-  // hotelClientId is "" for the agency-level (Settings) entry point.
+  // Tokens are hotel-scoped now, so the state MUST carry a hotelClientId.
   const { hotelClientId, agencyId } = payload;
-  console.log(
-    `${LOG} state OK:`,
-    JSON.stringify({ hotelClientId: hotelClientId || "(agency-level)", agencyId }),
-  );
+  if (!hotelClientId) {
+    console.error(`${LOG} STATE missing hotelClientId — hotel-scoped flow requires it. Failing 400.`);
+    return Response.json(
+      { error: "Invalid state — no hotel selected. Please restart the Meta connection from the hotel's Integrations page." },
+      { status: 400 },
+    );
+  }
+  console.log(`${LOG} state OK:`, JSON.stringify({ hotelClientId, agencyId }));
 
   // User denied on Facebook's screen, or Meta returned an error (no code).
   if (oauthError || !code) {
@@ -88,8 +92,8 @@ export async function GET(request: Request) {
     redirect(returnUrl(hotelClientId, { meta_error: "access_denied" }));
   }
 
-  // If a specific hotel initiated, re-verify it belongs to the (signed) agency.
-  if (hotelClientId) {
+  // Re-verify the hotel still belongs to the (signed) agency before storing.
+  {
     const hotel = await prisma.hotelClient.findFirst({
       where: { id: hotelClientId, agencyId },
       select: { id: true },
@@ -164,12 +168,12 @@ export async function GET(request: Request) {
     redirect(returnUrl(hotelClientId, { meta_error: failReason ?? "exchange_failed" }));
   }
 
-  // ── Encrypt + upsert the agency token (one row per agency, like the manual
-  // flow: agencyId isn't unique, so find-then-update keeps exactly one). ──
+  // ── Encrypt + upsert the HOTEL token (one row per hotel: hotelClientId is
+  // unique, so find-then-update keeps exactly one). ──
   console.log(`${LOG} encrypting long-lived token + upserting MetaToken …`);
   const encryptedToken = await encryptWithAudit(result.longLived, {
     agencyId,
-    hotelClientId: hotelClientId || null,
+    hotelClientId,
     tokenType: "meta_ads",
     source: "oauth:meta-callback",
   });
@@ -190,18 +194,19 @@ export async function GET(request: Request) {
 
   try {
     const existing = await prisma.metaToken.findFirst({
-      where: { agencyId },
+      where: { hotelClientId, agencyId },
       select: { id: true },
     });
     if (existing) {
       await prisma.metaToken.update({ where: { id: existing.id }, data });
     } else {
-      await prisma.metaToken.create({ data: { agencyId, ...data } });
+      await prisma.metaToken.create({ data: { agencyId, hotelClientId, ...data } });
     }
     console.log(
       `${LOG} DB write OK:`,
       JSON.stringify({
         agencyId,
+        hotelClientId,
         fbUserId: result.fbUserId,
         adAccounts: result.adAccountCount,
         expiresAt: result.tokenExpiresAt.toISOString(),

@@ -6,14 +6,14 @@ import { signOauthState } from "@/lib/signed-state";
 import { buildMetaAuthorizeUrl } from "@/lib/meta";
 
 // Step 1 of the Meta (Facebook Login for Business) OAuth flow. The signed-in
-// agency member clicks "Connect with Facebook"; we mint a signed 10-minute state
-// token and hand the browser to Facebook's authorize screen.
+// agency member clicks "Connect with Facebook" on a hotel's Integrations page;
+// we mint a signed 10-minute state token and hand the browser to Facebook's
+// authorize screen.
 //
-// The Meta token is AGENCY-scoped (one per agency, like the manual flow), so the
-// hotelClientId query param is OPTIONAL: when present (a per-hotel entry point)
-// we verify the hotel belongs to the agency and return there; when absent (the
-// agency Settings entry) we return to Settings. Either way the token is saved for
-// member.agencyId.
+// The Meta token is HOTEL-scoped (one per hotel, like Instagram/GA4), so the
+// hotelClientId query param is REQUIRED: we verify the hotel belongs to the
+// agency, bind it into the signed state, and the callback stores the resulting
+// token for exactly that hotel.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,20 +24,24 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const hotelClientId = (url.searchParams.get("hotelClientId") ?? "").trim();
-
-  // Optional multi-tenant guard: never start a flow for another agency's hotel.
-  if (hotelClientId) {
-    const hotel = await agencyScoped(prisma.hotelClient).findFirst({
-      where: { id: hotelClientId },
-      select: { id: true },
-    });
-    if (!hotel) {
-      return Response.json({ error: "Hotel not found for your agency." }, { status: 404 });
-    }
+  if (!hotelClientId) {
+    return Response.json(
+      { error: "hotelClientId is required to connect Meta for a hotel." },
+      { status: 400 },
+    );
   }
 
-  // State binds the round-trip to this agency (HMAC-signed, 10-min expiry, nonce).
-  // An empty hotelClientId is a valid "agency-level" marker the callback handles.
+  // Multi-tenant guard: never start a flow for another agency's hotel.
+  const hotel = await agencyScoped(prisma.hotelClient).findFirst({
+    where: { id: hotelClientId },
+    select: { id: true },
+  });
+  if (!hotel) {
+    return Response.json({ error: "Hotel not found for your agency." }, { status: 404 });
+  }
+
+  // State binds the round-trip to this agency + hotel (HMAC-signed, 10-min
+  // expiry, nonce).
   const state = signOauthState({ hotelClientId, agencyId: member.agencyId });
 
   let authorizeUrl: string;

@@ -54,15 +54,16 @@ export async function syncHotelAds(
     };
   }
 
+  // Hotel-scoped token: each hotel owns its own Meta connection.
   const token = await prisma.metaToken.findFirst({
-    where: { agencyId: hotel.agencyId, status: "connected" },
+    where: { hotelClientId: hotel.id, agencyId: hotel.agencyId, status: "connected" },
     select: { id: true },
   });
   if (!token) {
     return {
       ok: false,
       hotelName: hotel.name,
-      error: "The hotel's agency has no connected Meta token.",
+      error: "This hotel has no connected Meta token.",
     };
   }
 
@@ -70,6 +71,7 @@ export async function syncHotelAds(
   try {
     secret = await getTokenForApiCall("meta_ads", token.id, {
       agencyId: hotel.agencyId,
+      hotelClientId: hotel.id,
       source: "admin:sync-now",
     });
   } catch {
@@ -183,7 +185,7 @@ export async function syncHotelAds(
       });
       await recordSyncFailure(
         hotel.agencyId,
-        null,
+        hotel.id,
         "meta_ads",
         err.message || "Meta token expired/revoked during sync.",
       );

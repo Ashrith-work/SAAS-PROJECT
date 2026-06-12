@@ -69,7 +69,7 @@ async function main() {
 
   for (const hotel of hotels) {
     const tokenRow = await prisma.metaToken.findFirst({
-      where: { agencyId: hotel.agencyId, status: "connected" },
+      where: { agencyId: hotel.agencyId, hotelClientId: hotel.id, status: "connected" },
       select: { id: true },
     });
     if (!tokenRow) {

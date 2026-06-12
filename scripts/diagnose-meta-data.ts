@@ -62,14 +62,14 @@ async function main() {
   console.log("\n  MetaToken rows for this agency (token itself NOT selected):");
   const tokens = await prisma.metaToken.findMany({
     where: { agencyId: hotel.agencyId },
-    select: { id: true, agencyId: true, status: true, tokenExpiresAt: true, createdAt: true },
+    select: { id: true, agencyId: true, hotelClientId: true, status: true, tokenExpiresAt: true, createdAt: true },
   });
   for (const t of tokens) {
     console.log(
-      `    id=${t.id} agencyId=${t.agencyId} status=${t.status} expires=${iso(t.tokenExpiresAt)} createdAt=${iso(t.createdAt)}`,
+      `    id=${t.id} hotelClientId=${t.hotelClientId} status=${t.status} expires=${iso(t.tokenExpiresAt)} createdAt=${iso(t.createdAt)}`,
     );
   }
-  console.log("  (schema note: MetaToken is per-AGENCY — it has no hotelClientId/tokenType/lastSyncedAt columns;");
+  console.log("  (schema note: MetaToken is per-HOTEL — @@unique([hotelClientId]);");
   console.log("   lastSyncedAt lives on HotelClient, shown above. AdSnapshot has NO createdAt column.)");
 
   // ── 3. Provenance timestamps: backfill jobs + token audit log ──

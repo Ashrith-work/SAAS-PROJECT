@@ -224,6 +224,7 @@ model HotelClient {
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  metaToken      MetaToken?
   contentPieces  ContentPiece[]
   trackingEvents TrackingEvent[]
   touchpoints    Touchpoint[]
@@ -369,6 +370,11 @@ enum MetaTokenSource {
 model MetaToken {
   id             String   @id @default(cuid())
   agencyId       String
+  // One MetaToken per hotel (like InstagramConnection / Ga4Connection). Each
+  // hotel owns its own Meta Ads token, so hotels in SEPARATE Meta accounts no
+  // longer overwrite each other. agencyId is kept for tenant scoping (every row
+  // is still scoped to an agency) — see @@unique([hotelClientId]) below.
+  hotelClientId  String
   encryptedToken String // AES-256-GCM ciphertext (base64). NEVER log or expose.
   tokenExpiresAt DateTime
   status         String   @default("disconnected")
@@ -387,8 +393,10 @@ model MetaToken {
   // Dedup for manual-token expiry emails: null | "14d" | "7d" | "expired".
   expiryWarningStage String?
 
-  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
 
+  @@unique([hotelClientId]) // one Meta token per hotel
   @@index([agencyId])
 }
 

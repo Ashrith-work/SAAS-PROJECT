@@ -115,6 +115,7 @@ export async function GET(request: Request) {
     select: {
       id: true,
       agencyId: true,
+      hotelClientId: true,
       tokenExpiresAt: true,
       tokenSource: true,
       refreshableViaOAuth: true,
@@ -141,11 +142,13 @@ export async function GET(request: Request) {
         try {
           const current = await getTokenForApiCall("meta_ads", token.id, {
             agencyId: token.agencyId,
+            hotelClientId: token.hotelClientId,
             source: "cron:meta-refresh",
           });
           const fresh = await exchangeForLongLivedToken(current.reveal());
           const encryptedToken = await encryptWithAudit(fresh.accessToken, {
             agencyId: token.agencyId,
+            hotelClientId: token.hotelClientId,
             tokenType: "meta_ads",
             source: "cron:meta-refresh",
             action: "refreshed",

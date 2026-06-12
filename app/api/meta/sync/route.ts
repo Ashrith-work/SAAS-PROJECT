@@ -10,13 +10,15 @@ import { refreshCampaignPerformance } from "@/lib/campaign-attribution";
 // can be triggered manually for testing. Guarded by CRON_SECRET — Vercel Cron
 // sends `Authorization: Bearer <CRON_SECRET>` automatically.
 //
-// For every agency with a CONNECTED Meta token, it pulls daily insights for
-// each hotel that has an ad account mapped and upserts one AdSnapshot per day.
-// Idempotent: the unique [hotelClientId, date] key means re-running overwrites
-// the same day's row with fresh numbers rather than duplicating.
+// Iterates over every HOTEL that has both a CONNECTED (hotel-scoped) Meta token
+// and an ad account mapped, pulls its daily insights, and upserts one AdSnapshot
+// per day. Idempotent: the unique [hotelClientId, metaAccountId, date] key means
+// re-running overwrites the same day's row with fresh numbers rather than
+// duplicating.
 //
-// Resilient: a dead token disconnects just that agency; one hotel's error never
-// aborts the whole job. NEVER logs or returns the access token.
+// Resilient: a hotel with no token is skipped cleanly; a dead token disconnects
+// only THAT hotel (marked expired) and the run continues with the others. NEVER
+// logs or returns the access token.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,40 +56,48 @@ export async function GET(request: Request) {
     until: ymd(now),
   };
 
-  const tokens = await prisma.metaToken.findMany({
-    where: { status: "connected" },
-    select: { id: true, agencyId: true },
+  // Every active, ad-account-mapped hotel that has its OWN connected Meta token.
+  // The token is a 1-1 relation, so the relation filter selects only hotels whose
+  // token is connected; hotels with no token (or a non-connected one) are skipped.
+  const hotels = await prisma.hotelClient.findMany({
+    where: {
+      metaAdAccountId: { not: null },
+      deletedAt: null,
+      metaToken: { is: { status: "connected" } },
+    },
+    select: {
+      id: true,
+      agencyId: true,
+      metaAdAccountId: true,
+      metaToken: { select: { id: true } },
+    },
   });
 
-  let agenciesProcessed = 0;
+  let hotelsProcessed = 0;
   let hotelsSynced = 0;
   let snapshotsWritten = 0;
   let campaignSnapshotsWritten = 0;
   let tokensDisconnected = 0;
   const errors: { agencyId: string; hotelId?: string; error: string }[] = [];
 
-  for (const token of tokens) {
-    agenciesProcessed += 1;
-
-    const hotels = await prisma.hotelClient.findMany({
-      where: { agencyId: token.agencyId, metaAdAccountId: { not: null }, deletedAt: null },
-      select: { id: true, metaAdAccountId: true },
-    });
-    if (hotels.length === 0) continue;
+  for (const hotel of hotels) {
+    hotelsProcessed += 1;
+    const accountId = hotel.metaAdAccountId!;
+    const tokenId = hotel.metaToken!.id;
 
     let accessToken: SecretToken;
     try {
-      accessToken = await getTokenForApiCall("meta_ads", token.id, {
-        agencyId: token.agencyId,
+      accessToken = await getTokenForApiCall("meta_ads", tokenId, {
+        agencyId: hotel.agencyId,
+        hotelClientId: hotel.id,
         source: "api:/api/meta/sync",
       });
     } catch {
-      errors.push({ agencyId: token.agencyId, error: "Could not decrypt token." });
+      errors.push({ agencyId: hotel.agencyId, hotelId: hotel.id, error: "Could not decrypt token." });
       continue;
     }
 
-    for (const hotel of hotels) {
-      const accountId = hotel.metaAdAccountId!;
+    {
       try {
         const rows = await getDailyInsights(accessToken.reveal(), accountId, range);
 
@@ -117,7 +127,7 @@ export async function GET(request: Request) {
                 date,
               },
             },
-            create: { agencyId: token.agencyId, hotelClientId: hotel.id, date, ...data },
+            create: { agencyId: hotel.agencyId, hotelClientId: hotel.id, date, ...data },
             update: data,
           });
           snapshotsWritten += 1;
@@ -151,7 +161,7 @@ export async function GET(request: Request) {
               },
             },
             create: {
-              agencyId: token.agencyId,
+              agencyId: hotel.agencyId,
               hotelClientId: hotel.id,
               metaCampaignId: row.campaignId,
               date,
@@ -162,7 +172,7 @@ export async function GET(request: Request) {
           campaignSnapshotsWritten += 1;
         }
         await refreshCampaignPerformance(
-          token.agencyId,
+          hotel.agencyId,
           hotel.id,
           new Date(`${range.since}T00:00:00.000Z`),
           now,
@@ -175,28 +185,30 @@ export async function GET(request: Request) {
         hotelsSynced += 1;
       } catch (err) {
         if (err instanceof MetaAuthError) {
-          // Token is dead — mark it expired, record a SyncFailure so the gap is
-          // never silent, and stop syncing this agency's hotels. Reconnecting
-          // will backfill the window and resolve the failure.
+          // This hotel's token is dead — mark ONLY it expired and record a
+          // SyncFailure so the gap is never silent, then continue with the other
+          // hotels (one bad token must not kill the whole run). Reconnecting that
+          // hotel will backfill the window and resolve the failure.
           await prisma.metaToken.update({
-            where: { id: token.id },
+            where: { id: tokenId },
             data: { status: "expired" },
           });
           await recordSyncFailure(
-            token.agencyId,
-            null,
+            hotel.agencyId,
+            hotel.id,
             "meta_ads",
             err.message || "Meta token expired/revoked during sync.",
           );
           tokensDisconnected += 1;
           errors.push({
-            agencyId: token.agencyId,
+            agencyId: hotel.agencyId,
+            hotelId: hotel.id,
             error: "Meta token expired/revoked — marked expired.",
           });
-          break;
+          continue;
         }
         errors.push({
-          agencyId: token.agencyId,
+          agencyId: hotel.agencyId,
           hotelId: hotel.id,
           error: err instanceof Error ? err.message : "Unknown sync error.",
         });
@@ -220,7 +232,7 @@ export async function GET(request: Request) {
   return Response.json({
     ok: true,
     range,
-    agenciesProcessed,
+    hotelsProcessed,
     hotelsSynced,
     snapshotsWritten,
     campaignSnapshotsWritten,

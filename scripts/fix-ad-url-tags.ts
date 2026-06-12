@@ -68,11 +68,11 @@ async function main() {
   const mode = process.argv[2] ?? "dry";
   const hotel = await prisma.hotelClient.findFirst({
     where: { metaAdAccountId: { not: null } },
-    select: { agencyId: true, metaAdAccountId: true },
+    select: { id: true, agencyId: true, metaAdAccountId: true },
   });
   if (!hotel) throw new Error("No hotel with ad account.");
   const tokenRow = await prisma.metaToken.findFirst({
-    where: { agencyId: hotel.agencyId, status: "connected" },
+    where: { agencyId: hotel.agencyId, hotelClientId: hotel.id, status: "connected" },
     select: { id: true },
   });
   if (!tokenRow) throw new Error("No connected token.");

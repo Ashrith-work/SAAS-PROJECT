@@ -40,6 +40,7 @@ const ENV_KEYS = [
 let envSnapshot: Record<string, string | undefined> = {};
 
 let agencyId: string;
+let hotelId: string;
 
 beforeAll(async () => {
   envSnapshot = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -48,6 +49,20 @@ beforeAll(async () => {
     data: { name: `${PREFIX}A`, email: `${PREFIX.toLowerCase()}a@example.test` },
   });
   agencyId = agency.id;
+  // MetaToken is hotel-scoped (@@unique([hotelClientId])) — these tests need a
+  // hotel to attach the token to.
+  const hotel = await prisma.hotelClient.create({
+    data: {
+      agencyId,
+      name: `${PREFIX}Hotel`,
+      websiteUrl: "https://example.com",
+      contactName: "C",
+      contactEmail: "c@test.local",
+      siteId: `${PREFIX}site-${Date.now()}`,
+      conversionMethod: "both",
+    },
+  });
+  hotelId = hotel.id;
 });
 
 afterEach(() => {
@@ -149,6 +164,7 @@ test("the rotation routine re-encrypts all tokens from v1 to v2", async () => {
   const mt = await prisma.metaToken.create({
     data: {
       agencyId,
+      hotelClientId: hotelId,
       encryptedToken: encryptToken("rotate-me"),
       tokenExpiresAt: new Date(Date.now() + 86_400_000),
       status: "connected",
@@ -173,9 +189,23 @@ test("the rotation routine re-encrypts all tokens from v1 to v2", async () => {
 // 7 ───────────────────────────────────────────────────────────────────────────
 describe("the Prisma strip extension removes encryptedToken from results", () => {
   test("findFirst / findUnique never return the ciphertext, raw still can", async () => {
+    // A dedicated hotel — MetaToken.hotelClientId is unique, so this test can't
+    // reuse the hotel the rotation test already attached a token to.
+    const stripHotel = await prisma.hotelClient.create({
+      data: {
+        agencyId,
+        name: `${PREFIX}StripHotel`,
+        websiteUrl: "https://example.com",
+        contactName: "C",
+        contactEmail: "c@test.local",
+        siteId: `${PREFIX}strip-site-${Date.now()}`,
+        conversionMethod: "both",
+      },
+    });
     const mt = await prisma.metaToken.create({
       data: {
         agencyId,
+        hotelClientId: stripHotel.id,
         encryptedToken: encryptToken("strip-me"),
         tokenExpiresAt: new Date(Date.now() + 86_400_000),
         status: "connected",
