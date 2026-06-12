@@ -62,7 +62,7 @@ export function PublicReport({
   rangeLabel: string;
   report: HotelReport;
 }) {
-  const { kpis, contentPerf, ads, influencerRows, realRoi } = report;
+  const { kpis, contentPerf, ads, influencerRows, realRoi, otaSavings } = report;
   const paidCampaigns = contentPerf.filter((c) => c.contentType === "paid_ad");
 
   return (
@@ -115,6 +115,18 @@ export function PublicReport({
           />
           <KpiCard label="Overall ROAS" value={formatMultiple(kpis.roas)} hint="Revenue ÷ ad spend" />
         </div>
+
+        {/* Commission Saved vs OTAs (Part 7) — owner-facing savings highlight. */}
+        {otaSavings.amount > 0 && (
+          <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+            <p className="text-sm text-ink-secondary">
+              Your agency saved you{" "}
+              <span className="font-semibold text-success">{formatCurrency(otaSavings.amount)}</span> this
+              period by driving direct bookings instead of OTA bookings (at a {otaSavings.rate}% OTA
+              commission rate).
+            </p>
+          </div>
+        )}
 
         {/* Content performance */}
         <SectionCard

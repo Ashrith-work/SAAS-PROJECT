@@ -31,6 +31,8 @@ export type HotelReport = {
   influencerRows: InfluencerRow[];
   /** Real ad-driven revenue ÷ spend (HotelTrack's "true ROI"). */
   realRoi: number | null;
+  /** OTA commission saved by direct bookings this period (Part 7). */
+  otaSavings: { rate: number; bookingRevenue: number; amount: number };
 };
 
 export async function loadHotelReport(args: {
@@ -45,7 +47,7 @@ export async function loadHotelReport(args: {
   // is also called from the public /share page (which resolves agencyId from the
   // share token, NOT a session), so it takes agencyId as a param rather than
   // reading the Clerk context.
-  const [content, events, snapshots] = await Promise.all([
+  const [content, events, snapshots, hotelMeta] = await Promise.all([
     agencyScopedFor(agencyId, prisma.contentPiece).findMany({
       where: { hotelClientId: hotelId },
       select: {
@@ -71,6 +73,10 @@ export async function loadHotelReport(args: {
       where: { hotelClientId: hotelId, archived: false, date: { gte: since, lte: until } },
       orderBy: { date: "asc" },
       select: { date: true, spend: true, conversions: true, roas: true },
+    }),
+    agencyScopedFor(agencyId, prisma.hotelClient).findFirst({
+      where: { id: hotelId },
+      select: { otaCommissionRate: true },
     }),
   ]);
 
@@ -116,5 +122,16 @@ export async function loadHotelReport(args: {
     .reduce((sum, c) => sum + c.revenue, 0);
   const realRoi = trueRoi(realAdRevenue, ads.spend);
 
-  return { kpis, contentPerf, ads, influencerRows, realRoi };
+  // OTA commission saved by direct (snippet-tracked) bookings this period.
+  const otaRate = hotelMeta?.otaCommissionRate == null ? 18 : Number(hotelMeta.otaCommissionRate);
+  const bookingRevenue = eventInputs
+    .filter((e) => e.eventType === "conversion")
+    .reduce((sum, e) => sum + (e.conversionValue ?? 0), 0);
+  const otaSavings = {
+    rate: otaRate,
+    bookingRevenue,
+    amount: otaRate > 0 ? bookingRevenue * (otaRate / 100) : 0,
+  };
+
+  return { kpis, contentPerf, ads, influencerRows, realRoi, otaSavings };
 }

@@ -73,6 +73,7 @@ import { loadHotelStates } from "@/lib/integration-status";
 import { missingAdDays } from "@/lib/backfill";
 import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
 import { RevenueBySource } from "@/components/dashboard/RevenueBySource";
+import { CommissionSavings } from "@/components/dashboard/CommissionSavings";
 import { loadInfluencerPerformance } from "@/lib/influencer-dashboard";
 import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerformance";
 
@@ -1760,6 +1761,16 @@ export default async function HotelDashboardPage({
           )}
         </SectionCard>
       )}
+
+      {/* Commission Saved vs OTAs (per-hotel) — direct-booking savings KPI + trend. */}
+      <SectionCard
+        title="Commission Saved vs OTAs"
+        subtitle="How much your direct (snippet-tracked) bookings saved vs paying OTA commission. Set the rate on the Integrations page."
+      >
+        <div className="p-4">
+          <CommissionSavings hotelId={hotel.id} />
+        </div>
+      </SectionCard>
 
       {/* Revenue by Source — how much booking revenue came from each marketing
           source, at three granularities. Client-fetched (toggles/date/chips). */}

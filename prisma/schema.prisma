@@ -213,6 +213,12 @@ model HotelClient {
   shareTokenCreatedAt DateTime?
   shareTokenRevoked   Boolean         @default(false)
   showAdSpendToHotel  Boolean         @default(false)
+  // ── OTA commission savings (per-hotel) ──
+  // Average commission % this hotel pays OTAs (Booking.com / MakeMyTrip / Agoda).
+  // Used to show how much direct (snippet-tracked) bookings saved vs going through
+  // an OTA: savings = booking revenue × rate/100. Null = not configured yet
+  // (treated as the 18% default when calculating/displaying). Valid range 0–50.
+  otaCommissionRate   Decimal?        @default(18.0) @db.Decimal(5, 2)
   // ── Funnel-stage URL rules (Phase 2 journey funnel) ──
   // Optional [{ urlPattern, stage }] used to tag PageViews server-side when a
   // hotel can't add data-ht-stage attributes to its pages. See lib/funnel.ts.

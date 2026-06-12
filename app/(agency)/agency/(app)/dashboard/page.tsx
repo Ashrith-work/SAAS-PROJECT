@@ -9,6 +9,7 @@ import { RevenueTrendChart } from "@/components/dashboard/RevenueTrendChart";
 import { RevenueByHotelChart } from "@/components/dashboard/RevenueByHotelChart";
 import { TrafficSourceChart } from "@/components/dashboard/TrafficSourceChart";
 import { AgencyRevenueRollup } from "@/components/dashboard/AgencyRevenueRollup";
+import { AgencySavings } from "@/components/dashboard/AgencySavings";
 import { isPixelMode } from "@/lib/tracking-mode";
 import {
   formatCurrency,
@@ -306,6 +307,12 @@ export default async function AgencyDashboardPage({
           </p>
         </div>
         <AgencyRevenueRollup hotels={hotels} />
+      </section>
+
+      {/* OTA commission savings across all hotels (Part 6) — KPI + per-hotel table
+          + stacked monthly trend. Self-hides when the agency has no hotels. */}
+      <section>
+        <AgencySavings />
       </section>
 
       {/* Summary KPIs across all hotels */}

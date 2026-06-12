@@ -33,6 +33,8 @@ import { ConnectionHistory } from "./ConnectionHistory";
 import { archivedAccountSummaries } from "@/lib/meta-archive";
 import { BudgetTracking } from "./BudgetTracking";
 import { FunnelConfig } from "./FunnelConfig";
+import { OtaCommissionSettings } from "./OtaCommissionSettings";
+import { DEFAULT_OTA_RATE } from "@/lib/savings";
 import { parseFunnelRules } from "@/lib/funnel";
 import { getBudgetStatus, rupeesFromPaise } from "@/lib/budget";
 import { InstagramActions } from "./InstagramActions";
@@ -134,6 +136,7 @@ export default async function HotelIntegrationsPage({
       monthlyAdBudget: true,
       budgetResetDay: true,
       funnelStageRules: true,
+      otaCommissionRate: true,
     },
   });
   if (!hotel) notFound();
@@ -604,6 +607,12 @@ export default async function HotelIntegrationsPage({
           page.
         </p>
       </IntegrationCard>
+
+      {/* ── OTA Commission Tracking (per-hotel rate for direct-booking savings) ── */}
+      <OtaCommissionSettings
+        hotelId={hotel.id}
+        currentRate={hotel.otaCommissionRate == null ? DEFAULT_OTA_RATE : Number(hotel.otaCommissionRate)}
+      />
 
       {/* ── Card 2 — Instagram (IGAA via Instagram Login) ────────────────── */}
       <IntegrationCard
