@@ -18,6 +18,7 @@ import { KpiStrip, type KpiCardSpec } from "@/components/dashboard/mission/KpiSt
 import { FollowerChart } from "@/components/report/FollowerChart";
 import { SourcePieChart } from "@/components/report/SourcePieChart";
 import { DailyVisitorsChart } from "./DailyVisitorsChart";
+import { ContactAgencyCard } from "@/components/agency/ContactAgencyCard";
 
 // Public, no-login, READ-ONLY hotel dashboard, addressed by an unguessable
 // 256-bit share token. Access + data isolation are enforced entirely inside this
@@ -164,7 +165,17 @@ export default async function PublicHotelDashboard({
       showAdSpendToHotel: true,
       lastSyncedAt: true,
       deletedAt: true,
-      agency: { select: { name: true, suspendedAt: true } },
+      agency: {
+        select: {
+          name: true,
+          suspendedAt: true,
+          mobile: true,
+          contactEmail: true,
+          address: true,
+          websiteUrl: true,
+          whatsappNumber: true,
+        },
+      },
     },
   });
 
@@ -442,6 +453,14 @@ export default async function PublicHotelDashboard({
             performance and Instagram insights.
           </div>
         )}
+
+        {/* Contact the managing agency. Hotel owner view: no edit affordance. */}
+        <ContactAgencyCard
+          agencyName={hotel.agency.name}
+          contact={hotel.agency}
+          canEdit={false}
+          viewerIsAgency={false}
+        />
 
         <footer className="pt-2 text-center text-xs text-ink-disabled">
           Powered by HotelTrack · shared by {hotel.agency.name}

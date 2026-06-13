@@ -78,6 +78,9 @@ import { OwnerSummaryCard } from "@/components/dashboard/OwnerSummaryCard";
 import { PerformanceOverview } from "@/components/dashboard/PerformanceOverview";
 import { loadInfluencerPerformance } from "@/lib/influencer-dashboard";
 import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerformance";
+import { ContactInfoBanner } from "@/components/agency/ContactInfoBanner";
+import { ContactAgencyCard } from "@/components/agency/ContactAgencyCard";
+import { shouldShowContactBanner } from "@/lib/agency-contact";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -1401,6 +1404,10 @@ export default async function HotelDashboardPage({
         )}
       </div>
 
+      {/* Non-blocking nudge for existing (pre-deploy) agencies missing contact
+          info. New signups never see it (their signup required the info). */}
+      {shouldShowContactBanner(member.agency) && <ContactInfoBanner />}
+
       {/* Owner Summary — glanceable plain-English read of recent performance,
           at the very top of the dashboard (above all sections). */}
       <OwnerSummaryCard hotelId={hotel.id} />
@@ -2118,6 +2125,15 @@ export default async function HotelDashboardPage({
 
       {/* Section 6 — Website Traffic (Google Analytics 4, OAuth) */}
       <Ga4WebsiteTraffic data={ga4Dashboard} hotelId={hotel.id} />
+
+      {/* Contact Agency — bottom of the hotel-facing dashboard. Shows the agency
+          that OWNS this hotel (member.agency). Edit link for admins only. */}
+      <ContactAgencyCard
+        agencyName={member.agency.name}
+        contact={member.agency}
+        canEdit={member.role === "admin"}
+        viewerIsAgency
+      />
 
       {/* Shareable read-only dashboard link for the hotel owner */}
       <SectionCard

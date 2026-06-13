@@ -8,6 +8,8 @@ import { IntegrationStatusBadge } from "@/components/ui/IntegrationStatusBadge";
 import { getActiveBackfill } from "./backfill-actions";
 import { BackfillProgress } from "./BackfillProgress";
 import { NotificationSettings } from "./NotificationSettings";
+import { AgencyContactForm } from "@/components/agency/AgencyContactForm";
+import { saveAgencyContact } from "./actions";
 
 // Server-side relative time (avoids Date.now() in a client render).
 function relativeAgo(d: Date, now: Date): string {
@@ -81,6 +83,33 @@ export default async function SettingsPage() {
       </div>
 
       <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
+
+      {/* ── Agency contact information (visible to hotel clients) ─────────── */}
+      <section className="rounded-xl border border-line p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-medium">Agency Contact Information</h2>
+          <span className="rounded-full border border-line bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-tertiary">
+            👁 Hotels can see this
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-ink-tertiary">
+          This information will be visible to hotel clients on their dashboard so they can
+          reach you quickly.
+        </p>
+        <div className="mt-5 max-w-md">
+          <AgencyContactForm
+            action={saveAgencyContact}
+            initial={{
+              mobile: member.agency.mobile ?? "",
+              contactEmail: member.agency.contactEmail ?? "",
+              whatsappNumber: member.agency.whatsappNumber ?? "",
+              address: member.agency.address ?? "",
+              websiteUrl: member.agency.websiteUrl ?? "",
+            }}
+            submitLabel="Save contact information"
+          />
+        </div>
+      </section>
 
       {/* ── Meta connections (read-only roll-up) ────────────────────────── */}
       <section className="rounded-xl border border-line p-6">

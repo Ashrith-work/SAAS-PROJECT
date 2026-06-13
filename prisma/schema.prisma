@@ -116,6 +116,15 @@ model Agency {
   slackLastTestStatus String? // "success" | an error message (for the UI)
   alertEmailAddress  String?
   emailAlertsEnabled Boolean   @default(false)
+  // ── Agency contact info (shown to hotel owners on their dashboard) ──
+  // All nullable for backward-compat: existing agencies are prompted to fill
+  // them via a banner; new signups are required to provide them (validated in
+  // the app, not the DB). See lib/agency-contact.ts.
+  mobile             String?   // primary phone, normalized "+91XXXXXXXXXX"
+  contactEmail       String?   // public contact email (separate from the login email)
+  address            String?   // physical address (may be multi-line)
+  websiteUrl         String?   // agency's own website
+  whatsappNumber     String?   // WhatsApp-enabled number (may equal mobile)
   createdAt          DateTime @default(now())
 
   members           AgencyMember[]

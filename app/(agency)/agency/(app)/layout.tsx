@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { UserButton } from "@clerk/nextjs";
 import { getCurrentMember } from "@/lib/auth";
 import { isActiveStatus } from "@/lib/plans";
+import { mustCompleteContactInfo } from "@/lib/agency-contact";
 
 // Shell for the signed-in agency app (dashboard, hotel clients, …). Onboarding
 // and billing live OUTSIDE this group so they aren't gated by the subscription
@@ -19,6 +20,14 @@ export default async function AgencyAppLayout({
   // A super admin can suspend an agency independently of billing — block here.
   if (member.agency.suspendedAt) {
     redirect("/agency/suspended");
+  }
+
+  // New signups (created after this feature shipped) must provide contact info
+  // before reaching the dashboard. The step lives outside this layout group, so
+  // redirecting here can't loop. Existing agencies are never blocked (they get a
+  // dismissible banner instead — see lib/agency-contact.ts).
+  if (mustCompleteContactInfo(member.agency)) {
+    redirect("/agency/onboarding/contact");
   }
 
   // Gate the whole agency dashboard behind an active subscription. While
