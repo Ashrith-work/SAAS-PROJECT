@@ -9,6 +9,7 @@ import {
   type AdSnapshotInput,
   type EventInput,
 } from "@/lib/attribution";
+import { DEFAULT_OTA_RATE, calculateSavings } from "@/lib/savings";
 
 // Loads everything the PUBLIC, read-only hotel dashboard (/h/<shareToken>) shows,
 // computed server-side into a plain, serialisable shape. ALWAYS scoped by BOTH
@@ -73,6 +74,12 @@ export type HotelPublicDashboard = {
     totalSessions: number;
     conversionRate: number | null;
   };
+  /** OTA commission saved by direct (snippet-tracked) bookings this period. */
+  otaSavings: {
+    rate: number;
+    bookingRevenue: number;
+    amount: number;
+  };
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -106,7 +113,7 @@ export async function loadHotelPublicDashboard(args: {
   const scoped = <D>(model: D) => agencyScopedFor(agencyId, model);
 
   // ── Snippet conversions + visit-source counts (empty in pixel mode) ──────────
-  const [conversions, visitGroups, snapshots] = await Promise.all([
+  const [conversions, visitGroups, snapshots, hotelMeta] = await Promise.all([
     pixelMode
       ? Promise.resolve(
           [] as { utmSource: string | null; sessionId: string; conversionValue: import("@prisma/client").Prisma.Decimal | null }[],
@@ -134,6 +141,10 @@ export async function loadHotelPublicDashboard(args: {
       orderBy: { date: "asc" },
       select: { date: true, spend: true, conversions: true, roas: true },
     }),
+    scoped(prisma.hotelClient).findFirst({
+      where: { id: hotelId },
+      select: { otaCommissionRate: true },
+    }),
   ]);
 
   // ── KPIs (revenue / bookings / ROAS) ─────────────────────────────────────────
@@ -153,6 +164,16 @@ export async function loadHotelPublicDashboard(args: {
   }));
   const kpis = computeKpis(eventInputs, ads.spend);
   const adr = kpis.bookings > 0 ? kpis.revenue / kpis.bookings : null;
+
+  // OTA commission saved by direct (snippet-tracked) bookings — booking revenue ×
+  // this hotel's own OTA rate (fallback DEFAULT_OTA_RATE). Same basis as the
+  // agency-side "Commission Saved vs OTAs" KPI, just scoped to this one hotel.
+  const otaRate = hotelMeta?.otaCommissionRate == null ? DEFAULT_OTA_RATE : Number(hotelMeta.otaCommissionRate);
+  const otaSavings = {
+    rate: otaRate,
+    bookingRevenue: kpis.revenue,
+    amount: calculateSavings(kpis.revenue, otaRate),
+  };
 
   // ── Channel performance (last-touch by the conversion's own source) ──────────
   const visitorsBySource = new Map<string, Set<string>>();
@@ -345,5 +366,6 @@ export async function loadHotelPublicDashboard(args: {
       })),
     },
     traffic,
+    otaSavings,
   };
 }

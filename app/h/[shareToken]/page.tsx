@@ -204,7 +204,7 @@ export default async function PublicHotelDashboard({
     pixelMode,
   });
 
-  const { kpis, channels, instagram, traffic } = data;
+  const { kpis, channels, instagram, traffic, otaSavings } = data;
 
   const kpiCards: KpiCardSpec[] = [
     {
@@ -284,6 +284,20 @@ export default async function PublicHotelDashboard({
 
         {/* KPI strip */}
         <KpiStrip cards={kpiCards} />
+
+        {/* Commission saved vs OTAs — owner-facing savings highlight. */}
+        {otaSavings.amount > 0 && (
+          <div className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 sm:px-5">
+            <p className="text-sm text-ink-secondary">
+              Your agency saved you{" "}
+              <span className="font-semibold text-success" title={formatCurrency(otaSavings.amount)}>
+                {formatCurrency(otaSavings.amount)}
+              </span>{" "}
+              over the last 30 days by driving direct bookings on your own website instead of OTA
+              bookings (at a {otaSavings.rate}% OTA commission rate).
+            </p>
+          </div>
+        )}
 
         {/* Channel performance — the key view */}
         {showChannels && (
