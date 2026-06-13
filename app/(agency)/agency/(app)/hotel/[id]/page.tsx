@@ -81,6 +81,9 @@ import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerforma
 import { ContactInfoBanner } from "@/components/agency/ContactInfoBanner";
 import { ContactAgencyCard } from "@/components/agency/ContactAgencyCard";
 import { shouldShowContactBanner } from "@/lib/agency-contact";
+import { ChannelSelector } from "@/components/dashboard/ChannelSelector";
+import { ChannelView } from "@/components/dashboard/ChannelView";
+import { isChannelKey, type ChannelKey } from "@/lib/channel-view";
 
 const POST_TYPES = ["image", "video", "carousel", "reels"] as const;
 type PostType = (typeof POST_TYPES)[number];
@@ -288,6 +291,32 @@ export default async function HotelDashboardPage({
     rawPostType && (POST_TYPES as readonly string[]).includes(rawPostType)
       ? (rawPostType as PostType)
       : null;
+
+  // Channel-filtered view (Channel-Filtered Dashboard). A specific channel skips
+  // the heavy full-dashboard queries below entirely (PART 5) and renders the
+  // channel deep-dive instead. "all" falls through to the existing comprehensive
+  // dashboard, unchanged.
+  const channelParam = one(sp.channel);
+  const channel: ChannelKey = isChannelKey(channelParam) ? channelParam : "all";
+  if (channel !== "all") {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <Link href="/agency/hotels" className="text-sm text-ink-tertiary hover:underline">
+            ← Hotel Clients
+          </Link>
+          <p className="text-sm text-ink-tertiary">{hotel.name}</p>
+        </div>
+        <ChannelView
+          hotelId={hotel.id}
+          channel={channel}
+          from={range.fromInput}
+          to={range.toInput}
+          currentRange={range.key}
+        />
+      </div>
+    );
+  }
 
   // All five queries scoped to this agency + hotel + range.
   const [content, events, snapshots] = await Promise.all([
@@ -1418,6 +1447,10 @@ export default async function HotelDashboardPage({
           </Link>
         )}
       </div>
+
+      {/* Channel selector — "All Channels" (this full dashboard) by default;
+          pick a channel to switch to its deep-dive view. */}
+      <ChannelSelector current="all" />
 
       {/* Non-blocking nudge for existing (pre-deploy) agencies missing contact
           info. New signups never see it (their signup required the info). */}

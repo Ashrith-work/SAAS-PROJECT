@@ -1,0 +1,264 @@
+import "dotenv/config";
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Channel-Filtered Dashboard View. Pure channel-key helpers + DB-backed loaders
+// and the endpoint: per-channel structure (paid / organic / influencer / direct
+// / other), source classification matching R1, empty states, auth, tenant
+// isolation, the "all" passthrough, unknown-channel rejection, and the 5-min cache.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const h = vi.hoisted(() => ({ member: null as null | Record<string, unknown>, role: "agency_admin" as string | undefined }));
+vi.mock("@/lib/auth", () => ({ getCurrentMember: async () => h.member, getPlatformRole: async () => h.role }));
+
+import { prisma } from "@/lib/prisma";
+import {
+  loadChannelView, isChannelKey, CHANNEL_KEYS,
+  type PaidChannelView, type InstagramChannelView, type InfluencerChannelView,
+  type DirectChannelView, type OtherChannelView,
+} from "@/lib/channel-view";
+import { GET as channelGET } from "@/app/api/agency/hotels/[hotelId]/channel-view/route";
+
+const PREFIX = "TEST_CV_";
+const START = new Date(Date.UTC(2026, 2, 1, 0, 0, 0));
+const END = new Date(Date.UTC(2026, 2, 31, 23, 59, 59));
+const IN = new Date(Date.UTC(2026, 2, 15, 10, 0, 0));
+const loginAs = (m: Record<string, unknown> | null) => { h.member = m; };
+
+function route(hotelId: string, query = "") {
+  return channelGET(new Request(`http://localhost/api/agency/hotels/${hotelId}/channel-view?${query}`), {
+    params: Promise.resolve({ hotelId }),
+  });
+}
+
+// ── Pure ──
+describe("channel keys", () => {
+  test("isChannelKey + order", () => {
+    expect(isChannelKey("meta_ads")).toBe(true);
+    expect(isChannelKey("nope")).toBe(false);
+    expect(CHANNEL_KEYS[0]).toBe("all");
+    expect(CHANNEL_KEYS).toContain("influencer");
+  });
+});
+
+// ── DB-backed ──
+describe("DB-backed", () => {
+  let agencyA: string;
+  let hMain: string, hEmpty: string, hB: string;
+  let memberA: Record<string, unknown>, memberB: Record<string, unknown>;
+
+  function conv(a: string, hotel: string, value: number, o: { source?: string; medium?: string; campaign?: string; session?: string; when?: Date } = {}) {
+    return prisma.trackingEvent.create({ data: {
+      agencyId: a, hotelClientId: hotel, eventType: "conversion", pageUrl: "https://h/thx",
+      conversionValue: value.toFixed(2), sessionId: o.session ?? `s_${randomUUID()}`, deviceType: "desktop",
+      utmSource: o.source ?? null, utmMedium: o.medium ?? null, utmCampaign: o.campaign ?? null, createdAt: o.when ?? IN,
+    } });
+  }
+  function sess(a: string, hotel: string, id: string, o: { source?: string; medium?: string; landing?: string } = {}) {
+    return prisma.session.create({ data: {
+      id, visitorId: `v_${randomUUID()}`, hotelClientId: hotel, agencyId: a, startedAt: IN,
+      landingPath: o.landing ?? "/", exitPath: "/", pageViewCount: 1, totalTimeMs: 5000,
+      utmSource: o.source ?? null, utmMedium: o.medium ?? null,
+    } });
+  }
+
+  beforeAll(async () => {
+    await prisma.agency.deleteMany({ where: { name: { startsWith: PREFIX } } });
+    const A = await prisma.agency.create({ data: { name: `${PREFIX}A`, email: `${PREFIX}a@x.test`, subscriptionStatus: "active" } });
+    const B = await prisma.agency.create({ data: { name: `${PREFIX}B`, email: `${PREFIX}b@x.test`, subscriptionStatus: "active" } });
+    agencyA = A.id;
+    const mA = await prisma.agencyMember.create({ data: { agencyId: A.id, clerkId: `${PREFIX}a-${Date.now()}`, email: "a@m.test", name: "A", role: "admin" } });
+    const mB = await prisma.agencyMember.create({ data: { agencyId: B.id, clerkId: `${PREFIX}b-${Date.now()}`, email: "b@m.test", name: "B", role: "admin" } });
+    memberA = { id: mA.id, agencyId: A.id, role: "admin" }; memberB = { id: mB.id, agencyId: B.id, role: "admin" };
+    const mk = (a: string, t: string) => prisma.hotelClient.create({ data: { agencyId: a, name: `${PREFIX}${t}`, websiteUrl: "https://h.example", contactName: "C", contactEmail: "c@t.local", siteId: `${PREFIX}s-${t}-${Date.now()}`, conversionMethod: "both" } });
+    hMain = (await mk(A.id, "Main")).id;
+    hEmpty = (await mk(A.id, "Empty")).id;
+    hB = (await mk(B.id, "B1")).id;
+
+    // Meta ads: ₹10,000 spend; campaign "Summer Sale" ₹8,000.
+    const adSnap = (spend: number, date: Date, imp: number, reach: number, clicks: number) => prisma.adSnapshot.create({ data: {
+      agencyId: A.id, hotelClientId: hMain, metaAccountId: "act_t", date, spend: spend.toFixed(2), impressions: imp, reach, clicks,
+      ctr: 0, cpc: "0", cpm: "0", conversions: 0, roas: 0, pixelPurchases: 0, pixelLeads: 0, pixelPageViews: 0,
+    } });
+    await adSnap(6000, IN, 60000, 40000, 1200);
+    await adSnap(4000, new Date(Date.UTC(2026, 2, 16, 10)), 40000, 30000, 800);
+    await prisma.adCampaignSnapshot.create({ data: { agencyId: A.id, hotelClientId: hMain, metaCampaignId: `c_${randomUUID()}`, campaignName: "Summer Sale", date: IN, spend: "8000.00", impressions: 80000, clicks: 1600, conversions: 0, purchaseValue: "0" } });
+
+    // Conversions across channels.
+    await conv(A.id, hMain, 20000, { source: "facebook", medium: "cpc", campaign: "Summer Sale" }); // meta
+    await conv(A.id, hMain, 10000, { source: "instagram", medium: "paid", campaign: "Summer Sale" }); // meta
+    await conv(A.id, hMain, 5000, { source: "instagram", medium: "social" }); // ig organic
+    await conv(A.id, hMain, 3000, { session: "sess_direct" }); // direct
+    await conv(A.id, hMain, 1000, { source: "tiktok", medium: "referral" }); // other
+
+    // Sessions across channels.
+    await sess(A.id, hMain, `sess_${randomUUID()}`, { source: "facebook", medium: "cpc" }); // meta
+    await sess(A.id, hMain, `sess_${randomUUID()}`, { source: "instagram", medium: "social" }); // ig organic
+    await sess(A.id, hMain, "sess_direct", { landing: "/rooms" }); // direct (matches the direct conversion)
+    await sess(A.id, hMain, `sess_${randomUUID()}`, { source: "tiktok", medium: "referral" }); // other
+
+    // Instagram organic data.
+    await prisma.instagramConnection.create({ data: { agencyId: A.id, hotelClientId: hMain, igUserId: "ig1", username: "hotel_ig", encryptedToken: "x", status: "active" } });
+    await prisma.socialSnapshot.create({ data: { agencyId: A.id, hotelClientId: hMain, date: IN, followers: 1000, reach: 5000, impressions: 0, views: 8000, profileViews: 300, websiteClicks: 120, engagement: 400 } });
+    await prisma.postSnapshot.create({ data: { agencyId: A.id, hotelClientId: hMain, mediaId: "m1", caption: "Sunset suite", mediaType: "image", postedAt: IN, impressions: 4000, reach: 3000, likes: 200, comments: 20, saves: 50, shares: 10 } });
+
+    // Influencer data.
+    const inf = await prisma.influencer.create({ data: { agencyId: A.id, hotelClientId: hMain, name: "Priya", instagramHandle: "priya" } });
+    const code = await prisma.couponCode.create({ data: { agencyId: A.id, hotelClientId: hMain, influencerId: inf.id, code: "PRIYA10", status: "ACTIVE" } });
+    await prisma.influencerRedemption.create({ data: { agencyId: A.id, hotelClientId: hMain, couponCodeId: code.id, influencerId: inf.id, bookingValue: "9000.00", redemptionSource: "snippet_auto", redeemedAt: IN } });
+    await prisma.influencerRedemption.create({ data: { agencyId: A.id, hotelClientId: hMain, couponCodeId: code.id, influencerId: inf.id, bookingValue: "6000.00", redemptionSource: "manual_entry", redeemedAt: IN } });
+
+    // Agency B isolation row.
+    await conv(B.id, hB, 99000, { source: "facebook", medium: "cpc", campaign: "Other" });
+  });
+
+  afterAll(async () => {
+    await prisma.agency.deleteMany({ where: { name: { startsWith: PREFIX } } });
+    await prisma.$disconnect();
+  });
+
+  test("meta_ads: KPIs, campaigns, classification (R1)", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "meta_ads", START, END)) as PaidChannelView;
+    expect(d.channelType).toBe("paid_ads");
+    expect(d.hasData).toBe(true);
+    expect(d.kpis!.totalSpend).toBe(10000);
+    expect(d.kpis!.revenue).toBe(30000); // only the 2 meta/cpc+paid conversions — not ig organic/direct/other
+    expect(d.kpis!.bookings).toBe(2);
+    expect(d.kpis!.roas).toBeCloseTo(3, 6);
+    expect(d.kpis!.impressions).toBe(100000);
+    expect(d.topCampaigns![0].campaignName).toBe("Summer Sale");
+    expect(d.topCampaigns![0].spend).toBe(8000);
+    expect(d.topCampaigns![0].revenue).toBe(30000);
+    expect(d.trend!.length).toBeGreaterThan(0);
+  });
+
+  test("google_ads: not connected", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "google_ads", START, END)) as PaidChannelView;
+    expect(d.hasData).toBe(false);
+    expect(d.integrationStatus).toBe("not_connected");
+    expect(d.channelName).toBe("Google Ads");
+  });
+
+  test("instagram_organic: KPIs + top posts", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "instagram_organic", START, END)) as InstagramChannelView;
+    expect(d.channelType).toBe("organic_social");
+    expect(d.kpis.profileVisits).toBe(300);
+    expect(d.kpis.websiteClicks).toBe(120);
+    expect(d.kpis.sessionsFromInstagram).toBe(1);
+    expect(d.kpis.bookings).toBe(1);
+    expect(d.kpis.revenue).toBe(5000);
+    expect(d.kpis.postReach).toBe(3000);
+    expect(d.topPosts?.[0].caption).toBe("Sunset suite");
+    expect(d.topPosts?.[0].bookings).toBeNull();
+  });
+
+  test("influencer: KPIs, top influencers, source breakdown", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "influencer", START, END)) as InfluencerChannelView;
+    expect(d.kpis.totalRedemptions).toBe(2);
+    expect(d.kpis.totalRevenue).toBe(15000);
+    expect(d.kpis.activeCouponCodes).toBe(1);
+    expect(d.redemptionSourceBreakdown).toEqual({ snippetAuto: 1, manualEntry: 1 });
+    expect(d.topInfluencers[0].influencerName).toBe("Priya");
+    expect(d.topInfluencers[0].revenue).toBe(15000);
+    expect(d.topInfluencers[0].redemptionsCount).toBe(2);
+  });
+
+  test("direct: sessions, bookings, landing pages", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "direct", START, END)) as DirectChannelView;
+    expect(d.kpis.sessions).toBe(1);
+    expect(d.kpis.bookings).toBe(1);
+    expect(d.kpis.revenue).toBe(3000);
+    const rooms = d.topLandingPages.find((p) => p.pagePath === "/rooms");
+    expect(rooms?.sessions).toBe(1);
+    expect(rooms?.bookings).toBe(1); // direct conversion shares sess_direct → /rooms
+  });
+
+  test("other: unknown sources", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "other", START, END)) as OtherChannelView;
+    expect(d.kpis.bookings).toBe(1);
+    expect(d.kpis.revenue).toBe(1000);
+    const tiktok = d.unknownSources.find((s) => s.utmSource === "tiktok");
+    expect(tiktok).toBeTruthy();
+    expect(tiktok!.bookings).toBe(1);
+  });
+
+  test("empty hotel: clean empty states (no throw)", async () => {
+    loginAs(memberA);
+    const meta = (await loadChannelView(hEmpty, "meta_ads", START, END)) as PaidChannelView;
+    expect(meta.hasData).toBe(false);
+    expect(meta.integrationStatus).toBe("not_connected");
+    const direct = (await loadChannelView(hEmpty, "direct", START, END)) as DirectChannelView;
+    expect(direct.hasData).toBe(false);
+    expect(direct.kpis.sessions).toBe(0);
+    const inf = (await loadChannelView(hEmpty, "influencer", START, END)) as InfluencerChannelView;
+    expect(inf.hasData).toBe(false);
+    expect(inf.kpis.totalRedemptions).toBe(0);
+  });
+
+  test("'all' returns null", async () => {
+    loginAs(memberA);
+    expect(await loadChannelView(hMain, "all", START, END)).toBeNull();
+  });
+
+  // ── endpoint ──
+  const q = "channel=meta_ads&startDate=2026-03-01&endDate=2026-03-31";
+
+  test("endpoint: unauthenticated → 401", async () => {
+    loginAs(null);
+    expect((await route(hMain, q)).status).toBe(401);
+  });
+
+  test("endpoint: another agency's hotel → 404", async () => {
+    loginAs(memberB);
+    expect((await route(hMain, q)).status).toBe(404);
+  });
+
+  test("endpoint: unknown channel → 400", async () => {
+    loginAs(memberA);
+    expect((await route(hMain, "channel=foo")).status).toBe(400);
+  });
+
+  test("endpoint: default/all returns the all marker", async () => {
+    loginAs(memberA);
+    const res = await route(hMain, "startDate=2026-03-01&endDate=2026-03-31"); // no channel → all
+    expect(res.status).toBe(200);
+    expect((await res.json()).channel).toBe("all");
+  });
+
+  test("endpoint: meta payload for an owned hotel", async () => {
+    loginAs(memberA);
+    const body = await (await route(hMain, q)).json();
+    expect(body.channelType).toBe("paid_ads");
+    expect(body.kpis.revenue).toBe(30000);
+  });
+
+  test("endpoint: response cached, expires after 5 minutes", async () => {
+    loginAs(memberA);
+    const cacheHotel = await prisma.hotelClient.create({ data: { agencyId: agencyA, name: `${PREFIX}Cache-${Date.now()}`, websiteUrl: "https://h", contactName: "C", contactEmail: "c@t", siteId: `${PREFIX}cs-${Date.now()}`, conversionMethod: "both" } });
+    await conv(agencyA, cacheHotel.id, 2000, { source: "facebook", medium: "cpc", campaign: "C" });
+    await prisma.adSnapshot.create({ data: { agencyId: agencyA, hotelClientId: cacheHotel.id, metaAccountId: "act_c", date: IN, spend: "1000.00", impressions: 10, reach: 10, clicks: 5, ctr: 0, cpc: "0", cpm: "0", conversions: 0, roas: 0, pixelPurchases: 0, pixelLeads: 0, pixelPageViews: 0 } });
+
+    const first = await (await route(cacheHotel.id, q)).json();
+    expect(first.kpis.bookings).toBe(1);
+
+    await prisma.trackingEvent.deleteMany({ where: { hotelClientId: cacheHotel.id } });
+    const cached = await (await route(cacheHotel.id, q)).json();
+    expect(cached.kpis.bookings).toBe(1); // served from cache
+
+    const realNow = Date.now;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 6 * 60_000);
+    try {
+      const fresh = await (await route(cacheHotel.id, q)).json();
+      expect(fresh.kpis.bookings).toBe(0); // recomputed
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
