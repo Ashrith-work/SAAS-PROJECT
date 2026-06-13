@@ -24,15 +24,23 @@ export type TrendPoint = Record<string, number | string>;
 export type PaidKpis = {
   totalSpend: number; impressions: number; reach: number; frequency: number;
   cpc: number; cpm: number; ctr: number; linkClicks: number;
+  // Meta-reported conversions (AdSnapshot.conversions) + cost per conversion.
+  conversions: number;
+  costPerConversion: number | null;
+  // Tracked bookings/revenue (from TrackingEvent classified meta_ads) drive ROAS.
   bookings: number; revenue: number; roas: number | null;
   costPerBooking: number | null; conversionRate: number | null;
 };
+// Per-ad-account spend breakdown (a hotel can have >1 Meta account).
+export type PaidAccount = { accountId: string; spend: number; impressions: number; clicks: number };
 export type PaidChannelView = {
   channelType: "paid_ads";
   channelName: string;
   hasData: boolean;
   integrationStatus?: "not_connected";
   kpis?: PaidKpis;
+  accounts?: PaidAccount[];          // included (non-archived) accounts, by spend desc
+  archivedAccountIds?: string[];     // archived accounts excluded from the totals
   topCampaigns?: { campaignName: string; spend: number; revenue: number; bookings: number; roas: number | null; ctr: number }[];
   topCreatives?: null;
   trend?: { date: string; spend: number; revenue: number; bookings: number }[];

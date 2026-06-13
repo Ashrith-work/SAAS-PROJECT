@@ -76,13 +76,23 @@ describe("DB-backed", () => {
     hEmpty = (await mk(A.id, "Empty")).id;
     hB = (await mk(B.id, "B1")).id;
 
-    // Meta ads: ₹10,000 spend; campaign "Summer Sale" ₹8,000.
-    const adSnap = (spend: number, date: Date, imp: number, reach: number, clicks: number) => prisma.adSnapshot.create({ data: {
-      agencyId: A.id, hotelClientId: hMain, metaAccountId: "act_t", date, spend: spend.toFixed(2), impressions: imp, reach, clicks,
-      ctr: 0, cpc: "0", cpm: "0", conversions: 0, roas: 0, pixelPurchases: 0, pixelLeads: 0, pixelPageViews: 0,
+    // Meta ads: ₹10,000 spend across TWO accounts; campaign "Summer Sale" ₹8,000.
+    // Stored ctr/cpc/cpm are deliberately 0 — the loader must RECOMPUTE them from
+    // summed numerators/denominators, so a non-zero result proves no averaging.
+    const adSnap = (spend: number, date: Date, imp: number, reach: number, clicks: number, account: string, conversions: number) =>
+      prisma.adSnapshot.create({ data: {
+        agencyId: A.id, hotelClientId: hMain, metaAccountId: account, date, spend: spend.toFixed(2),
+        impressions: imp, reach, clicks, conversions,
+        ctr: 0, cpc: "0", cpm: "0", roas: 0, pixelPurchases: 0, pixelLeads: 0, pixelPageViews: 0,
+      } });
+    await adSnap(6000, IN, 60000, 40000, 1200, "act_primary", 15);
+    await adSnap(4000, new Date(Date.UTC(2026, 2, 16, 10)), 40000, 30000, 800, "act_secondary", 11);
+    // An archived account's row — must be excluded from totals but surfaced.
+    await prisma.adSnapshot.create({ data: {
+      agencyId: A.id, hotelClientId: hMain, metaAccountId: "act_archived", date: IN, spend: "99999.00",
+      impressions: 1, reach: 1, clicks: 1, conversions: 0, ctr: 0, cpc: "0", cpm: "0", roas: 0,
+      pixelPurchases: 0, pixelLeads: 0, pixelPageViews: 0, archived: true,
     } });
-    await adSnap(6000, IN, 60000, 40000, 1200);
-    await adSnap(4000, new Date(Date.UTC(2026, 2, 16, 10)), 40000, 30000, 800);
     await prisma.adCampaignSnapshot.create({ data: { agencyId: A.id, hotelClientId: hMain, metaCampaignId: `c_${randomUUID()}`, campaignName: "Summer Sale", date: IN, spend: "8000.00", impressions: 80000, clicks: 1600, conversions: 0, purchaseValue: "0" } });
 
     // Conversions across channels.
@@ -123,11 +133,22 @@ describe("DB-backed", () => {
     const d = (await loadChannelView(hMain, "meta_ads", START, END)) as PaidChannelView;
     expect(d.channelType).toBe("paid_ads");
     expect(d.hasData).toBe(true);
-    expect(d.kpis!.totalSpend).toBe(10000);
+    expect(d.kpis!.totalSpend).toBe(10000); // excludes the ₹99,999 archived-account row
     expect(d.kpis!.revenue).toBe(30000); // only the 2 meta/cpc+paid conversions — not ig organic/direct/other
     expect(d.kpis!.bookings).toBe(2);
     expect(d.kpis!.roas).toBeCloseTo(3, 6);
     expect(d.kpis!.impressions).toBe(100000);
+    // CTR/CPC/CPM RECOMPUTED from totals (stored values were 0): clicks 2000, imp 100000, spend 10000.
+    expect(d.kpis!.ctr).toBeCloseTo(2.0, 6); // 2000/100000*100
+    expect(d.kpis!.cpc).toBeCloseTo(5.0, 6); // 10000/2000
+    expect(d.kpis!.cpm).toBeCloseTo(100.0, 6); // 10000/100000*1000
+    // Meta-reported conversions + cost per conversion (from AdSnapshot.conversions).
+    expect(d.kpis!.conversions).toBe(26); // 15 + 11
+    expect(d.kpis!.costPerConversion).toBeCloseTo(10000 / 26, 4);
+    // Per-account breakdown: two active accounts, the archived one excluded but listed.
+    expect(d.accounts!.map((a) => a.accountId).sort()).toEqual(["act_primary", "act_secondary"]);
+    expect(d.accounts!.find((a) => a.accountId === "act_primary")!.spend).toBe(6000);
+    expect(d.archivedAccountIds).toContain("act_archived");
     expect(d.topCampaigns![0].campaignName).toBe("Summer Sale");
     expect(d.topCampaigns![0].spend).toBe(8000);
     expect(d.topCampaigns![0].revenue).toBe(30000);

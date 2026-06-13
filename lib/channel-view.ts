@@ -109,10 +109,13 @@ function sessionsInRange(hotelClientId: string, start: Date, end: Date) {
 // ── Per-channel loaders ──────────────────────────────────────────────────────
 
 async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promise<PaidChannelView> {
-  const [snaps, campSnaps, conversions, snapCount] = await Promise.all([
+  const [snaps, campSnaps, conversions, snapCount, archivedAccts] = await Promise.all([
+    // Include ALL non-archived AdSnapshot rows (across every ad account) for the
+    // hotel in the window. CTR/CPC/CPM are NOT read from the rows — they're
+    // recomputed from summed numerators/denominators below (see Part 2).
     agencyScoped(prisma.adSnapshot).findMany({
       where: { hotelClientId, archived: false, date: { gte: start, lte: end } },
-      select: { date: true, spend: true, impressions: true, reach: true, clicks: true },
+      select: { date: true, metaAccountId: true, spend: true, impressions: true, reach: true, clicks: true, conversions: true },
     }),
     agencyScoped(prisma.adCampaignSnapshot).findMany({
       where: { hotelClientId, archived: false, date: { gte: start, lte: end } },
@@ -120,12 +123,24 @@ async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promi
     }),
     conversionsInRange(hotelClientId, start, end),
     agencyScoped(prisma.adSnapshot).count({ where: { hotelClientId, archived: false } }),
+    // Archived ad accounts (excluded from totals) — surfaced so the UI can note them.
+    agencyScoped(prisma.adSnapshot).findMany({
+      where: { hotelClientId, archived: true },
+      select: { metaAccountId: true },
+      distinct: ["metaAccountId"],
+    }),
   ]);
 
   const metaConv = conversions.filter((c) => classifySourceType(c) === "meta_ads");
-  let totalSpend = 0, impressions = 0, reach = 0, linkClicks = 0;
+  // Sum the raw numerators/denominators across all rows + accounts.
+  let totalSpend = 0, impressions = 0, reach = 0, linkClicks = 0, metaConversions = 0;
+  const acctAgg = new Map<string, { accountId: string; spend: number; impressions: number; clicks: number }>();
   for (const s of snaps) {
-    totalSpend += num(s.spend); impressions += s.impressions; reach += s.reach; linkClicks += s.clicks;
+    totalSpend += num(s.spend); impressions += s.impressions; reach += s.reach;
+    linkClicks += s.clicks; metaConversions += s.conversions;
+    const a = acctAgg.get(s.metaAccountId) ?? { accountId: s.metaAccountId, spend: 0, impressions: 0, clicks: 0 };
+    a.spend += num(s.spend); a.impressions += s.impressions; a.clicks += s.clicks;
+    acctAgg.set(s.metaAccountId, a);
   }
   const revenue = metaConv.reduce((sum, c) => sum + num(c.conversionValue), 0);
   const bookings = metaConv.length;
@@ -135,17 +150,26 @@ async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promi
     return { channelType: "paid_ads", channelName: "Meta Ads", hasData: false, integrationStatus: "not_connected" };
   }
 
+  // CTR/CPC/CPM/ROAS are recomputed from the totals — NEVER averaged across rows.
   const kpis: PaidKpis = {
     totalSpend, impressions, reach,
     frequency: reach > 0 ? impressions / reach : 0,
     cpc: linkClicks > 0 ? totalSpend / linkClicks : 0,
     cpm: impressions > 0 ? (totalSpend / impressions) * 1000 : 0,
     ctr: impressions > 0 ? (linkClicks / impressions) * 100 : 0,
-    linkClicks, bookings, revenue,
+    linkClicks,
+    conversions: metaConversions,
+    costPerConversion: metaConversions > 0 ? totalSpend / metaConversions : null,
+    bookings, revenue,
     roas: totalSpend > 0 ? revenue / totalSpend : null,
     costPerBooking: bookings > 0 ? totalSpend / bookings : null,
     conversionRate: linkClicks > 0 ? (bookings / linkClicks) * 100 : null,
   };
+
+  // Per-account spend breakdown (active accounts) + the archived ones we excluded.
+  const accounts = [...acctAgg.values()].sort((a, b) => b.spend - a.spend);
+  const activeIds = new Set(accounts.map((a) => a.accountId));
+  const archivedAccountIds = archivedAccts.map((r) => r.metaAccountId).filter((id) => !activeIds.has(id));
 
   // Revenue/bookings per campaign (from conversions, by utmCampaign) joined to
   // per-campaign spend/impressions/clicks (AdCampaignSnapshot, case-insensitive name).
@@ -203,7 +227,7 @@ async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promi
   return {
     channelType: "paid_ads", channelName: "Meta Ads",
     hasData: snaps.length > 0 || bookings > 0,
-    kpis, topCampaigns, topCreatives: null, trend,
+    kpis, accounts, archivedAccountIds, topCampaigns, topCreatives: null, trend,
   };
 }
 

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { formatCurrency, formatNumber, formatMultiple } from "@/lib/format";
+import { formatCurrency, formatCurrencyCents, formatNumber, formatMultiple } from "@/lib/format";
 import type {
   ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView,
   FacebookChannelView, InfluencerChannelView, DirectChannelView, OtherChannelView,
@@ -245,18 +245,47 @@ function PaidBody({ data, hotelId }: { data: PaidChannelView; hotelId: string })
       action={<Link href={`/agency/hotel/${hotelId}/integrations`} className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">Connect Meta Ads</Link>} />;
   }
   const k = data.kpis;
+  const accounts = data.accounts ?? [];
+  const archived = data.archivedAccountIds ?? [];
   return (
     <div className="space-y-4">
       <StatGrid>
-        <Stat label="Spend" value={formatCurrency(k.totalSpend, { compact: true })} />
-        <Stat label="Revenue" value={formatCurrency(k.revenue, { compact: true })} sub={`${formatNumber(k.bookings)} bookings`} />
+        {/* Spend in Indian-compact form; per-unit money (CPC/CPM/cost-per-X) in
+            full ₹0.00 precision so small values aren't rounded to ₹0. CTR/CPC/CPM
+            are recomputed from totals server-side (never averaged across rows). */}
+        <Stat label="Total spend" value={formatCurrency(k.totalSpend, { compact: true })} sub={accounts.length > 1 ? `${accounts.length} accounts` : undefined} />
+        <Stat label="Revenue" value={formatCurrency(k.revenue, { compact: true })} sub={`${formatNumber(k.bookings)} tracked bookings`} />
         <Stat label="ROAS" value={formatMultiple(k.roas)} sub="Revenue ÷ spend" />
-        <Stat label="Cost / booking" value={k.costPerBooking == null ? "—" : formatCurrency(k.costPerBooking, { compact: true })} />
-        <Stat label="Impressions" value={formatNumber(k.impressions)} sub={`${formatNumber(k.reach)} reach`} />
-        <Stat label="Link clicks" value={formatNumber(k.linkClicks)} sub={`${k.ctr.toFixed(2)}% CTR`} />
-        <Stat label="CPC" value={formatCurrency(k.cpc, { compact: true })} />
-        <Stat label="CPM" value={formatCurrency(k.cpm, { compact: true })} sub={`${k.frequency.toFixed(1)}× frequency`} />
+        <Stat label="Conversions" value={formatNumber(k.conversions)} sub="Meta-reported" />
+        <Stat label="Cost / conversion" value={k.costPerConversion == null ? "—" : formatCurrencyCents(k.costPerConversion)} />
+        <Stat label="Impressions" value={formatNumber(k.impressions)} />
+        <Stat label="Reach" value={formatNumber(k.reach)} sub={`${k.frequency.toFixed(1)}× frequency`} />
+        <Stat label="Clicks" value={formatNumber(k.linkClicks)} />
+        <Stat label="CTR" value={`${k.ctr.toFixed(2)}%`} sub="Clicks ÷ impressions" />
+        <Stat label="CPC" value={formatCurrencyCents(k.cpc)} sub="Spend ÷ clicks" />
+        <Stat label="CPM" value={formatCurrencyCents(k.cpm)} sub="Per 1,000 impressions" />
       </StatGrid>
+
+      {(accounts.length > 1 || archived.length > 0) && (
+        <Panel title="By ad account">
+          <ul className="divide-y divide-line">
+            {accounts.map((a) => (
+              <li key={a.accountId} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <span className="truncate font-medium text-ink" title={a.accountId}>{a.accountId}</span>
+                <span className="tabular-nums text-ink-secondary">
+                  {formatCurrency(a.spend, { compact: true })} · {formatNumber(a.impressions)} impr · {formatNumber(a.clicks)} clicks
+                </span>
+              </li>
+            ))}
+            {archived.map((id) => (
+              <li key={id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <span className="truncate text-ink-tertiary" title={id}>{id}</span>
+                <span className="text-ink-tertiary">archived · not included</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
 
       <Panel title="Spend vs revenue">
         <TrendChart data={data.trend ?? []} series={[
