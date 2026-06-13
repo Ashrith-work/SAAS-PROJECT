@@ -6,6 +6,7 @@ import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { validateAgencyContact, type ContactFormState } from "@/lib/agency-validation";
+import { regenerateInviteCode, setInviteCodeStatus } from "@/lib/hotel-invite";
 import { encryptWithAudit, logTokenAudit } from "@/lib/token-audit";
 import { getTokenForApiCall } from "@/lib/token-access";
 import { validateToken, revokeAppAccess } from "@/lib/meta";
@@ -255,6 +256,26 @@ export async function saveAgencyContact(
 
   revalidatePath("/agency/settings");
   return { ok: true };
+}
+
+/** Regenerate this agency's hotel-signup invite code (old code stops working). */
+export async function regenerateAgencyInviteCode(): Promise<{ ok: boolean; code?: string; error?: string }> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  const code = await regenerateInviteCode(member.agencyId);
+  revalidatePath("/agency/settings");
+  return { ok: true, code };
+}
+
+/** Enable/disable hotel self-signup for this agency. */
+export async function setAgencyInviteStatus(
+  status: "ACTIVE" | "DISABLED",
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  await setInviteCodeStatus(member.agencyId, status);
+  revalidatePath("/agency/settings");
+  return { ok: true, status };
 }
 
 export type MapAccountState = { error: string | null; ok: boolean };

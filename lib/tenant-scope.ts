@@ -181,4 +181,5 @@ export const MULTI_TENANT_MODELS = [
   "influencer",
   "couponCode",
   "influencerRedemption",
+  "hotelInvite",
 ] as const;

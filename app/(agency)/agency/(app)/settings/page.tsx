@@ -10,6 +10,8 @@ import { BackfillProgress } from "./BackfillProgress";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgencyContactForm } from "@/components/agency/AgencyContactForm";
 import { saveAgencyContact } from "./actions";
+import { ensureInviteCode, inviteUrl } from "@/lib/hotel-invite";
+import { InviteCodeManager } from "./InviteCodeManager";
 
 // Server-side relative time (avoids Date.now() in a client render).
 function relativeAgo(d: Date, now: Date): string {
@@ -26,6 +28,22 @@ export default async function SettingsPage() {
   if (!member) redirect("/agency/onboarding");
 
   const backfillJob = await getActiveBackfill();
+
+  // Hotel self-signup: ensure this agency has an invite code (lazily generated
+  // for agencies created before the feature) + load recent invitations.
+  const invite = await ensureInviteCode(member.agencyId);
+  const inviteRows = await agencyScoped(prisma.hotelInvite).findMany({
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { hotelEmail: true, status: true, createdAt: true },
+  });
+  const recentInvites = inviteRows.map((r) => ({
+    hotelEmail: r.hotelEmail,
+    status: r.status,
+    date: r.createdAt.toLocaleDateString("en-IN", { dateStyle: "medium" }),
+  }));
+  // Build the base URL (".../join/") from a full sample so the client appends the code.
+  const inviteBaseUrl = inviteUrl("").replace(/\/$/, "") + "/";
 
   // Notification settings (budget alerts: email + Slack).
   const notif = await agencyScoped(prisma.agency).findFirst({
@@ -107,6 +125,23 @@ export default async function SettingsPage() {
               websiteUrl: member.agency.websiteUrl ?? "",
             }}
             submitLabel="Save contact information"
+          />
+        </div>
+      </section>
+
+      {/* ── Hotel self-signup (invite code) ──────────────────────────────── */}
+      <section className="rounded-xl border border-line p-6">
+        <h2 className="font-medium">Hotel Self-Signup</h2>
+        <p className="mt-1 text-sm text-ink-tertiary">
+          Share this invite code with your hotel clients so they can sign up themselves.
+          They&apos;ll be automatically added to your agency.
+        </p>
+        <div className="mt-5 max-w-xl">
+          <InviteCodeManager
+            initialCode={invite.code}
+            initialStatus={invite.status}
+            baseUrl={inviteBaseUrl}
+            recentInvites={recentInvites}
           />
         </div>
       </section>

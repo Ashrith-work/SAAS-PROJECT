@@ -131,7 +131,7 @@ export default async function AgencyDashboardPage({
   // Multi-tenant: everything scoped to this agency. In pixel mode we skip the
   // tracking-event queries entirely — those rows don't exist when the agency
   // uses FB Pixel instead of the HotelTrack snippet.
-  const [hotels, events, priorEvents, spendAgg, priorSpendAgg, hotelNameRows] = await Promise.all([
+  const [hotels, events, priorEvents, spendAgg, priorSpendAgg, hotelNameRows, recentJoins] = await Promise.all([
     agencyScoped(prisma.hotelClient).findMany({
       orderBy: { createdAt: "desc" },
       select: {
@@ -182,6 +182,12 @@ export default async function AgencyDashboardPage({
     }),
     agencyScoped(prisma.hotelClient).findMany({
       select: { id: true, name: true },
+    }),
+    // Hotels that self-signed-up in the last 7 days (Part 7 banner).
+    agencyScoped(prisma.hotelInvite).findMany({
+      where: { status: "COMPLETED", completedAt: { gte: new Date(now.getTime() - 7 * 86_400_000) } },
+      orderBy: { completedAt: "desc" },
+      select: { hotelClientId: true, hotelEmail: true },
     }),
   ]);
 
@@ -258,6 +264,11 @@ export default async function AgencyDashboardPage({
 
   // ── Revenue-by-hotel series ──
   const hotelNameById = new Map(hotelNameRows.map((h) => [h.id, h.name]));
+
+  // Newly self-signed-up hotels (last 7 days) for the notification banner.
+  const newlyJoined = recentJoins
+    .filter((j): j is { hotelClientId: string; hotelEmail: string | null } => j.hotelClientId != null)
+    .map((j) => ({ id: j.hotelClientId, name: hotelNameById.get(j.hotelClientId) ?? j.hotelEmail ?? "A new hotel" }));
   const hotelRevenue = [...perHotel.entries()]
     .map(([id, m]) => ({ hotel: hotelNameById.get(id) ?? "(unknown)", revenue: m.revenue }))
     .filter((r) => r.revenue > 0);
@@ -276,6 +287,16 @@ export default async function AgencyDashboardPage({
           deleted. Data preserved.
         </div>
       )}
+      {newlyJoined.map((h) => (
+        <div key={h.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border-l-4 border-info bg-info/10 p-3 text-sm text-ink-secondary">
+          <span>
+            New hotel joined: <span className="font-medium text-ink">{h.name}</span>.
+          </span>
+          <Link href={`/agency/hotel/${h.id}/integrations`} className="font-medium text-brand hover:underline">
+            Configure their integrations →
+          </Link>
+        </div>
+      ))}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">

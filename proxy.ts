@@ -25,6 +25,9 @@ const isPublicRoute = createRouteMatcher([
   // access is gated entirely by the unguessable 256-bit token inside the route,
   // which also enforces hotel-level data isolation.
   "/h(.*)",
+  // Public hotel self-signup page (/join/<inviteCode>). No login to view; the
+  // route resolves the agency from the code and the signup uses Clerk directly.
+  "/join(.*)",
   // The tracking endpoints are called cross-origin by the snippet on hotel
   // websites with no auth — they must stay public (scoped by the public siteId).
   "/api/track(.*)",
@@ -129,7 +132,9 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   if (isHotelRoute(req)) {
-    if (role !== "hotel_client") return NextResponse.redirect(home);
+    // Hotel owners (hotel_client) and agency members (agency_admin) may both reach
+    // the hotel-owner dashboard; the route itself enforces per-hotel ownership.
+    if (role !== "hotel_client" && role !== "agency_admin") return NextResponse.redirect(home);
     return NextResponse.next();
   }
 

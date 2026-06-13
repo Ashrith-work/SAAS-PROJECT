@@ -2,6 +2,7 @@
 
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { ensureInviteCode } from "@/lib/hotel-invite";
 
 /**
  * Provisions an Agency for a freshly signed-up user: creates the Agency and an
@@ -32,7 +33,7 @@ export async function createAgencyForCurrentUser(formData: FormData) {
     where: { clerkId: userId },
   });
   if (!existing) {
-    await prisma.agency.create({
+    const agency = await prisma.agency.create({
       data: {
         name,
         email,
@@ -45,7 +46,10 @@ export async function createAgencyForCurrentUser(formData: FormData) {
           },
         },
       },
+      select: { id: true },
     });
+    // Auto-generate the hotel self-signup invite code for the new agency.
+    await ensureInviteCode(agency.id);
   }
 
   const client = await clerkClient();

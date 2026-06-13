@@ -125,6 +125,13 @@ model Agency {
   address            String?   // physical address (may be multi-line)
   websiteUrl         String?   // agency's own website
   whatsappNumber     String?   // WhatsApp-enabled number (may equal mobile)
+  // ── Hotel self-signup invite (see lib/hotel-invite.ts) ──
+  // Short human-readable code (SLUG-XXXXXXXX) hotels enter at /join/<code> to
+  // join this agency themselves. Unique across all agencies. inviteCodeStatus
+  // DISABLED blocks new signups without discarding the code.
+  inviteCode            String?   @unique
+  inviteCodeGeneratedAt DateTime?
+  inviteCodeStatus      String?   @default("ACTIVE") // 'ACTIVE' | 'DISABLED'
   createdAt          DateTime @default(now())
 
   members           AgencyMember[]
@@ -157,6 +164,7 @@ model Agency {
   budgetAlerts         BudgetAlert[]
   ga4Connections       Ga4Connection[]
   ga4Snapshots         Ga4Snapshot[]
+  hotelInvites         HotelInvite[]
 }
 
 model AgencyMember {
@@ -240,6 +248,17 @@ model HotelClient {
   deletedAt               DateTime?
   deletedByAgencyMemberId String?
   deletionReason          String?
+  // ── Hotel self-signup (see lib/hotel-invite.ts) ──
+  // createdByUserId = the Clerk user id of the hotel owner who self-signed-up via
+  // an invite link; null for hotels the agency created manually. Drives the
+  // hotel-side dashboard authz (/hotel/[id]). The rest are owner-supplied details
+  // captured at signup; the owner can edit channelManager / contact / OTA later.
+  createdByUserId    String?
+  contactPhone       String?
+  address            String?
+  whatsappNumber     String?
+  roomCount          Int?
+  channelManager     String?
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -269,8 +288,33 @@ model HotelClient {
   ga4Connection        Ga4Connection?
   ga4Snapshots         Ga4Snapshot[]
   visitorIdentities    VisitorIdentity[]
+  hotelInvites         HotelInvite[]
 
   @@index([agencyId])
+  @@index([createdByUserId]) // hotel-owner → their hotel lookup
+}
+
+// Audit trail for hotel self-signups. One row per started signup; status moves
+// PENDING → COMPLETED when the hotel finishes (hotelClientId populated), or stays
+// PENDING/EXPIRED. inviteCode is captured at use time so a later code regen can
+// be detected. Multi-tenant: carries agencyId.
+model HotelInvite {
+  id            String    @id @default(cuid())
+  agencyId      String
+  inviteCode    String // matches Agency.inviteCode at time of use
+  hotelClientId String? // populated once the hotel completes signup
+  hotelEmail    String? // who used the invite (for the recent-invitations table)
+  status        String    @default("PENDING") // 'PENDING' | 'COMPLETED' | 'EXPIRED'
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  agency      Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient? @relation(fields: [hotelClientId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([inviteCode])
+  @@index([hotelClientId])
 }
 
 // Audit trail for every view of a hotel's public /h/<shareToken> dashboard, so
