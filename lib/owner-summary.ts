@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { aggregateRevenueBySource, type ConversionRow } from "@/lib/revenue-by-source";
 import { calculateSavings, DEFAULT_OTA_RATE } from "@/lib/savings";
-import { formatCurrency } from "@/lib/format";
+import { classifySourceType } from "@/lib/source-classifier";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { templateFor, renderTemplate, type Pattern, type Period } from "@/lib/summary-templates";
 
 // Owner Summary (Part 2) — a 3–4 line plain-English read of a hotel's recent
@@ -39,6 +40,8 @@ export type SummaryResult = {
   period: Period;
   periodLabel: string;
   summary: string;
+  // 4–5 channel highlight bullets (Meta / Google / Instagram reach / overall …).
+  highlights: string[];
   metrics: SummaryMetrics;
   pattern: Pattern;
   generatedAt: string;
@@ -98,7 +101,7 @@ export async function generateSummary(hotelClientId: string, period: Period): Pr
 
   const { start, end, prevStart, prevEnd } = periodWindows(period);
 
-  const [events, visitsCur, visitsPrev, adAgg, infGroups] = await Promise.all([
+  const [events, visitsCur, visitsPrev, adAgg, infGroups, socialSnaps] = await Promise.all([
     agencyScoped(prisma.trackingEvent).findMany({
       where: { hotelClientId, eventType: "conversion", createdAt: { gte: prevStart, lte: end } },
       select: { utmSource: true, utmMedium: true, utmCampaign: true, utmContent: true, conversionValue: true, couponCodeUsed: true, createdAt: true },
@@ -111,6 +114,11 @@ export async function generateSummary(hotelClientId: string, period: Period): Pr
       where: { hotelClientId, redeemedAt: { gte: start, lte: end } },
       _sum: { bookingValue: true },
       _count: { _all: true },
+    }),
+    agencyScoped(prisma.socialSnapshot).findMany({
+      where: { hotelClientId, date: { gte: start, lte: end } },
+      orderBy: { date: "asc" },
+      select: { reach: true, views: true, followers: true },
     }),
   ]);
 
@@ -172,11 +180,52 @@ export async function generateSummary(hotelClientId: string, period: Period): Pr
     hasPrevious, prevRevenue, avgValueChangePct, visitsChangePct,
   });
 
+  // ── Channel highlight bullets (Meta / Google / Instagram reach + overall) ──
+  // Per-channel booking revenue uses the same R1 classifier as the rest of the app.
+  const channelRev = (channel: string) => {
+    const rows = curRows.filter(
+      (r) => classifySourceType({ utmSource: r.utmSource, utmMedium: r.utmMedium, utmContent: r.utmContent }) === channel,
+    );
+    return { revenue: rows.reduce((s, r) => s + r.value, 0), bookings: rows.length };
+  };
+  const meta = channelRev("meta_ads");
+  const igOrganic = channelRev("instagram_organic");
+  const igReach = socialSnaps.reduce((s, x) => s + (x.reach || x.views), 0);
+  const igFollowers = socialSnaps.length > 0 ? socialSnaps[socialSnaps.length - 1].followers : 0;
+  const plural = (n: number) => (n === 1 ? "" : "s");
+
+  const highlights: string[] = [];
+  // 1 — Meta Ads
+  highlights.push(
+    adSpend > 0
+      ? `Meta Ads: spent ${fmt(adSpend)}${roas != null ? ` at ${roas.toFixed(1)}x ROAS` : ""}, driving ${meta.bookings} booking${plural(meta.bookings)} (${fmt(meta.revenue)}).`
+      : `Meta Ads: not connected — connect a Meta ad account to track spend and ROAS.`,
+  );
+  // 2 — Google Ads (not integrated yet)
+  highlights.push(`Google Ads: not connected yet — integration coming soon.`);
+  // 3 — Instagram reach
+  highlights.push(
+    igReach > 0 || igFollowers > 0
+      ? `Instagram reach: ${formatNumber(igReach)} account${plural(igReach)} reached${igFollowers > 0 ? `, ${formatNumber(igFollowers)} followers` : ""}${igOrganic.bookings > 0 ? ` · ${igOrganic.bookings} organic booking${plural(igOrganic.bookings)}` : ""}.`
+      : `Instagram: no organic reach data for this period.`,
+  );
+  // 4 — Overall bookings/revenue
+  highlights.push(
+    bookings > 0
+      ? `Overall: ${bookings} booking${plural(bookings)} worth ${fmt(revenue)}${revenueChangePct != null ? ` (${revenueChangePct >= 0 ? "+" : ""}${Math.round(revenueChangePct)}% vs previous)` : ""}.`
+      : `Overall: no bookings tracked in this period yet.`,
+  );
+  // 5 — Top source (only when meaningful)
+  if (topSource && topSource.revenue > 0) {
+    highlights.push(`Top source: ${topSource.name} — ${fmt(topSource.revenue)} from ${topSource.bookings} booking${plural(topSource.bookings)}.`);
+  }
+
   return {
     hotelId: hotelClientId,
     period,
     periodLabel: PERIOD_LABEL[period],
     summary,
+    highlights,
     metrics,
     pattern,
     generatedAt: new Date().toISOString(),

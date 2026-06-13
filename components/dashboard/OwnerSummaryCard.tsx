@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 // be read on a phone.
 
 type Period = "1d" | "7d" | "30d";
-type Summary = { summary: string; periodLabel: string; pattern: string; generatedAt: string };
+type Summary = { summary: string; highlights?: string[]; periodLabel: string; pattern: string; generatedAt: string };
 
 const TABS: { key: Period; label: string }[] = [
   { key: "1d", label: "Yesterday" },
@@ -74,9 +74,19 @@ export function OwnerSummaryCard({ hotelId }: { hotelId: string }) {
         ) : error ? (
           <p className="text-sm text-ink-tertiary">Couldn&apos;t load the summary right now.</p>
         ) : data ? (
-          <p className={`text-base leading-relaxed text-ink transition-opacity duration-300 sm:text-lg ${shown ? "opacity-100" : "opacity-0"}`}>
-            {data.summary}
-          </p>
+          <div className={`transition-opacity duration-300 ${shown ? "opacity-100" : "opacity-0"}`}>
+            <p className="text-base leading-relaxed text-ink sm:text-lg">{data.summary}</p>
+            {data.highlights && data.highlights.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {data.highlights.map((h, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-ink-secondary">
+                    <span aria-hidden className="mt-0.5 shrink-0 text-brand">•</span>
+                    <span>{h}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         ) : null}
       </div>
 

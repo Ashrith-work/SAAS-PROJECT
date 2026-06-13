@@ -124,6 +124,18 @@ describe("formatting + edge cases", () => {
     console.log(`[small/7d]  ${r.summary}`);
   });
 
+  test("highlights include Meta, Google, and Instagram bullets (4–5)", async () => {
+    loginAs(fx.memberA);
+    const r = (await generateSummary(fx.strong, "7d"))!;
+    expect(Array.isArray(r.highlights)).toBe(true);
+    expect(r.highlights.length).toBeGreaterThanOrEqual(4);
+    expect(r.highlights.length).toBeLessThanOrEqual(5);
+    expect(r.highlights.some((h) => h.includes("Meta Ads"))).toBe(true);
+    expect(r.highlights.some((h) => h.includes("Google Ads"))).toBe(true);
+    expect(r.highlights.some((h) => h.includes("Instagram"))).toBe(true);
+    console.log(`[highlights]`, r.highlights);
+  });
+
   test("toggling period returns different content", async () => {
     loginAs(fx.memberA);
     const d7 = (await generateSummary(fx.strong, "7d"))!;
