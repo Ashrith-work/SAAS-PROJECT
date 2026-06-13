@@ -75,6 +75,7 @@ import { computeFunnel, stageRank, STAGE_LABEL } from "@/lib/funnel";
 import { RevenueBySource } from "@/components/dashboard/RevenueBySource";
 import { CommissionSavings } from "@/components/dashboard/CommissionSavings";
 import { OwnerSummaryCard } from "@/components/dashboard/OwnerSummaryCard";
+import { PerformanceOverview } from "@/components/dashboard/PerformanceOverview";
 import { loadInfluencerPerformance } from "@/lib/influencer-dashboard";
 import { InfluencerPerformance } from "@/components/dashboard/InfluencerPerformance";
 
@@ -1403,6 +1404,11 @@ export default async function HotelDashboardPage({
       {/* Owner Summary — glanceable plain-English read of recent performance,
           at the very top of the dashboard (above all sections). */}
       <OwnerSummaryCard hotelId={hotel.id} />
+
+      {/* Performance Overview (Tier A) — 10 owner-overview metrics over the same
+          date range as the page. Read-only on existing data; sits between the
+          Owner Summary and Revenue by Source. */}
+      <PerformanceOverview hotelId={hotel.id} from={range.fromInput} to={range.toInput} />
 
       {/* Integration status badges — click any to manage that integration */}
       <IntegrationBadges
