@@ -3,6 +3,21 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { classifySourceType, type SourceType } from "@/lib/source-classifier";
+import {
+  CHANNEL_KEYS, isChannelKey, type ChannelKey, type PaidKpis,
+  type PaidChannelView, type InstagramChannelView, type FacebookChannelView,
+  type InfluencerChannelView, type DirectChannelView, type OtherChannelView,
+  type ChannelView,
+} from "@/lib/channel-view-types";
+
+// Re-export the client-safe surface so existing importers of "@/lib/channel-view"
+// (the route, the tests) keep working unchanged.
+export {
+  CHANNEL_KEYS, isChannelKey, type ChannelKey, type PaidKpis,
+  type PaidChannelView, type InstagramChannelView, type FacebookChannelView,
+  type InfluencerChannelView, type DirectChannelView, type OtherChannelView,
+  type ChannelView,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Channel-Filtered Dashboard View — per-channel deep-dive data. READ-ONLY over
@@ -18,22 +33,6 @@ import { classifySourceType, type SourceType } from "@/lib/source-classifier";
 // Money is plain `number` (rupees) like the rest of the codebase (owner-metrics,
 // savings, attribution all Number() the Decimals immediately).
 // ─────────────────────────────────────────────────────────────────────────────
-
-export const CHANNEL_KEYS = [
-  "all",
-  "meta_ads",
-  "google_ads",
-  "instagram_organic",
-  "facebook_organic",
-  "influencer",
-  "direct",
-  "other",
-] as const;
-export type ChannelKey = (typeof CHANNEL_KEYS)[number];
-
-export function isChannelKey(v: unknown): v is ChannelKey {
-  return typeof v === "string" && (CHANNEL_KEYS as readonly string[]).includes(v);
-}
 
 const num = (d: { toString(): string } | null | undefined): number => (d == null ? 0 : Number(d));
 
@@ -104,81 +103,8 @@ function sessionsInRange(hotelClientId: string, start: Date, end: Date) {
   }) as Promise<SessionRow[]>;
 }
 
-// ── Channel payload types ────────────────────────────────────────────────────
-
-export type TrendPoint = Record<string, number | string>;
-
-type PaidKpis = {
-  totalSpend: number; impressions: number; reach: number; frequency: number;
-  cpc: number; cpm: number; ctr: number; linkClicks: number;
-  bookings: number; revenue: number; roas: number | null;
-  costPerBooking: number | null; conversionRate: number | null;
-};
-export type PaidChannelView = {
-  channelType: "paid_ads";
-  channelName: string;
-  hasData: boolean;
-  integrationStatus?: "not_connected";
-  kpis?: PaidKpis;
-  topCampaigns?: { campaignName: string; spend: number; revenue: number; bookings: number; roas: number | null; ctr: number }[];
-  topCreatives?: null;
-  trend?: { date: string; spend: number; revenue: number; bookings: number }[];
-};
-
-export type InstagramChannelView = {
-  channelType: "organic_social";
-  channelName: "Instagram Organic";
-  hasData: boolean;
-  kpis: {
-    profileVisits: number; postReach: number; postImpressions: number; engagementRate: number;
-    likes: number; comments: number; saves: number; shares: number;
-    websiteClicks: number; sessionsFromInstagram: number; bookings: number; revenue: number;
-  };
-  topPosts:
-    | { postId: string; caption: string; reach: number; saves: number; websiteClicks: number; bookings: number | null; revenue: number | null }[]
-    | null;
-  trend: { date: string; sessions: number; bookings: number; revenue: number }[];
-};
-
-export type FacebookChannelView = {
-  channelType: "organic_social";
-  channelName: "Facebook Organic";
-  hasData: boolean;
-  kpis: { pageVisits: number; pageFollows: number; postReach: number; websiteClicks: number; sessionsFromFacebook: number; bookings: number; revenue: number };
-  trend: { date: string; sessions: number; bookings: number; revenue: number }[];
-};
-
-export type InfluencerChannelView = {
-  channelType: "influencer";
-  channelName: "Influencer";
-  hasData: boolean;
-  kpis: { activeInfluencers: number; activeCouponCodes: number; totalRedemptions: number; totalRevenue: number; averageRevenuePerInfluencer: number };
-  topInfluencers: { influencerName: string; instagramHandle: string; activeCodesCount: number; redemptionsCount: number; revenue: number; avgBookingValue: number }[];
-  redemptionSourceBreakdown: { snippetAuto: number; manualEntry: number };
-  trend: { date: string; redemptions: number; revenue: number }[];
-};
-
-export type DirectChannelView = {
-  channelType: "direct";
-  channelName: "Direct";
-  hasData: boolean;
-  kpis: { sessions: number; bookings: number; revenue: number; avgBookingValue: number; conversionRate: number | null };
-  topLandingPages: { pagePath: string; sessions: number; bookings: number }[];
-  trend: { date: string; sessions: number; bookings: number; revenue: number }[];
-};
-
-export type OtherChannelView = {
-  channelType: "other";
-  channelName: "Other";
-  hasData: boolean;
-  kpis: { sessions: number; bookings: number; revenue: number };
-  unknownSources: { utmSource: string; utmMedium: string; sessions: number; bookings: number; revenue: number }[];
-  trend: { date: string; sessions: number; bookings: number; revenue: number }[];
-};
-
-export type ChannelView =
-  | PaidChannelView | InstagramChannelView | FacebookChannelView
-  | InfluencerChannelView | DirectChannelView | OtherChannelView;
+// Channel payload types live in lib/channel-view-types.ts (client-safe) and are
+// re-exported above. The loaders below build them.
 
 // ── Per-channel loaders ──────────────────────────────────────────────────────
 

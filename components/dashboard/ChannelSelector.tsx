@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CHANNEL_KEYS, type ChannelKey } from "@/lib/channel-view";
+import { CHANNEL_KEYS, type ChannelKey } from "@/lib/channel-view-types";
 
 // Top-level channel selector for the hotel dashboard. Pills on desktop, a native
 // dropdown on mobile. Selection lives in the ?channel= URL param (bookmarkable /

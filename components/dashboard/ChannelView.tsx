@@ -10,8 +10,8 @@ import { formatCurrency, formatNumber, formatMultiple } from "@/lib/format";
 import type {
   ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView,
   FacebookChannelView, InfluencerChannelView, DirectChannelView, OtherChannelView,
-} from "@/lib/channel-view";
-import type { ChannelKey } from "@/lib/channel-view";
+  ChannelKey,
+} from "@/lib/channel-view-types";
 import { ChannelSelector, CHANNEL_META } from "./ChannelSelector";
 
 // Channel-specific dashboard view. Mounted by the hotel dashboard when
