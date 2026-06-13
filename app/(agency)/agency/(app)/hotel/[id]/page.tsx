@@ -506,7 +506,7 @@ export default async function HotelDashboardPage({
   const periodMs = range.until.getTime() - range.since.getTime();
   const prevSince = new Date(range.since.getTime() - periodMs);
   const prevUntil = range.since;
-  const [prevConversions, prevSpendAgg] = await Promise.all([
+  const [prevConversions, prevSpendAgg, websiteVisits, prevWebsiteVisits] = await Promise.all([
     pixelMode
       ? Promise.resolve([] as { conversionValue: import("@prisma/client").Prisma.Decimal | null }[])
       : agencyScoped(prisma.trackingEvent).findMany({
@@ -520,6 +520,15 @@ export default async function HotelDashboardPage({
     agencyScoped(prisma.adSnapshot).aggregate({
       where: { hotelClientId: hotel.id, archived: false, date: { gte: prevSince, lt: prevUntil } },
       _sum: { spend: true },
+    }),
+    // Website visits = distinct browsing sessions in the range (Phase 1 journey
+    // capture; recorded regardless of pixel mode, unlike snippet "visit" events).
+    // Plus the previous-period count for the KPI delta badge.
+    agencyScoped(prisma.session).count({
+      where: { hotelClientId: hotel.id, startedAt: { gte: range.since, lte: range.until } },
+    }),
+    agencyScoped(prisma.session).count({
+      where: { hotelClientId: hotel.id, startedAt: { gte: prevSince, lt: prevUntil } },
     }),
   ]);
 
@@ -1082,6 +1091,12 @@ export default async function HotelDashboardPage({
   const cpbReliable = kpis.costPerBooking != null && kpis.bookings >= MIN_CPB_BOOKINGS;
 
   const kpiCards: KpiCardSpec[] = [
+    {
+      label: "Website visits",
+      value: formatNumber(websiteVisits),
+      delta: pctDelta(websiteVisits, prevWebsiteVisits),
+      hint: "Tracked sessions",
+    },
     {
       label: "Revenue",
       value: formatCurrency(kpis.revenue, { compact: true }),
