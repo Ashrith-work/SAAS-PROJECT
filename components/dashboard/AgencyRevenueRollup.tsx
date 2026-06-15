@@ -323,9 +323,16 @@ function HotelFilter({ hotels, selected, onChange }: { hotels: Hotel[]; selected
   const [open, setOpen] = useState(false);
   const label = selected.size === 0 ? "All hotels" : `${selected.size} hotel${selected.size === 1 ? "" : "s"}`;
   return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="rounded-lg border border-line-strong bg-page px-3 py-1.5 text-sm text-ink-secondary">
-        {label} ▾
+    <div className="relative w-full sm:w-auto">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-strong bg-elevated px-5 py-3 text-base font-medium text-ink shadow transition-colors hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page sm:w-auto sm:min-w-[300px]"
+      >
+        <span className="truncate">{label}</span>
+        <span aria-hidden className="text-lg leading-none text-ink-tertiary">▾</span>
       </button>
       {open && (
         <>
