@@ -80,8 +80,10 @@ describe("My Instagram Content — data layer + isolation", () => {
     await post(A.id, hMain, { mediaId: "P2", caption: LONG_CAPTION, mediaType: "image", permalink: null, postedAt: new Date(Date.UTC(2026, 2, 15)), reach: 5000, likes: 200, comments: 20, saves: 10, shares: 10 }); // rate 4.8
     await post(A.id, hMain, { mediaId: "P3", caption: "Carousel tour", mediaType: "carousel", postedAt: new Date(Date.UTC(2026, 2, 10)), reach: 2000, likes: 100, comments: 10, saves: 100, shares: 5 }); // rate 10.75
     await post(A.id, hMain, { mediaId: "P4", caption: "Video walk", mediaType: "video", postedAt: new Date(Date.UTC(2026, 2, 5)), reach: 3000, likes: 80, comments: 8, saves: 8, shares: 4 }); // rate 3.33
-    // Out of window — must be excluded everywhere.
-    await post(A.id, hMain, { mediaId: "POUT", caption: "Old post", mediaType: "image", postedAt: new Date(Date.UTC(2026, 1, 20)), reach: 99999, saves: 99999 });
+    // Older than the window. The CONTENT TABLE is not date-filtered, so this
+    // still appears (sorting last — modest metrics); but the date-ranged KPIs
+    // must exclude it.
+    await post(A.id, hMain, { mediaId: "POLD", caption: "Old post", mediaType: "image", postedAt: new Date(Date.UTC(2026, 1, 20)), reach: 500, likes: 10, comments: 1, saves: 1, shares: 0 });
     // Connection so hasData is true even independent of posts.
     await prisma.instagramConnection.create({ data: { agencyId: A.id, hotelClientId: hMain, igUserId: "ig1", username: "hotel_ig", encryptedToken: "x", status: "active" } });
 
@@ -103,23 +105,23 @@ describe("My Instagram Content — data layer + isolation", () => {
     const d = (await loadChannelView(hMain, "instagram_organic", START, END)) as InstagramChannelView;
     expect(d.posts).not.toBeNull();
     expect(Object.keys(d.posts!.topPerforming).sort()).toEqual(["byEngagement", "byReach", "bySaves"]);
-    // Out-of-window post excluded from every ordering.
+    // The table is NOT date-filtered: the older POLD post appears in every ordering.
     const allIds = [d.posts!.recent, d.posts!.topPerforming.byReach, d.posts!.topPerforming.byEngagement, d.posts!.topPerforming.bySaves].flat().map((p) => p.id);
-    expect(allIds).not.toContain("POUT");
+    expect(allIds).toContain("POLD");
   });
 
   test("Recent is sorted by posted date DESC", async () => {
     loginAs(memberA);
     const d = (await loadChannelView(hMain, "instagram_organic", START, END)) as InstagramChannelView;
-    expect(d.posts!.recent.map((p) => p.id)).toEqual(["P1", "P2", "P3", "P4"]);
+    expect(d.posts!.recent.map((p) => p.id)).toEqual(["P1", "P2", "P3", "P4", "POLD"]);
   });
 
   test("Top Performing sub-toggles sort by reach / engagement / saves DESC", async () => {
     loginAs(memberA);
     const d = (await loadChannelView(hMain, "instagram_organic", START, END)) as InstagramChannelView;
-    expect(d.posts!.topPerforming.byReach.map((p) => p.id)).toEqual(["P2", "P4", "P3", "P1"]);
-    expect(d.posts!.topPerforming.bySaves.map((p) => p.id)).toEqual(["P3", "P2", "P4", "P1"]);
-    expect(d.posts!.topPerforming.byEngagement.map((p) => p.id)).toEqual(["P3", "P1", "P2", "P4"]);
+    expect(d.posts!.topPerforming.byReach.map((p) => p.id)).toEqual(["P2", "P4", "P3", "P1", "POLD"]);
+    expect(d.posts!.topPerforming.bySaves.map((p) => p.id)).toEqual(["P3", "P2", "P4", "P1", "POLD"]);
+    expect(d.posts!.topPerforming.byEngagement.map((p) => p.id)).toEqual(["P3", "P1", "P2", "P4", "POLD"]);
   });
 
   test("post fields: engagementRate, captionPreview truncation, postType, permalink", async () => {
@@ -143,12 +145,22 @@ describe("My Instagram Content — data layer + isolation", () => {
     expect(byId.P2.permalink).toBeNull();
   });
 
-  test("date-range filter: a narrow window keeps only in-range posts", async () => {
+  test("content table ignores the window; KPIs respect it", async () => {
     loginAs(memberA);
     const narrowStart = new Date(Date.UTC(2026, 2, 12));
     const narrowEnd = new Date(Date.UTC(2026, 2, 25));
     const d = (await loadChannelView(hMain, "instagram_organic", narrowStart, narrowEnd)) as InstagramChannelView;
-    expect(d.posts!.recent.map((p) => p.id).sort()).toEqual(["P1", "P2"]); // P3 (Mar 10) & P4 (Mar 5) excluded
+    // Table still shows ALL synced posts regardless of the narrow window.
+    expect(d.posts!.recent.map((p) => p.id).sort()).toEqual(["P1", "P2", "P3", "P4", "POLD"]);
+    // KPIs are date-scoped: only P1 (Mar 20) + P2 (Mar 15) fall in [Mar 12, Mar 25].
+    expect(d.kpis.postReach).toBe(6000); // 1000 + 5000, excludes P3/P4/POLD
+  });
+
+  test("KPIs over the full window exclude the out-of-window post", async () => {
+    loginAs(memberA);
+    const d = (await loadChannelView(hMain, "instagram_organic", START, END)) as InstagramChannelView;
+    // P1+P2+P3+P4 reach = 11000; POLD (Feb 20, reach 500) is excluded from KPIs.
+    expect(d.kpis.postReach).toBe(11000);
   });
 
   test("each ordering is capped at 50 rows", async () => {

@@ -233,14 +233,25 @@ async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promi
 }
 
 async function loadInstagram(hotelClientId: string, start: Date, end: Date): Promise<InstagramChannelView> {
-  const [social, posts, conversions, sessions, connection] = await Promise.all([
+  const [social, posts, allPosts, conversions, sessions, connection] = await Promise.all([
     agencyScoped(prisma.socialSnapshot).findMany({
       where: { hotelClientId, date: { gte: start, lte: end } },
       select: { profileViews: true, websiteClicks: true, reach: true },
     }),
+    // Date-ranged posts drive the "this period" KPIs (reach, engagement, etc.).
     agencyScoped(prisma.postSnapshot).findMany({
       where: { hotelClientId, postedAt: { gte: start, lte: end } },
       orderBy: { reach: "desc" },
+      select: { mediaId: true, caption: true, reach: true, impressions: true, likes: true, comments: true, saves: true, shares: true },
+    }),
+    // The "My Instagram Content" table shows the hotel's synced posts regardless
+    // of the dashboard window — agencies sync posts that are often older than the
+    // selected range, and they still want to browse all of them here. Newest
+    // first, capped at 50.
+    agencyScoped(prisma.postSnapshot).findMany({
+      where: { hotelClientId },
+      orderBy: { postedAt: "desc" },
+      take: 50,
       select: { mediaId: true, caption: true, mediaType: true, permalink: true, postedAt: true, reach: true, impressions: true, likes: true, comments: true, saves: true, shares: true },
     }),
     conversionsInRange(hotelClientId, start, end),
@@ -286,10 +297,10 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
       }))
     : null;
 
-  // "My Instagram Content" table rows. Map each PostSnapshot to a client-shaped
-  // item, then expose four orderings (recent + three top-performing sorts), each
-  // capped at 50 so the client can page through 20 at a time.
-  const items: InstagramPostItem[] = posts.map(toPostItem);
+  // "My Instagram Content" table rows — built from allPosts (NOT date-filtered,
+  // already newest-first & capped at 50 by the query). Map each PostSnapshot to a
+  // client-shaped item, then expose four orderings (recent + three top sorts).
+  const items: InstagramPostItem[] = allPosts.map(toPostItem);
   const cap = 50;
   const byReach = [...items].sort((a, b) => b.reach - a.reach).slice(0, cap);
   const byEngagement = [...items].sort((a, b) => b.engagementRate - a.engagementRate).slice(0, cap);
@@ -303,7 +314,7 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
 
   return {
     channelType: "organic_social", channelName: "Instagram Organic",
-    hasData: social.length > 0 || posts.length > 0 || igSessions.length > 0 || connection != null,
+    hasData: social.length > 0 || posts.length > 0 || allPosts.length > 0 || igSessions.length > 0 || connection != null,
     kpis: {
       profileVisits, postReach, postImpressions,
       engagementRate: postReach > 0 ? (interactions / postReach) * 100 : 0,

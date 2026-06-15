@@ -15,7 +15,7 @@ export const CHANNEL_META: Record<ChannelKey, Meta> = {
   all: { label: "All Channels", color: "#9ca3af", icon: "📊" },
   meta_ads: { label: "Meta Ads", color: "#3b82f6", icon: "📘" },
   google_ads: { label: "Google Ads", color: "#ef4444", icon: "🔍" },
-  instagram_organic: { label: "Instagram Organic", color: "#ec4899", icon: "📷" },
+  instagram_organic: { label: "Instagram Content", color: "#ec4899", icon: "📷" },
   facebook_organic: { label: "Facebook Organic", color: "#6366f1", icon: "👍" },
   influencer: { label: "Influencer", color: "#f59e0b", icon: "⭐" },
   direct: { label: "Direct", color: "#9ca3af", icon: "🔗" },

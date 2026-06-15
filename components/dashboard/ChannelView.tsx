@@ -319,8 +319,8 @@ function PaidBody({ data, hotelId }: { data: PaidChannelView; hotelId: string })
 
 function InstagramBody({ data }: { data: InstagramChannelView }) {
   if (!data.hasData) {
-    return <EmptyState title="No Instagram organic data this period"
-      body="Connect this hotel's Instagram account (Integrations) and we'll sync reach, engagement, profile visits, and website clicks here." />;
+    return <EmptyState title="No Instagram data yet"
+      body="Connect this hotel's Instagram account (Integrations) and we'll sync your posts, reach, engagement, profile visits, and website clicks here." />;
   }
   const k = data.kpis;
   return (
@@ -344,22 +344,6 @@ function InstagramBody({ data }: { data: InstagramChannelView }) {
           { key: "bookings", label: "Bookings", color: "#22c55e", axis: "left" },
         ]} />
       </Panel>
-
-      {data.topPosts && data.topPosts.length > 0 && (
-        <Panel title="Top posts">
-          <Table head={["Post", "Reach", "Saves", "Bookings"]}>
-            {data.topPosts.map((p) => (
-              <tr key={p.postId} className="border-t border-line">
-                <td className={tdName} title={p.caption}>{p.caption || "(no caption)"}</td>
-                <td className={td}>{formatNumber(p.reach)}</td>
-                <td className={td}>{formatNumber(p.saves)}</td>
-                <td className={td}>{p.bookings == null ? "—" : formatNumber(p.bookings)}</td>
-              </tr>
-            ))}
-          </Table>
-          <p className="px-4 py-2 text-xs text-ink-tertiary">Per-post booking attribution isn&apos;t available yet, so bookings show &ldquo;—&rdquo;.</p>
-        </Panel>
-      )}
     </div>
   );
 }
