@@ -46,6 +46,24 @@ export type PaidChannelView = {
   trend?: { date: string; spend: number; revenue: number; bookings: number }[];
 };
 
+// One Instagram post row for the "My Instagram Content" table. postedAt is an
+// ISO string because this payload crosses the JSON fetch boundary to the client.
+export type InstagramPostItem = {
+  id: string;
+  postType: "reel" | "image" | "carousel" | "story";
+  caption: string;
+  captionPreview: string; // first 80 chars (+ "…" if truncated)
+  permalink: string | null;
+  reach: number;
+  impressions: number;
+  likes: number;
+  comments: number;
+  saves: number;
+  shares: number;
+  engagementRate: number; // (likes+comments+saves+shares)/reach * 100
+  postedAt: string; // ISO 8601
+};
+
 export type InstagramChannelView = {
   channelType: "organic_social";
   channelName: "Instagram Organic";
@@ -58,6 +76,16 @@ export type InstagramChannelView = {
   topPosts:
     | { postId: string; caption: string; reach: number; saves: number; websiteClicks: number; bookings: number | null; revenue: number | null }[]
     | null;
+  // "My Instagram Content" table data — each sub-array capped at 50, the client
+  // pages through 20 at a time. null when the hotel has no posts in the window.
+  posts: {
+    recent: InstagramPostItem[];
+    topPerforming: {
+      byReach: InstagramPostItem[];
+      byEngagement: InstagramPostItem[];
+      bySaves: InstagramPostItem[];
+    };
+  } | null;
   trend: { date: string; sessions: number; bookings: number; revenue: number }[];
 };
 

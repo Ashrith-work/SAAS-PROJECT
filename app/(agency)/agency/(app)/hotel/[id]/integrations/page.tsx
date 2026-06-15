@@ -262,7 +262,9 @@ export default async function HotelIntegrationsPage({
   const igConnected = ig?.status === "active";
 
   const since30 = new Date(now.getTime() - 30 * DAY_MS);
-  const [latestSnap, reachAgg, recentPosts] = igConnected
+  // Per-post data is no longer shown here (moved to the dashboard's Instagram
+  // Organic channel view). We still surface account-level stats below.
+  const [latestSnap, reachAgg] = igConnected
     ? await Promise.all([
         agencyScoped(prisma.socialSnapshot).findFirst({
           where: { hotelClientId: hotel.id },
@@ -273,24 +275,8 @@ export default async function HotelIntegrationsPage({
           where: { hotelClientId: hotel.id, date: { gte: since30 } },
           _sum: { reach: true, impressions: true, profileViews: true, websiteClicks: true },
         }),
-        agencyScoped(prisma.postSnapshot).findMany({
-          where: { hotelClientId: hotel.id },
-          orderBy: { postedAt: "desc" },
-          take: 6,
-          select: {
-            mediaId: true,
-            caption: true,
-            mediaType: true,
-            permalink: true,
-            postedAt: true,
-            reach: true,
-            engagement: true,
-            saves: true,
-            shares: true,
-          },
-        }),
       ])
-    : [null, null, []];
+    : [null, null];
 
   // ── Google Analytics 4 (per-hotel, OAuth) ──────────────────────────────────
   const ga4 = await agencyScoped(prisma.ga4Connection).findFirst({
@@ -682,69 +668,10 @@ export default async function HotelIntegrationsPage({
 
             <InstagramActions hotelId={hotel.id} />
 
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-tertiary">
-                Recent posts
-              </p>
-              {recentPosts.length === 0 ? (
-                <p className="text-sm text-ink-tertiary">
-                  No posts synced yet. Click “Sync insights now”.
-                </p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-line">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">Post</th>
-                        <th className="px-3 py-2 text-right font-medium">Reach</th>
-                        <th className="px-3 py-2 text-right font-medium">Engagement</th>
-                        <th className="px-3 py-2 text-right font-medium">Saves</th>
-                        <th className="px-3 py-2 text-right font-medium">Shares</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentPosts.map((p) => (
-                        <tr key={p.mediaId} className="border-t border-line">
-                          <td className="px-3 py-2">
-                            {p.permalink ? (
-                              <a
-                                href={p.permalink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium hover:underline"
-                              >
-                                {p.caption ? p.caption.slice(0, 48) : p.mediaType ?? "Post"}
-                              </a>
-                            ) : (
-                              <span className="font-medium">
-                                {p.caption ? p.caption.slice(0, 48) : p.mediaType ?? "Post"}
-                              </span>
-                            )}
-                            {p.postedAt && (
-                              <span className="block text-xs text-ink-tertiary">
-                                {new Date(p.postedAt).toLocaleDateString()}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatNumber(p.reach)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatNumber(p.engagement)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatNumber(p.saves)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatNumber(p.shares)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {/* Instagram posts/content now live on the hotel dashboard's
+                "Instagram Organic" channel view (My Instagram Content). This page
+                stays focused on connection status, account info, and sync controls.
+                Post syncing is unchanged — see lib/instagram-sync.ts. */}
           </div>
         ) : (
           <div className="space-y-3">

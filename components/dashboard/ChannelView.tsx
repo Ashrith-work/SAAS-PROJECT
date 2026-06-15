@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { formatCurrency, formatCurrencyCents, formatNumber, formatMultiple } from "@/lib/format";
 import type {
-  ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView,
+  ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView, InstagramPostItem,
   FacebookChannelView, InfluencerChannelView, DirectChannelView, OtherChannelView,
   ChannelKey,
 } from "@/lib/channel-view-types";
@@ -336,6 +336,8 @@ function InstagramBody({ data }: { data: InstagramChannelView }) {
         <Stat label="Saves" value={formatNumber(k.saves)} sub={`${formatNumber(k.likes)} likes · ${formatNumber(k.comments)} comments`} />
       </StatGrid>
 
+      <InstagramContent posts={data.posts} />
+
       <Panel title="Sessions & bookings from Instagram">
         <TrendChart data={data.trend} series={[
           { key: "sessions", label: "Sessions", color: "#ec4899", axis: "left" },
@@ -359,6 +361,167 @@ function InstagramBody({ data }: { data: InstagramChannelView }) {
         </Panel>
       )}
     </div>
+  );
+}
+
+// ── "My Instagram Content" section (Instagram Organic only) ──────────────────
+
+const POST_TYPE_BADGE: Record<InstagramPostItem["postType"], { label: string; className: string }> = {
+  reel: { label: "Reel", className: "bg-purple-500/15 text-purple-300 ring-purple-500/30" },
+  image: { label: "Image", className: "bg-blue-500/15 text-blue-300 ring-blue-500/30" },
+  carousel: { label: "Carousel", className: "bg-cyan-500/15 text-cyan-300 ring-cyan-500/30" },
+  story: { label: "Story", className: "bg-pink-500/15 text-pink-300 ring-pink-500/30" },
+};
+
+function PostTypeBadge({ type }: { type: InstagramPostItem["postType"] }) {
+  const b = POST_TYPE_BADGE[type];
+  return (
+    <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${b.className}`}>
+      {b.label}
+    </span>
+  );
+}
+
+// Coarse relative time ("2 days ago"); the cell's title attr carries the exact date.
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} day${d === 1 ? "" : "s"} ago`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `${mo} month${mo === 1 ? "" : "s"} ago`;
+  return `${Math.floor(d / 365)} year${Math.floor(d / 365) === 1 ? "" : "s"} ago`;
+}
+
+const TOP_SORTS = [
+  { key: "reach", label: "Reach" },
+  { key: "engagement", label: "Engagement" },
+  { key: "saves", label: "Saves" },
+] as const;
+type TopSort = (typeof TOP_SORTS)[number]["key"];
+
+function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+        active ? "border-brand bg-brand text-white" : "border-line-strong text-ink-secondary hover:bg-elevated"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function InstagramContent({ posts }: { posts: InstagramChannelView["posts"] }) {
+  const [view, setView] = useState<"recent" | "top">("recent");
+  const [sort, setSort] = useState<TopSort>("reach");
+  const [limit, setLimit] = useState(20);
+
+  const rows = !posts
+    ? []
+    : view === "recent"
+      ? posts.recent
+      : sort === "reach"
+        ? posts.topPerforming.byReach
+        : sort === "engagement"
+          ? posts.topPerforming.byEngagement
+          : posts.topPerforming.bySaves;
+  const visible = rows.slice(0, limit);
+
+  function pickView(next: "recent" | "top") {
+    setView(next);
+    setLimit(20);
+  }
+  function pickSort(next: TopSort) {
+    setSort(next);
+    setLimit(20);
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <h3 className="text-sm font-medium text-ink">My Instagram Content</h3>
+        <div className="flex items-center gap-2">
+          <ToggleBtn active={view === "recent"} onClick={() => pickView("recent")}>Recent</ToggleBtn>
+          <ToggleBtn active={view === "top"} onClick={() => pickView("top")}>Top Performing</ToggleBtn>
+        </div>
+      </div>
+
+      {view === "top" && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+          <span className="text-xs uppercase tracking-wide text-ink-tertiary">Sort by</span>
+          {TOP_SORTS.map((s) => (
+            <ToggleBtn key={s.key} active={sort === s.key} onClick={() => pickSort(s.key)}>{s.label}</ToggleBtn>
+          ))}
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <p className="px-4 py-12 text-center text-sm text-ink-tertiary">
+          No Instagram posts in this period. Posts will appear here once your Instagram account is connected and we&apos;ve synced your content.
+        </p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Post Type</th>
+                  <th className="px-4 py-2 font-medium">Caption Preview</th>
+                  <th className="px-4 py-2 text-right font-medium">Reach</th>
+                  <th className="px-4 py-2 text-right font-medium">Engagement</th>
+                  <th className="px-4 py-2 text-right font-medium">Likes</th>
+                  <th className="px-4 py-2 text-right font-medium">Comments</th>
+                  <th className="px-4 py-2 text-right font-medium">Saves</th>
+                  <th className="px-4 py-2 text-right font-medium">Posted Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((p) => (
+                  <tr key={p.id} className="border-t border-line">
+                    <td className="px-4 py-2.5"><PostTypeBadge type={p.postType} /></td>
+                    <td className="max-w-[18rem] truncate px-4 py-2.5 font-medium text-ink">
+                      {p.permalink ? (
+                        <a href={p.permalink} target="_blank" rel="noopener noreferrer" title={p.caption || undefined} className="hover:text-brand hover:underline">
+                          {p.captionPreview || "(no caption)"}
+                        </a>
+                      ) : (
+                        <span title={p.caption || undefined}>{p.captionPreview || "(no caption)"}</span>
+                      )}
+                    </td>
+                    <td className={td}>{formatNumber(p.reach)}</td>
+                    <td className={td}>{p.engagementRate.toFixed(1)}%</td>
+                    <td className={td}>{formatNumber(p.likes)}</td>
+                    <td className={td}>{formatNumber(p.comments)}</td>
+                    <td className={td}>{formatNumber(p.saves)}</td>
+                    <td className={td} title={new Date(p.postedAt).toLocaleString()}>{relativeTime(p.postedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {limit < rows.length && (
+            <div className="border-t border-line px-4 py-3 text-center">
+              <button
+                type="button"
+                onClick={() => setLimit((n) => Math.min(n + 20, rows.length))}
+                className="rounded-lg border border-line-strong px-4 py-1.5 text-sm font-medium text-ink-secondary hover:bg-elevated"
+              >
+                Load more ({rows.length - limit} more)
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

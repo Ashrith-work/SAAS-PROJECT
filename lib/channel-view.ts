@@ -5,7 +5,8 @@ import { agencyScoped } from "@/lib/tenant";
 import { classifySourceType, type SourceType } from "@/lib/source-classifier";
 import {
   CHANNEL_KEYS, isChannelKey, type ChannelKey, type PaidKpis,
-  type PaidChannelView, type InstagramChannelView, type FacebookChannelView,
+  type PaidChannelView, type InstagramChannelView, type InstagramPostItem,
+  type FacebookChannelView,
   type InfluencerChannelView, type DirectChannelView, type OtherChannelView,
   type ChannelView,
 } from "@/lib/channel-view-types";
@@ -240,7 +241,7 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
     agencyScoped(prisma.postSnapshot).findMany({
       where: { hotelClientId, postedAt: { gte: start, lte: end } },
       orderBy: { reach: "desc" },
-      select: { mediaId: true, caption: true, reach: true, impressions: true, likes: true, comments: true, saves: true, shares: true },
+      select: { mediaId: true, caption: true, mediaType: true, permalink: true, postedAt: true, reach: true, impressions: true, likes: true, comments: true, saves: true, shares: true },
     }),
     conversionsInRange(hotelClientId, start, end),
     sessionsInRange(hotelClientId, start, end),
@@ -285,6 +286,21 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
       }))
     : null;
 
+  // "My Instagram Content" table rows. Map each PostSnapshot to a client-shaped
+  // item, then expose four orderings (recent + three top-performing sorts), each
+  // capped at 50 so the client can page through 20 at a time.
+  const items: InstagramPostItem[] = posts.map(toPostItem);
+  const cap = 50;
+  const byReach = [...items].sort((a, b) => b.reach - a.reach).slice(0, cap);
+  const byEngagement = [...items].sort((a, b) => b.engagementRate - a.engagementRate).slice(0, cap);
+  const bySaves = [...items].sort((a, b) => b.saves - a.saves).slice(0, cap);
+  const recent = [...items]
+    .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime())
+    .slice(0, cap);
+  const postsPayload = items.length > 0
+    ? { recent, topPerforming: { byReach, byEngagement, bySaves } }
+    : null;
+
   return {
     channelType: "organic_social", channelName: "Instagram Organic",
     hasData: social.length > 0 || posts.length > 0 || igSessions.length > 0 || connection != null,
@@ -294,8 +310,52 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
       likes, comments, saves, shares, websiteClicks,
       sessionsFromInstagram: igSessions.length, bookings, revenue,
     },
-    topPosts, trend,
+    topPosts, posts: postsPayload, trend,
   };
+}
+
+// Maps a synced PostSnapshot to a client-facing content row. mediaType from the
+// Graph API is "image" | "video" | "carousel" | "reels"; we normalise to the
+// badge vocabulary the table uses. engagementRate is computed here (reach == 0
+// → 0) so the client never divides.
+function toPostItem(p: {
+  mediaId: string; caption: string | null; mediaType: string | null; permalink: string | null;
+  postedAt: Date | null; reach: number; impressions: number; likes: number; comments: number;
+  saves: number; shares: number;
+}): InstagramPostItem {
+  const caption = (p.caption ?? "").trim();
+  const interactions = p.likes + p.comments + p.saves + p.shares;
+  return {
+    id: p.mediaId,
+    postType: normalizePostType(p.mediaType),
+    caption,
+    captionPreview: caption.length > 80 ? `${caption.slice(0, 80)}…` : caption,
+    permalink: p.permalink ?? null,
+    reach: p.reach,
+    impressions: p.impressions,
+    likes: p.likes,
+    comments: p.comments,
+    saves: p.saves,
+    shares: p.shares,
+    engagementRate: p.reach > 0 ? (interactions / p.reach) * 100 : 0,
+    postedAt: (p.postedAt ?? new Date(0)).toISOString(),
+  };
+}
+
+function normalizePostType(mediaType: string | null): InstagramPostItem["postType"] {
+  switch ((mediaType ?? "").toLowerCase()) {
+    case "reels":
+    case "reel":
+    case "video":
+      return "reel";
+    case "carousel":
+    case "carousel_album":
+      return "carousel";
+    case "story":
+      return "story";
+    default:
+      return "image";
+  }
 }
 
 async function loadFacebook(hotelClientId: string, start: Date, end: Date): Promise<FacebookChannelView> {
