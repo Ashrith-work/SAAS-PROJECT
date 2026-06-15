@@ -93,7 +93,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-export function RevenueBySource({ hotelId }: { hotelId: string }) {
+export function RevenueBySource({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
   const [granularity, setGranularity] = useState<Granularity>("source");
   const [rangeKey, setRangeKey] = useState("30");
   const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set());
@@ -118,7 +118,7 @@ export function RevenueBySource({ hotelId }: { hotelId: string }) {
     if (selectedTypes.size > 0) params.set("sourceTypes", [...selectedTypes].join(","));
     try {
       const res = await fetch(
-        `/api/agency/hotels/${hotelId}/revenue-by-source?${params.toString()}`,
+        `${apiBase}/${hotelId}/revenue-by-source?${params.toString()}`,
         { signal: ctrl.signal },
       );
       if (!res.ok) {
@@ -132,7 +132,7 @@ export function RevenueBySource({ hotelId }: { hotelId: string }) {
     } finally {
       if (abortRef.current === ctrl) setLoading(false);
     }
-  }, [hotelId, granularity, startDate, endDate, selectedTypes]);
+  }, [hotelId, granularity, startDate, endDate, selectedTypes, apiBase]);
 
   useEffect(() => {
     // Legitimate data-fetch-on-change effect: load() sets loading/error/data.

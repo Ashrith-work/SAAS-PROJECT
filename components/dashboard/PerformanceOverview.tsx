@@ -101,10 +101,12 @@ export function PerformanceOverview({
   hotelId,
   from,
   to,
+  apiBase = "/api/agency/hotels",
 }: {
   hotelId: string;
   from: string;
   to: string;
+  apiBase?: string;
 }) {
   const [data, setData] = useState<OwnerMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,13 +120,13 @@ export function PerformanceOverview({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(false);
-    fetch(`/api/agency/hotels/${hotelId}/owner-metrics?startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/owner-metrics?startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) setData(d as OwnerMetrics); })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, from, to]);
+  }, [hotelId, from, to, apiBase]);
 
   return (
     <section className="space-y-4">

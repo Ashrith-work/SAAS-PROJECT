@@ -1,5 +1,6 @@
 import "server-only";
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { cache } from "react";
 import { getCurrentMember, getPlatformRole } from "@/lib/auth";
 import { agencyScopedFor } from "@/lib/tenant-scope";
@@ -82,6 +83,28 @@ export async function requireSuperAdmin(): Promise<void> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Hotel-owner scope override.
+//
+// Hotel owners (self-signup `hotel_client` users) are NOT AgencyMembers, so the
+// session-based agencyScoped() path (requireAgencyId → getCurrentMember) throws
+// for them. But every dashboard data loader already filters by hotelClientId AND
+// goes through agencyScoped(), so the ONLY thing they need is the right agencyId.
+//
+// runWithHotelOwnerScope(agencyId, fn) installs a request-scoped agencyId that
+// agencyScoped() prefers over the session lookup, for the duration of `fn`. The
+// caller (a hotel-owner API route) MUST have already verified that the signed-in
+// user owns a hotel belonging to `agencyId` (see lib/hotel-auth requireHotelOwnerAccess).
+// Reads stay filtered by both agencyId and hotelClientId, so a hotel owner can
+// only ever reach their own hotel's rows. Nothing here weakens the agency path:
+// when no override is set, agencyScoped() behaves exactly as before.
+// ─────────────────────────────────────────────────────────────────────────────
+const agencyScopeOverride = new AsyncLocalStorage<string>();
+
+export function runWithAgencyScope<T>(agencyId: string, fn: () => Promise<T>): Promise<T> {
+  return agencyScopeOverride.run(agencyId, fn);
+}
+
 /**
  * The ergonomic form: resolves the agency context from the Clerk session on
  * each call, so it reads as `await agencyScoped(prisma.hotelClient).findMany(…)`.
@@ -91,6 +114,9 @@ export async function requireSuperAdmin(): Promise<void> {
  * Do NOT use this in code that may run without a session (the public /share
  * pages, the tracking endpoints, cron jobs) — there, pass the agencyId you
  * resolved from the token/siteId into `agencyScopedFor()` instead.
+ *
+ * When invoked inside runWithAgencyScope(agencyId, …), that explicit agencyId is
+ * used instead of the session lookup (the hotel-owner read path).
  */
 export function agencyScoped<D>(model: D): D {
   const target = model as Record<string, unknown>;
@@ -101,7 +127,8 @@ export function agencyScoped<D>(model: D): D {
       if (typeof orig !== "function") return orig;
 
       return async (args: unknown = {}) => {
-        const agencyId = await requireAgencyId();
+        const override = agencyScopeOverride.getStore();
+        const agencyId = override ?? (await requireAgencyId());
         const scoped = agencyScopedFor(agencyId, t) as Record<
           string,
           (a?: unknown) => unknown

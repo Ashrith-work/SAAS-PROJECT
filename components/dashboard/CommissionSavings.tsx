@@ -24,7 +24,7 @@ type Data = {
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function monthLabel(m: string) { return new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" }); }
 
-export function CommissionSavings({ hotelId }: { hotelId: string }) {
+export function CommissionSavings({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
   const [rangeKey, setRangeKey] = useState("30");
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,13 +41,13 @@ export function CommissionSavings({ hotelId }: { hotelId: string }) {
     abort.current = ctrl;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/agency/hotels/${hotelId}/savings?startDate=${startDate}&endDate=${endDate}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/savings?startDate=${startDate}&endDate=${endDate}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setData(d as Data); })
       .catch(() => {})
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, startDate, endDate]);
+  }, [hotelId, startDate, endDate, apiBase]);
 
   const delta = useMemo(() => {
     if (!data || data.previous.totalSavings <= 0) return null;

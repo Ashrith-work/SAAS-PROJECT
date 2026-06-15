@@ -25,7 +25,7 @@ function agoLabel(iso: string): string {
   return `${h} hour${h === 1 ? "" : "s"} ago`;
 }
 
-export function OwnerSummaryCard({ hotelId }: { hotelId: string }) {
+export function OwnerSummaryCard({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
   const [period, setPeriod] = useState<Period>("7d");
   const [data, setData] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,13 +41,13 @@ export function OwnerSummaryCard({ hotelId }: { hotelId: string }) {
     setLoading(true);
     setShown(false);
     setError(false);
-    fetch(`/api/agency/hotels/${hotelId}/summary?period=${period}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/summary?period=${period}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) { setData(d as Summary); requestAnimationFrame(() => setShown(true)); } })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, period]);
+  }, [hotelId, period, apiBase]);
 
   return (
     <section className="rounded-xl border border-brand/30 bg-brand/5 p-4 sm:p-5">

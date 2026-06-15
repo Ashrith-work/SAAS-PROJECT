@@ -228,6 +228,8 @@ describe("hotel-owner dashboard authorization", () => {
     const hotel = await prisma.hotelClient.findUnique({ where: { id: hotelId } });
     expect(hotel?.contactName).toBe("Updated Owner");
     expect(hotel?.channelManager).toBe("eZee");
-    expect(Number(hotel?.otaCommissionRate)).toBe(12);
+    // OTA commission rate is now AGENCY-managed: the owner edit must NOT change it
+    // (it stays at the signup value of 15, never the submitted 12).
+    expect(Number(hotel?.otaCommissionRate)).toBe(15);
   });
 });

@@ -36,16 +36,17 @@ export async function updateHotelDetails(
   if (!whatsappNumber) fieldErrors.whatsappNumber = "Enter a valid WhatsApp number.";
   const address = input.address.trim();
   if (!validateAddress(address)) fieldErrors.address = "Enter an address (10–500 characters).";
-  let otaRate = Number.parseFloat(input.otaCommissionRate);
-  if (!Number.isFinite(otaRate)) otaRate = 18;
-  otaRate = Math.min(50, Math.max(0, otaRate));
   const channelManager = CHANNEL_MANAGERS.has(input.channelManager) ? input.channelManager : "None";
 
   if (Object.keys(fieldErrors).length > 0) return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
 
+  // NOTE: otaCommissionRate is intentionally NOT written here. It is agency-managed
+  // (it drives the "commission saved" figures and the agency's reporting), so the
+  // hotel owner can never change it — even via a crafted request — through this
+  // owner-only action. The field is read-only in the UI for the same reason.
   await agencyScopedFor(viewer.hotel.agencyId, prisma.hotelClient).update({
     where: { id: hotelClientId },
-    data: { contactName, contactEmail, contactPhone, whatsappNumber, address, otaCommissionRate: otaRate.toFixed(2), channelManager },
+    data: { contactName, contactEmail, contactPhone, whatsappNumber, address, channelManager },
   });
 
   revalidatePath(`/hotel/${hotelClientId}/dashboard`);

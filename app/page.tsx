@@ -1,7 +1,39 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Show, UserButton } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { getPlatformRole } from "@/lib/auth";
 
-export default function Home() {
+// Landing page. Hotel owners (hotel_client) who reach here — directly or after
+// being bounced off an agency-only route by the proxy — are forwarded to their
+// own hotel dashboard, carrying any "agency-restricted" notice so the dashboard
+// can explain why they were redirected. Everyone else sees the marketing page.
+
+export const dynamic = "force-dynamic";
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { userId } = await auth();
+  if (userId) {
+    const role = await getPlatformRole();
+    if (role === "hotel_client") {
+      const hotel = await prisma.hotelClient.findFirst({
+        where: { createdByUserId: userId, deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (hotel) {
+        const sp = await searchParams;
+        const notice = sp.notice === "agency-restricted" ? "?notice=agency-restricted" : "";
+        redirect(`/hotel/${hotel.id}/dashboard${notice}`);
+      }
+    }
+  }
+
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-8 p-8">
       <div className="text-center">

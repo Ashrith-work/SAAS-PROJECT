@@ -26,13 +26,17 @@ const RANGE_PRESETS = [
 ] as const;
 
 export function ChannelView({
-  hotelId, channel, from, to, currentRange,
+  hotelId, channel, from, to, currentRange, apiBase = "/api/agency/hotels", ownerView = false,
 }: {
   hotelId: string;
   channel: Exclude<ChannelKey, "all">;
   from: string;
   to: string;
   currentRange: string;
+  /** Base path for the channel-view endpoint. Agency default; hotel owners pass "/api/hotel". */
+  apiBase?: string;
+  /** Hotel-owner view: hide agency-only management CTAs (Connect Meta, Go to Influencers). */
+  ownerView?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -49,13 +53,13 @@ export function ChannelView({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(false);
-    fetch(`/api/agency/hotels/${hotelId}/channel-view?channel=${channel}&startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/channel-view?channel=${channel}&startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) setData(d as ChannelViewData); })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, channel, from, to]);
+  }, [hotelId, channel, from, to, apiBase]);
 
   const meta = CHANNEL_META[channel];
 
@@ -111,7 +115,7 @@ export function ChannelView({
       ) : error || !data ? (
         <Panel><p className="py-8 text-center text-sm text-ink-tertiary">Couldn&apos;t load {meta.label} data right now.</p></Panel>
       ) : (
-        <Body data={data} hotelId={hotelId} />
+        <Body data={data} hotelId={hotelId} ownerView={ownerView} />
       )}
 
       <div className="pt-1">
@@ -221,28 +225,32 @@ const tdName = "max-w-[16rem] truncate px-4 py-2.5 font-medium text-ink";
 
 // ── Per-channel bodies ───────────────────────────────────────────────────────
 
-function Body({ data, hotelId }: { data: ChannelViewData; hotelId: string }) {
+function Body({ data, hotelId, ownerView }: { data: ChannelViewData; hotelId: string; ownerView: boolean }) {
   switch (data.channelType) {
-    case "paid_ads": return <PaidBody data={data} hotelId={hotelId} />;
+    case "paid_ads": return <PaidBody data={data} hotelId={hotelId} ownerView={ownerView} />;
     case "organic_social":
       return data.channelName === "Instagram Organic"
         ? <InstagramBody data={data as InstagramChannelView} />
         : <FacebookBody data={data as FacebookChannelView} />;
-    case "influencer": return <InfluencerBody data={data} />;
+    case "influencer": return <InfluencerBody data={data} ownerView={ownerView} />;
     case "direct": return <DirectBody data={data} />;
     case "other": return <OtherBody data={data} />;
   }
 }
 
-function PaidBody({ data, hotelId }: { data: PaidChannelView; hotelId: string }) {
+function PaidBody({ data, hotelId, ownerView }: { data: PaidChannelView; hotelId: string; ownerView: boolean }) {
   if (!data.hasData || !data.kpis) {
     if (data.channelName === "Google Ads") {
       return <EmptyState title="Google Ads not connected — coming soon"
         body="Google Ads isn't integrated yet. Once it's available you'll see spend, clicks, CPC, and ROAS here alongside Meta." />;
     }
+    // Hotel owners can't connect integrations (agency-managed), so show the
+    // explanation without the agency-only "Connect" CTA.
     return <EmptyState title="Meta Ads not connected"
-      body="Connect this hotel's Meta (Facebook) Ads account to see spend, CPC, CPM, CTR, ROAS, and top campaigns here."
-      action={<Link href={`/agency/hotel/${hotelId}/integrations`} className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">Connect Meta Ads</Link>} />;
+      body={ownerView
+        ? "Your agency hasn't connected this hotel's Meta (Facebook) Ads account yet. Once they do, you'll see spend, CPC, CPM, CTR, ROAS, and top campaigns here."
+        : "Connect this hotel's Meta (Facebook) Ads account to see spend, CPC, CPM, CTR, ROAS, and top campaigns here."}
+      action={ownerView ? undefined : <Link href={`/agency/hotel/${hotelId}/integrations`} className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">Connect Meta Ads</Link>} />;
   }
   const k = data.kpis;
   const accounts = data.accounts ?? [];
@@ -533,11 +541,13 @@ function FacebookBody({ data }: { data: FacebookChannelView }) {
   );
 }
 
-function InfluencerBody({ data }: { data: InfluencerChannelView }) {
+function InfluencerBody({ data, ownerView }: { data: InfluencerChannelView; ownerView: boolean }) {
   if (!data.hasData) {
     return <EmptyState title="No influencer activity yet"
-      body="Create your first influencer and coupon code to start tracking redemptions and revenue."
-      action={<Link href="/agency/influencers" className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">Go to Influencers</Link>} />;
+      body={ownerView
+        ? "No influencer coupon redemptions tracked yet. Your agency manages influencer collaborations — redemptions and revenue will appear here once they're recorded."
+        : "Create your first influencer and coupon code to start tracking redemptions and revenue."}
+      action={ownerView ? undefined : <Link href="/agency/influencers" className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">Go to Influencers</Link>} />;
   }
   const k = data.kpis;
   const b = data.redemptionSourceBreakdown;

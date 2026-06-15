@@ -115,6 +115,12 @@ export default clerkMiddleware(async (auth, req) => {
     // provision their Agency (which then sets role = agency_admin).
     if (isOnboardingRoute(req)) return NextResponse.next();
     if (role !== "agency_admin") {
+      // Hotel owners land here when they try to open any agency-only surface
+      // (e.g. /agency/hotel/[id]/integrations). Send them home with a notice;
+      // the root page forwards them on to their own dashboard and shows it.
+      if (role === "hotel_client") {
+        return NextResponse.redirect(new URL("/?notice=agency-restricted", req.url));
+      }
       return NextResponse.redirect(
         role ? home : new URL("/agency/onboarding", req.url),
       );

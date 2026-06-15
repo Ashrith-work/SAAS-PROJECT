@@ -23,12 +23,15 @@ function Field({ id, label, error, children }: { id: string; label: string; erro
 export function HotelDetailsForm({
   hotelClientId,
   initial,
+  canEditOtaRate = true,
 }: {
   hotelClientId: string;
   initial: {
     contactName: string; contactEmail: string; contactPhone: string;
     whatsappNumber: string; address: string; otaCommissionRate: string; channelManager: string;
   };
+  /** When false, the OTA commission rate is agency-managed and shown read-only. */
+  canEditOtaRate?: boolean;
 }) {
   const [v, setV] = useState(initial);
   const [errs, setErrs] = useState<Record<string, string>>({});
@@ -64,7 +67,21 @@ export function HotelDetailsForm({
           <input id="whatsappNumber" type="tel" value={v.whatsappNumber} onChange={set("whatsappNumber")} className={inputCls} />
         </Field>
         <Field id="otaCommissionRate" label="OTA commission rate (%)">
-          <input id="otaCommissionRate" type="number" min={0} max={50} step={0.5} value={v.otaCommissionRate} onChange={set("otaCommissionRate")} className={inputCls} />
+          <input
+            id="otaCommissionRate"
+            type="number"
+            min={0}
+            max={50}
+            step={0.5}
+            value={v.otaCommissionRate}
+            onChange={set("otaCommissionRate")}
+            disabled={!canEditOtaRate}
+            readOnly={!canEditOtaRate}
+            className={`${inputCls} ${canEditOtaRate ? "" : "cursor-not-allowed opacity-60"}`}
+          />
+          {!canEditOtaRate && (
+            <p className="mt-1 text-xs text-ink-tertiary">Managed by your agency. Contact them to change it.</p>
+          )}
         </Field>
         <Field id="channelManager" label="Channel manager">
           <select id="channelManager" value={v.channelManager} onChange={set("channelManager")} className={inputCls}>

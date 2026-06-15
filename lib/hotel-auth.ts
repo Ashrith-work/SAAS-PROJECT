@@ -66,3 +66,47 @@ export async function resolveHotelForViewer(hotelClientId: string): Promise<Hote
 
   return { hotel: hotel as unknown as HotelViewerHotel, userId, isOwner, canEdit: isOwner };
 }
+
+export type HotelOwnerAccess = {
+  agencyId: string;
+  hotelId: string;
+  isOwner: boolean;
+  /** True when the viewer is an agency member of the owning agency (not the hotel owner). */
+  isAgencyMember: boolean;
+};
+
+/**
+ * Authorization gate for the hotel-owner DATA routes (/api/hotel/[hotelClientId]/*).
+ *
+ * A request is authorized only when the signed-in Clerk user is EITHER the hotel's
+ * own owner (HotelClient.createdByUserId, i.e. they signed up via an invite code)
+ * OR an agency member of the agency that owns the hotel. Returns the owning
+ * agencyId so the caller can scope reads via runWithAgencyScope(agencyId, …);
+ * returns null when the user has no access (the route then answers 403/404).
+ *
+ * This NEVER trusts the URL for tenancy: agencyId comes from the HotelClient row,
+ * and reads stay filtered by both agencyId and hotelClientId. A hotel owner can
+ * therefore only ever reach their own hotel — a different hotelClientId (even in
+ * the same agency) resolves to a row they don't own, so access is denied.
+ */
+export async function requireHotelOwnerAccess(hotelClientId: string): Promise<HotelOwnerAccess | null> {
+  const { userId } = await auth();
+  if (!userId) return null;
+
+  const hotel = await prisma.hotelClient.findFirst({
+    where: { id: hotelClientId, deletedAt: null },
+    select: { id: true, agencyId: true, createdByUserId: true, agency: { select: { suspendedAt: true } } },
+  });
+  if (!hotel || hotel.agency.suspendedAt) return null;
+
+  const isOwner = hotel.createdByUserId === userId;
+  if (isOwner) {
+    return { agencyId: hotel.agencyId, hotelId: hotel.id, isOwner: true, isAgencyMember: false };
+  }
+
+  const member = await prisma.agencyMember.findUnique({ where: { clerkId: userId }, select: { agencyId: true } });
+  if (member?.agencyId === hotel.agencyId) {
+    return { agencyId: hotel.agencyId, hotelId: hotel.id, isOwner: false, isAgencyMember: true };
+  }
+  return null;
+}
