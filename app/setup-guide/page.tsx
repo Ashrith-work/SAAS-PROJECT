@@ -9,7 +9,7 @@ const PUBLIC_URL = (
   process.env.NEXT_PUBLIC_APP_URL || "https://www.hoteltrack.in"
 ).replace(/\/$/, "");
 const PAGE_URL = `${PUBLIC_URL}/setup-guide`;
-const PDF_URL = "/guides/HotelTrack_Complete_Setup_Guide.pdf";
+const PDF_URL = "/docs/HotelTrack_Integration_Guide.pdf";
 
 export const metadata: Metadata = {
   metadataBase: new URL(PUBLIC_URL),
@@ -224,7 +224,7 @@ export default function SetupGuidePage() {
           </Link>
           <a
             href={PDF_URL}
-            download="HotelTrack-Setup-Guide.pdf"
+            download="HotelTrack-Integration-Guide.pdf"
             className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover print:hidden"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
@@ -1195,7 +1195,7 @@ export default function SetupGuidePage() {
             </p>
             <a
               href={PDF_URL}
-              download="HotelTrack-Setup-Guide.pdf"
+              download="HotelTrack-Integration-Guide.pdf"
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">

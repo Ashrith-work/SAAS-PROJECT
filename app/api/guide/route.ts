@@ -8,18 +8,18 @@ import { getAgencyContext, agencyScopedFor } from "@/lib/tenant";
 // each request to GuideDownload so guide usage can be reported later.
 //
 // This route is for the authenticated agency surfaces (the "Send setup guide to
-// hotel" modal). The fully-public /setup-guide page links straight to the static
-// /guides/…pdf instead, since there is no agency to attribute those downloads to.
+// hotel" modal). The fully-public /setup-guide pages link straight to the static
+// /docs/…pdf instead, since there is no agency to attribute those downloads to.
 
 export const runtime = "nodejs";
 
 const PDF_PATH = path.join(
   process.cwd(),
   "public",
-  "guides",
-  "HotelTrack_Complete_Setup_Guide.pdf",
+  "docs",
+  "HotelTrack_Integration_Guide.pdf",
 );
-const DOWNLOAD_NAME = "HotelTrack-Setup-Guide.pdf";
+const DOWNLOAD_NAME = "HotelTrack-Integration-Guide.pdf";
 
 const METHODS = ["direct", "link", "email"] as const;
 type Method = (typeof METHODS)[number];
