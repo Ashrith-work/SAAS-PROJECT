@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { formatCurrency, formatCurrencyCents, formatNumber, formatMultiple } from "@/lib/format";
 import type {
   ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView, InstagramPostItem,
   FacebookChannelView, InfluencerChannelView, DirectChannelView, OtherChannelView,
-  ChannelKey,
+  ChannelKey, ReachSplit,
 } from "@/lib/channel-view-types";
 import { ChannelSelector, CHANNEL_META } from "./ChannelSelector";
 
@@ -44,6 +44,7 @@ export function ChannelView({
   const [data, setData] = useState<ChannelViewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function ChannelView({
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, channel, from, to, apiBase]);
+  }, [hotelId, channel, from, to, apiBase, reloadKey]);
 
   const meta = CHANNEL_META[channel];
 
@@ -115,7 +116,7 @@ export function ChannelView({
       ) : error || !data ? (
         <Panel><p className="py-8 text-center text-sm text-ink-tertiary">Couldn&apos;t load {meta.label} data right now.</p></Panel>
       ) : (
-        <Body data={data} hotelId={hotelId} ownerView={ownerView} />
+        <Body data={data} hotelId={hotelId} ownerView={ownerView} onLinked={() => setReloadKey((k) => k + 1)} />
       )}
 
       <div className="pt-1">
@@ -225,12 +226,12 @@ const tdName = "max-w-[16rem] truncate px-4 py-2.5 font-medium text-ink";
 
 // ── Per-channel bodies ───────────────────────────────────────────────────────
 
-function Body({ data, hotelId, ownerView }: { data: ChannelViewData; hotelId: string; ownerView: boolean }) {
+function Body({ data, hotelId, ownerView, onLinked }: { data: ChannelViewData; hotelId: string; ownerView: boolean; onLinked: () => void }) {
   switch (data.channelType) {
     case "paid_ads": return <PaidBody data={data} hotelId={hotelId} ownerView={ownerView} />;
     case "organic_social":
       return data.channelName === "Instagram Organic"
-        ? <InstagramBody data={data as InstagramChannelView} />
+        ? <InstagramBody data={data as InstagramChannelView} hotelId={hotelId} ownerView={ownerView} onLinked={onLinked} />
         : <FacebookBody data={data as FacebookChannelView} />;
     case "influencer": return <InfluencerBody data={data} ownerView={ownerView} />;
     case "direct": return <DirectBody data={data} />;
@@ -325,7 +326,7 @@ function PaidBody({ data, hotelId, ownerView }: { data: PaidChannelView; hotelId
   );
 }
 
-function InstagramBody({ data }: { data: InstagramChannelView }) {
+function InstagramBody({ data, hotelId, ownerView, onLinked }: { data: InstagramChannelView; hotelId: string; ownerView: boolean; onLinked: () => void }) {
   if (!data.hasData) {
     return <EmptyState title="No Instagram data yet"
       body="Connect this hotel's Instagram account (Integrations) and we'll sync your posts, reach, engagement, profile visits, and website clicks here." />;
@@ -344,6 +345,9 @@ function InstagramBody({ data }: { data: InstagramChannelView }) {
         <Stat label="Saves" value={formatNumber(k.saves)} sub={`${formatNumber(k.likes)} likes · ${formatNumber(k.comments)} comments`} />
       </StatGrid>
 
+      {/* Reach Split — owned vs influencer content, ABOVE the content table. */}
+      <ReachSplitSection split={data.reachSplit} hotelId={hotelId} ownerView={ownerView} onLinked={onLinked} />
+
       <InstagramContent posts={data.posts} />
 
       <Panel title="Sessions & bookings from Instagram">
@@ -352,6 +356,278 @@ function InstagramBody({ data }: { data: InstagramChannelView }) {
           { key: "bookings", label: "Bookings", color: "#22c55e", axis: "left" },
         ]} />
       </Panel>
+    </div>
+  );
+}
+
+// ── Reach Split: Owned vs Influencer content (Instagram Organic only) ─────────
+// `reach` is nullable upstream — render "Not available" for unknown values
+// rather than a misleading 0. Owned reach = the hotel's own PostSnapshot posts;
+// influencer reach = posts that tagged/mentioned the hotel (InfluencerInstagramPost).
+
+const OWNED_COLOR = "#3b82f6";       // brand primary
+const INFLUENCER_COLOR = "#f59e0b";  // accent (amber)
+
+function fmtReach(n: number | null): string {
+  return n == null ? "Not available" : formatNumber(n);
+}
+
+function BigReachCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)]" style={{ borderLeft: `4px solid ${accent}` }}>
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
+      <p className="mt-1 text-3xl font-semibold tabular-nums text-ink">{value}</p>
+      <p className="mt-1 text-sm text-ink-tertiary">{sub}</p>
+    </div>
+  );
+}
+
+function ReachSplitSection({ split, hotelId, ownerView, onLinked }: { split: ReachSplit; hotelId: string; ownerView: boolean; onLinked: () => void }) {
+  const owned = split.ownedContent;
+  const inf = split.influencerContent;
+  const total = split.totalReach;
+  const ownedPct = total > 0 ? Math.round((owned.reach / total) * 100) : 0;
+  const infPct = total > 0 ? 100 - ownedPct : 0;
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">Reach Split: Owned vs Influencer Content</h3>
+        <p className="mt-0.5 text-xs text-ink-tertiary">
+          How much reach comes from the hotel&apos;s own posts vs. influencers who tagged or mentioned the hotel.
+        </p>
+      </div>
+
+      {/* A. Two big KPI cards + percentage breakdown bar */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <BigReachCard label="Owned Content Reach" value={formatNumber(owned.reach)} accent={OWNED_COLOR}
+          sub={`${formatNumber(owned.postCount)} post${owned.postCount === 1 ? "" : "s"}`} />
+        <BigReachCard label="Influencer Content Reach" value={formatNumber(inf.reach)} accent={INFLUENCER_COLOR}
+          sub={`${formatNumber(inf.postCount)} post${inf.postCount === 1 ? "" : "s"} · ${formatNumber(inf.influencerCount)} influencer${inf.influencerCount === 1 ? "" : "s"}`} />
+      </div>
+
+      {total > 0 ? (
+        <div className="rounded-xl border border-line bg-card p-4">
+          <div className="flex items-center justify-between text-xs font-medium">
+            <span style={{ color: OWNED_COLOR }}>Owned {ownedPct}%</span>
+            <span style={{ color: INFLUENCER_COLOR }}>Influencer {infPct}%</span>
+          </div>
+          <div className="mt-2 flex h-3 w-full overflow-hidden rounded-full bg-elevated" role="img"
+            aria-label={`Owned ${ownedPct} percent, influencer ${infPct} percent of total reach`}>
+            <div style={{ width: `${ownedPct}%`, backgroundColor: OWNED_COLOR }} />
+            <div style={{ width: `${infPct}%`, backgroundColor: INFLUENCER_COLOR }} />
+          </div>
+          <p className="mt-2 text-xs text-ink-tertiary">Total reach {formatNumber(total)} across owned + influencer content this period.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-line bg-card px-4 py-6 text-center text-sm text-ink-tertiary">
+          No reach recorded in this period yet.
+        </div>
+      )}
+
+      {/* B. Stacked area chart — daily owned vs influencer reach */}
+      <Panel title="Reach over time — owned vs influencer">
+        <ReachSplitAreaChart data={split.trendDaily} />
+      </Panel>
+
+      {/* C. Influencer performance table (reach-focused) */}
+      <Panel title="Influencer Performance">
+        {inf.breakdown.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-ink-tertiary">
+            No influencer content detected yet. Connect influencer Instagram handles in Influencers settings.
+          </p>
+        ) : (
+          <Table head={["Influencer", "Posts", "Total Reach", "Total Engagement", "Top Post"]}>
+            {inf.breakdown.map((row) => (
+              <tr key={row.influencerId} className="border-t border-line">
+                <td className={tdName}>
+                  {row.influencerName}
+                  {row.instagramHandle && <span className="ml-1 text-xs text-ink-tertiary">@{row.instagramHandle.replace(/^@/, "")}</span>}
+                </td>
+                <td className={td}>{formatNumber(row.postCount)}</td>
+                <td className={td}>{formatNumber(row.totalReach)}</td>
+                <td className={td}>{formatNumber(row.totalEngagement)}</td>
+                <td className={td}>
+                  {row.topPostPermalink
+                    ? <a href={row.topPostPermalink} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">View</a>
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Panel>
+
+      {/* D. Unattributed mentions (collapsible) */}
+      <UnattributedMentionsPanel split={split} hotelId={hotelId} ownerView={ownerView} onLinked={onLinked} />
+
+      <p className="text-xs text-ink-tertiary">
+        Tip: ask collaborating influencers to tag your hotel&apos;s Instagram account in their posts so we can track their reach.
+        Detection begins after an influencer&apos;s handle is added — older posts may not appear, and some posts (private accounts,
+        stories) don&apos;t report reach, shown as &ldquo;Not available&rdquo;.
+      </p>
+    </section>
+  );
+}
+
+function ReachSplitAreaChart({ data }: { data: ReachSplit["trendDaily"] }) {
+  return (
+    <div className="p-4">
+      <div style={{ width: "100%", height: 240 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+            <defs>
+              <linearGradient id="ownedReachFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={OWNED_COLOR} stopOpacity={0.5} />
+                <stop offset="100%" stopColor={OWNED_COLOR} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="influencerReachFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={INFLUENCER_COLOR} stopOpacity={0.5} />
+                <stop offset="100%" stopColor={INFLUENCER_COLOR} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={{ stroke: "#1f2937" }}
+              tickFormatter={(d: string) => (typeof d === "string" ? d.slice(5) : d)} minTickGap={24} />
+            <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={44} />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+              formatter={(value, name) => [formatNumber(Number(value) || 0), name] as [string, string]}
+            />
+            <Area type="monotone" dataKey="ownedReach" name="Owned reach" stackId="reach"
+              stroke={OWNED_COLOR} strokeWidth={2} fill="url(#ownedReachFill)" />
+            <Area type="monotone" dataKey="influencerReach" name="Influencer reach" stackId="reach"
+              stroke={INFLUENCER_COLOR} strokeWidth={2} fill="url(#influencerReachFill)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-ink-secondary">
+        <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: OWNED_COLOR }} />Owned reach</li>
+        <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: INFLUENCER_COLOR }} />Influencer reach</li>
+      </ul>
+    </div>
+  );
+}
+
+type InfluencerOption = { id: string; name: string; instagramHandle: string | null };
+
+function UnattributedMentionsPanel({ split, hotelId, ownerView, onLinked }: { split: ReachSplit; hotelId: string; ownerView: boolean; onLinked: () => void }) {
+  const items = split.unattributed.items;
+  const [linking, setLinking] = useState<{ id: string; label: string } | null>(null);
+  if (split.unattributed.count === 0) return null;
+  return (
+    <details className="group overflow-hidden rounded-xl border border-line bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
+        <span className="text-sm font-medium text-ink">
+          Unattributed Mentions
+          <span className="ml-2 rounded-full bg-elevated px-2 py-0.5 text-xs text-ink-tertiary">{split.unattributed.count}</span>
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          className="h-4 w-4 shrink-0 text-ink-tertiary transition-transform group-open:rotate-180">
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div className="border-t border-line">
+        <p className="px-4 py-2 text-xs text-ink-tertiary">
+          Posts that tagged this hotel but whose author isn&apos;t a known influencer yet.
+          {ownerView
+            ? " Your agency can link these to an influencer."
+            : " Link one to an influencer to start crediting their reach."}
+        </p>
+        <Table head={ownerView ? ["Poster", "Posted", "Reach"] : ["Poster", "Posted", "Reach", ""]}>
+          {items.map((m) => {
+            const label = m.posterUsername ? `@${m.posterUsername.replace(/^@/, "")}` : "(unknown)";
+            return (
+              <tr key={m.id} className="border-t border-line">
+                <td className={tdName}>
+                  {m.permalink
+                    ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" className="hover:text-brand hover:underline">{label}</a>
+                    : label}
+                </td>
+                <td className={td} title={new Date(m.postedAt).toLocaleString()}>{relativeTime(m.postedAt)}</td>
+                <td className={td}>{fmtReach(m.reach)}</td>
+                {!ownerView && (
+                  <td className={td}>
+                    <button type="button" onClick={() => setLinking({ id: m.id, label })}
+                      className="rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium text-ink-secondary hover:bg-elevated">
+                      Link to Influencer
+                    </button>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </Table>
+      </div>
+      {linking && (
+        <LinkMentionModal
+          hotelId={hotelId}
+          mentionId={linking.id}
+          posterLabel={linking.label}
+          onClose={() => setLinking(null)}
+          onLinked={() => { setLinking(null); onLinked(); }}
+        />
+      )}
+    </details>
+  );
+}
+
+// Agency-only modal: pick an influencer to attribute an unattributed mention to.
+function LinkMentionModal({ hotelId, mentionId, posterLabel, onClose, onLinked }: {
+  hotelId: string; mentionId: string; posterLabel: string; onClose: () => void; onLinked: () => void;
+}) {
+  const [options, setOptions] = useState<InfluencerOption[] | null>(null);
+  const [choice, setChoice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/agency/hotels/${hotelId}/influencer-options`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then((d) => { if (live) setOptions((d.influencers ?? []) as InfluencerOption[]); })
+      .catch(() => { if (live) setError("Couldn't load influencers."); });
+    return () => { live = false; };
+  }, [hotelId]);
+
+  async function submit() {
+    if (!choice) { setError("Choose an influencer."); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agency/hotels/${hotelId}/unattributed-mentions/${mentionId}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ influencerId: choice }),
+      });
+      if (!res.ok) throw new Error();
+      onLinked();
+    } catch {
+      setError("Couldn't link this mention. Try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl border border-line bg-elevated p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-ink">Link {posterLabel} to an influencer</h3>
+        <p className="mt-1 text-sm text-ink-tertiary">Future posts from this account will be credited to that influencer automatically.</p>
+        <select className="mt-4 w-full rounded-lg border border-line-strong bg-card px-3 py-2 text-sm text-ink"
+          value={choice} onChange={(e) => setChoice(e.target.value)} disabled={!options}>
+          <option value="">{options ? "Select an influencer…" : "Loading…"}</option>
+          {(options ?? []).map((o) => (
+            <option key={o.id} value={o.id}>{o.name}{o.instagramHandle ? ` (@${o.instagramHandle.replace(/^@/, "")})` : ""}</option>
+          ))}
+        </select>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-line-strong px-4 py-2 text-sm text-ink-secondary">Cancel</button>
+          <button type="button" disabled={busy || !choice} onClick={submit} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+            {busy ? "Linking…" : "Link"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -64,6 +64,38 @@ export type InstagramPostItem = {
   postedAt: string; // ISO 8601
 };
 
+// ── Instagram Reach Split (owned vs influencer content) ──────────────────────
+// `reach` is nullable across these types: the IGAA API often can't return reach
+// for other users' posts, so the UI shows "Not available" rather than 0. Sums
+// (ownedContent.reach / influencerContent.reach / trend) only count rows whose
+// reach is known. captionPreview is the first 80 chars (+ "…" when truncated).
+export type ReachSplitTopOwned = {
+  permalink: string | null; reach: number; captionPreview: string;
+} | null;
+export type ReachSplitTopInfluencer = {
+  permalink: string; reach: number | null; influencerName: string; captionPreview: string;
+} | null;
+export type ReachSplitInfluencerRow = {
+  influencerId: string; influencerName: string; instagramHandle: string;
+  postCount: number; totalReach: number; totalEngagement: number;
+  topPostPermalink: string | null;
+};
+export type UnattributedMentionItem = {
+  id: string; posterUsername: string | null; postedAt: string; // ISO
+  reach: number | null; permalink: string; mediaType: string;
+};
+export type ReachSplit = {
+  totalReach: number; // ownedContent.reach + influencerContent.reach (known reach only)
+  ownedContent: { reach: number; postCount: number; topPost: ReachSplitTopOwned };
+  influencerContent: {
+    reach: number; postCount: number; influencerCount: number;
+    topPost: ReachSplitTopInfluencer;
+    breakdown: ReachSplitInfluencerRow[]; // sorted by totalReach desc
+  };
+  unattributed: { count: number; items: UnattributedMentionItem[] }; // newest first, capped 50
+  trendDaily: { date: string; ownedReach: number; influencerReach: number }[];
+};
+
 export type InstagramChannelView = {
   channelType: "organic_social";
   channelName: "Instagram Organic";
@@ -73,6 +105,8 @@ export type InstagramChannelView = {
     likes: number; comments: number; saves: number; shares: number;
     websiteClicks: number; sessionsFromInstagram: number; bookings: number; revenue: number;
   };
+  // Owned-vs-influencer reach breakdown for the "Reach Split" dashboard section.
+  reachSplit: ReachSplit;
   topPosts:
     | { postId: string; caption: string; reach: number; saves: number; websiteClicks: number; bookings: number | null; revenue: number | null }[]
     | null;

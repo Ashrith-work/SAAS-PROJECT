@@ -37,6 +37,7 @@ const isPublicRoute = createRouteMatcher([
   // Same pattern: cron-style trigger, gated by CRON_SECRET inside the route.
   "/api/alerts/run(.*)",
   "/api/instagram/sync(.*)",
+  "/api/instagram/detect-tags(.*)",
   "/api/instagram/refresh-tokens(.*)",
   "/api/ga/sync(.*)",
   // Instagram OAuth callback: the browser arrives from instagram.com; the

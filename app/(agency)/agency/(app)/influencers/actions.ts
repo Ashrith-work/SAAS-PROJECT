@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { getCurrentMember } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
+import { resolveHandleForAgency } from "@/lib/instagram-detect";
 import { normalizeCode, COUPON_STATUSES, type CouponStatus } from "@/lib/coupon";
 
 // Server actions for the Influencers & Coupons admin (Phase R2). Every write is
@@ -12,10 +13,36 @@ import { normalizeCode, COUPON_STATUSES, type CouponStatus } from "@/lib/coupon"
 // route (it needs an HTTP 404 for cross-agency). Results are a simple
 // { ok, error?, id? } so the client components can show inline errors.
 
-export type ActionResult = { ok: boolean; error?: string; id?: string };
+export type ActionResult = { ok: boolean; error?: string; id?: string; warning?: string };
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 const REVALIDATE = "/agency/influencers";
+
+// Best-effort: resolve the influencer's @handle to an IG user id (PART 7) and
+// store it so the daily tag-detection can auto-match their posts. Never throws;
+// returns a user-facing warning when the handle can't be verified. Clears a
+// stale instagramUserId when the handle is removed.
+async function syncInstagramHandle(
+  agencyId: string,
+  influencerId: string,
+  hotelClientId: string | null,
+  handle: string | null,
+): Promise<string | undefined> {
+  if (!handle) {
+    await prisma.influencer.updateMany({ where: { id: influencerId, agencyId }, data: { instagramUserId: null } });
+    return undefined;
+  }
+  let resolvedId: string | null = null;
+  try {
+    resolvedId = await resolveHandleForAgency(agencyId, hotelClientId, handle);
+  } catch {
+    resolvedId = null;
+  }
+  await prisma.influencer.updateMany({ where: { id: influencerId, agencyId }, data: { instagramUserId: resolvedId } });
+  return resolvedId
+    ? undefined
+    : "We couldn't verify this Instagram handle. Detection may not work — check the spelling, or that the account is a public Business/Creator profile and a hotel Instagram is connected.";
+}
 
 function parseDate(v: string | null | undefined): Date | null {
   if (!v) return null;
@@ -48,18 +75,20 @@ export async function createInfluencer(input: InfluencerInput): Promise<ActionRe
   if (!name) return fail("Influencer name is required.");
   if (!(await assertHotel(input.hotelClientId))) return fail("That hotel wasn't found for your agency.");
 
+  const handle = input.instagramHandle?.trim() || null;
   const created = await agencyScoped(prisma.influencer).create({
     data: {
       agencyId: member.agencyId, // re-stamped by agencyScoped; satisfies the type
       name,
-      instagramHandle: input.instagramHandle?.trim() || null,
+      instagramHandle: handle,
       notes: input.notes?.trim() || null,
       hotelClientId: input.hotelClientId || null,
     },
     select: { id: true },
   });
+  const warning = await syncInstagramHandle(member.agencyId, created.id, input.hotelClientId || null, handle);
   revalidatePath(REVALIDATE);
-  return { ok: true, id: created.id };
+  return { ok: true, id: created.id, warning };
 }
 
 export async function updateInfluencer(id: string, input: InfluencerInput): Promise<ActionResult> {
@@ -69,13 +98,14 @@ export async function updateInfluencer(id: string, input: InfluencerInput): Prom
   if (!name) return fail("Influencer name is required.");
   if (!(await assertHotel(input.hotelClientId))) return fail("That hotel wasn't found for your agency.");
 
+  const handle = input.instagramHandle?.trim() || null;
   // agencyScoped update applies agencyId as an extra filter → cross-tenant id throws.
   try {
     await agencyScoped(prisma.influencer).update({
       where: { id },
       data: {
         name,
-        instagramHandle: input.instagramHandle?.trim() || null,
+        instagramHandle: handle,
         notes: input.notes?.trim() || null,
         hotelClientId: input.hotelClientId || null,
       },
@@ -83,8 +113,9 @@ export async function updateInfluencer(id: string, input: InfluencerInput): Prom
   } catch {
     return fail("Influencer not found.");
   }
+  const warning = await syncInstagramHandle(member.agencyId, id, input.hotelClientId || null, handle);
   revalidatePath(REVALIDATE);
-  return { ok: true, id };
+  return { ok: true, id, warning };
 }
 
 export async function setInfluencerArchived(id: string, archived: boolean): Promise<ActionResult> {

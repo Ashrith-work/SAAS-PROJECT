@@ -54,22 +54,43 @@ function classify(status: number, err: GraphError["error"]): Error {
   return new InstagramApiError(err?.message || `Instagram API request failed (HTTP ${status}).`);
 }
 
-/** GET on graph.instagram.com with the token in the Authorization header. */
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Graph rate-limit signals: HTTP 429, or app/user/page throttling codes 4/17/613.
+function isRateLimited(status: number, code?: number): boolean {
+  return status === 429 || code === 4 || code === 17 || code === 613;
+}
+
+/**
+ * GET on graph.instagram.com with the token in the Authorization header.
+ *
+ * Retries on rate limiting (HTTP 429 / codes 4/17/613) with exponential backoff
+ * (500ms → 1s → 2s, up to `maxRetries`), then surfaces an InstagramApiError so
+ * the caller can record the failure. Auth/other errors are NOT retried.
+ */
 async function igGet<T>(
   path: string,
   accessToken: string,
   params: Record<string, string> = {},
+  maxRetries = 3,
 ): Promise<T> {
   const url = new URL(`${IG_GRAPH}/${IG_API_VERSION}/${path}`);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store", // per-token, per-hotel calls — never cache
-  });
-  const json = (await res.json().catch(() => ({}))) as GraphError & T;
-  if (!res.ok || json?.error) throw classify(res.status, json?.error);
-  return json;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store", // per-token, per-hotel calls — never cache
+    });
+    const json = (await res.json().catch(() => ({}))) as GraphError & T;
+    if (res.ok && !json?.error) return json;
+
+    if (isRateLimited(res.status, json?.error?.code) && attempt < maxRetries) {
+      await sleep(500 * 2 ** attempt); // 500ms, 1s, 2s
+      continue;
+    }
+    throw classify(res.status, json?.error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -571,4 +592,113 @@ export async function getFollowerDemographics(
     }
   }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tagged media — the `/{ig-user-id}/tags` edge: media in which the connected
+// hotel account was @-tagged (i.e. posts by OTHER users that tagged the hotel).
+// This is the basis for Instagram Reach Split influencer detection.
+//
+// API REALITY: for other users' media the Graph API exposes the post's basic
+// fields (caption/permalink/timestamp/like_count/comments_count) and usually the
+// poster `username`, but NOT insights (reach/impressions) — those are only
+// available for media the connected account owns. So tagged-media reach is left
+// unknown (null) by callers and rendered "Not available".
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type IgTaggedMedia = {
+  mediaId: string;
+  caption: string | null;
+  mediaType: string | null; // normalised: image | video | carousel | reels
+  permalink: string | null;
+  timestamp: string | null;
+  likes: number;
+  comments: number;
+  /** Poster's username when the API exposes it (no leading @). */
+  posterUsername: string | null;
+  /** Poster's IG user id when the API exposes it (the `owner` field). */
+  posterUserId: string | null;
+};
+
+type TagsNode = {
+  id: string;
+  caption?: string;
+  media_type?: string;
+  permalink?: string;
+  timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
+  username?: string;
+  owner?: { id?: string };
+};
+
+/**
+ * Media that @-tagged the connected hotel account. Tries to include the poster's
+ * `owner{id}` (used to match a known influencer by instagramUserId); if a Graph
+ * version rejects the `owner` field we retry without it and fall back to matching
+ * by `username`. Auth errors propagate; the caller records other failures.
+ */
+export async function getTaggedMedia(
+  accessToken: string,
+  igUserId: string,
+  limit = 50,
+): Promise<IgTaggedMedia[]> {
+  const baseFields = "id,caption,media_type,permalink,timestamp,like_count,comments_count,username";
+  let data: TagsNode[];
+  try {
+    const res = await igGet<{ data?: TagsNode[] }>(`${igUserId}/tags`, accessToken, {
+      fields: `${baseFields},owner{id}`,
+      limit: String(limit),
+    });
+    data = res.data ?? [];
+  } catch (err) {
+    if (err instanceof InstagramAuthError) throw err;
+    // `owner` may be disallowed on some versions/permissions — retry without it.
+    const res = await igGet<{ data?: TagsNode[] }>(`${igUserId}/tags`, accessToken, {
+      fields: baseFields,
+      limit: String(limit),
+    });
+    data = res.data ?? [];
+  }
+
+  return data.map((m) => ({
+    mediaId: m.id,
+    caption: m.caption ?? null,
+    mediaType: normaliseMediaType(m.media_type),
+    permalink: m.permalink ?? null,
+    timestamp: m.timestamp ?? null,
+    likes: m.like_count ?? 0,
+    comments: m.comments_count ?? 0,
+    posterUsername: m.username ? m.username.replace(/^@/, "") : null,
+    posterUserId: m.owner?.id ?? null,
+  }));
+}
+
+/**
+ * Resolve a public Business/Creator @handle to its IG user id via the
+ * `business_discovery` lookup (run against the connected account's token). Used
+ * when an agency adds an influencer's Instagram handle (PART 7). Returns null if
+ * the handle can't be resolved (private/personal account, typo, not found, or a
+ * version quirk) — the caller surfaces a "couldn't verify" warning, never throws.
+ */
+export async function resolveBusinessAccountByUsername(
+  accessToken: string,
+  connectedIgUserId: string,
+  username: string,
+): Promise<{ id: string; username: string } | null> {
+  const handle = username.trim().replace(/^@/, "");
+  if (!handle) return null;
+  try {
+    const res = await igGet<{
+      business_discovery?: { id?: string; username?: string };
+    }>(connectedIgUserId, accessToken, {
+      fields: `business_discovery.username(${handle}){id,username}`,
+    });
+    const id = res.business_discovery?.id;
+    if (!id) return null;
+    return { id, username: res.business_discovery?.username ?? handle };
+  } catch (err) {
+    if (err instanceof InstagramAuthError) throw err;
+    return null; // not found / not a business account / version quirk
+  }
 }

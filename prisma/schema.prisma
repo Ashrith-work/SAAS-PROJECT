@@ -165,6 +165,8 @@ model Agency {
   ga4Connections       Ga4Connection[]
   ga4Snapshots         Ga4Snapshot[]
   hotelInvites         HotelInvite[]
+  influencerInstagramPosts InfluencerInstagramPost[]
+  unattributedMentions     UnattributedMention[]
 }
 
 model AgencyMember {
@@ -259,6 +261,12 @@ model HotelClient {
   whatsappNumber     String?
   roomCount          Int?
   channelManager     String?
+  // ── The hotel's OWN Instagram @handle (no leading @), e.g. "neelakurinji_resort".
+  // Used by the Instagram Reach Split detection to decide "did this influencer
+  // mention us?" — matched against influencer post captions. Separate from the
+  // connected InstagramConnection (which is the account we sync metrics from).
+  // Null until the agency fills it in on the integrations/settings page.
+  instagramHandle    String?
   createdAt          DateTime         @default(now())
 
   agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
@@ -289,6 +297,8 @@ model HotelClient {
   ga4Snapshots         Ga4Snapshot[]
   visitorIdentities    VisitorIdentity[]
   hotelInvites         HotelInvite[]
+  influencerInstagramPosts InfluencerInstagramPost[]
+  unattributedMentions     UnattributedMention[]
 
   @@index([agencyId])
   @@index([createdByUserId]) // hotel-owner → their hotel lookup
@@ -828,6 +838,14 @@ model Influencer {
   hotelClientId   String? // optional: tied to one hotel, or agency-wide when null
   name            String
   instagramHandle String?
+  // Meta/IGAA user id for this influencer's Instagram account, resolved from
+  // instagramHandle the first time we can match their content (or via the
+  // agency-side "resolve handle" call). Null until detected. Drives the
+  // owner-id match in the daily tag-detection cron (Instagram Reach Split).
+  instagramUserId String?
+  // When this influencer's content was last seen tagging/mentioning one of the
+  // agency's hotels (updated by the detection cron). Null = never detected.
+  lastDetectedAt  DateTime?
   notes           String?
   // Soft delete (PART 8): archived influencers are hidden from pickers but their
   // historical redemptions stay visible. Null = active.
@@ -837,6 +855,7 @@ model Influencer {
 
   couponCodes CouponCode[]
   redemptions InfluencerRedemption[]
+  instagramPosts InfluencerInstagramPost[]
 
   @@index([agencyId])
   @@index([hotelClientId])
@@ -891,6 +910,84 @@ model InfluencerRedemption {
   @@index([influencerId])
   @@index([redeemedAt])
   @@index([trackingEventId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instagram Reach Split — influencer-created posts that tagged/mentioned the
+// hotel, so the dashboard can show OWNED reach (PostSnapshot, the hotel's own
+// posts) vs INFLUENCER reach side by side.
+//
+// InfluencerInstagramPost — a post we ATTRIBUTED to a known Influencer (matched
+//   by instagramUserId, or assigned from an UnattributedMention by the agency).
+// UnattributedMention     — a post that tagged the hotel but whose poster isn't a
+//   known influencer yet; the agency can later link it to an Influencer.
+//
+// `reach` is NULLABLE on purpose: the IGAA API frequently can't return reach for
+// other users' posts, and we show "Not available" rather than a misleading 0
+// (see the feature's API constraints). mediaType is a normalised lowercase
+// String ("image"|"video"|"reel"|"carousel"|"story") to match PostSnapshot and
+// this schema's open-vocabulary convention. Multi-tenant: both carry agencyId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model InfluencerInstagramPost {
+  id                      String   @id @default(cuid())
+  agencyId                String
+  hotelClientId           String
+  influencerId            String
+  instagramPostId         String   @unique // Meta/IGAA media id
+  instagramUserId         String // who posted it (the influencer)
+  postedAt                DateTime
+  mediaType               String // "image" | "video" | "reel" | "carousel" | "story"
+  permalink               String
+  captionText             String?  @db.Text
+  reach                   Int? // null = not available from the API (not zero)
+  impressions             Int      @default(0)
+  likes                   Int      @default(0)
+  comments                Int      @default(0)
+  saves                   Int      @default(0)
+  shares                  Int      @default(0)
+  taggedHotelAccount      Boolean  @default(false) // hotel tagged in the image
+  mentionedHotelInCaption Boolean  @default(false) // hotel @handle in caption
+  syncedAt                DateTime @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+  influencer  Influencer  @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, hotelClientId, postedAt(sort: Desc)])
+  @@index([influencerId, postedAt(sort: Desc)])
+  @@index([syncedAt])
+}
+
+model UnattributedMention {
+  id                    String   @id @default(cuid())
+  agencyId              String
+  hotelClientId         String
+  instagramPostId       String   @unique // Meta/IGAA media id
+  posterInstagramUserId String? // who posted it (when the API exposes it)
+  posterUsername        String? // poster @handle (when available)
+  postedAt              DateTime
+  mediaType             String
+  permalink             String
+  captionText           String?  @db.Text
+  reach                 Int? // null = not available from the API (not zero)
+  impressions           Int      @default(0)
+  likes                 Int      @default(0)
+  comments              Int      @default(0)
+  saves                 Int      @default(0)
+  shares                Int      @default(0)
+  taggedHotelAccount      Boolean @default(false)
+  mentionedHotelInCaption Boolean @default(false)
+  // Set when an agency assigns this mention to an Influencer; the detection cron
+  // then promotes future posts from this poster to InfluencerInstagramPost.
+  linkedInfluencerId    String?
+  syncedAt              DateTime @default(now())
+
+  agency      Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  hotelClient HotelClient @relation(fields: [hotelClientId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, hotelClientId, postedAt(sort: Desc)])
+  @@index([posterInstagramUserId])
 }
 
 model Report {

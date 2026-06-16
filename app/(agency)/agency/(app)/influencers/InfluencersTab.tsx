@@ -127,15 +127,20 @@ function InfluencerModal({
   const [notes, setNotes] = useState(row?.notes ?? "");
   const [hotelClientId, setHotelClientId] = useState(row?.hotelClientId ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const submit = () =>
     startTransition(async () => {
       setError(null);
+      setWarning(null);
       const input = { name, instagramHandle: handle, notes, hotelClientId: hotelClientId || null };
       const res = row ? await updateInfluencer(row.id, input) : await createInfluencer(input);
-      if (res.ok) onSaved();
-      else setError(res.error ?? "Something went wrong.");
+      if (!res.ok) { setError(res.error ?? "Something went wrong."); return; }
+      // Saved. If the handle couldn't be verified, keep the modal open to show
+      // the warning (the row is already saved); the user dismisses with Done.
+      if (res.warning) setWarning(res.warning);
+      else onSaved();
     });
 
   return (
@@ -144,8 +149,11 @@ function InfluencerModal({
         <Field label="Name *">
           <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </Field>
-        <Field label="Instagram handle">
-          <input className={inputCls} value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@priya" />
+        <Field label="Instagram @handle">
+          <input className={inputCls} value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="e.g., priya_travels (no @ symbol)" />
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Optional but recommended. We&apos;ll detect when this influencer posts about your hotel and credit their reach.
+          </p>
         </Field>
         <Field label="Hotel (blank = agency-wide)">
           <select className={inputCls} value={hotelClientId} onChange={(e) => setHotelClientId(e.target.value)}>
@@ -159,11 +167,22 @@ function InfluencerModal({
           <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
         {error && <p className="text-sm text-danger">{error}</p>}
+        {warning && (
+          <p className="rounded-lg border border-warning bg-warning/10 p-2.5 text-xs text-ink-secondary">
+            ⚠ {warning}
+          </p>
+        )}
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="rounded-lg border border-line-strong px-4 py-2 text-sm text-ink-secondary">Cancel</button>
-          <button type="button" disabled={pending} onClick={submit} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-            {pending ? "Saving…" : "Save"}
-          </button>
+          {warning ? (
+            <button type="button" onClick={onSaved} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Done</button>
+          ) : (
+            <>
+              <button type="button" onClick={onClose} className="rounded-lg border border-line-strong px-4 py-2 text-sm text-ink-secondary">Cancel</button>
+              <button type="button" disabled={pending} onClick={submit} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                {pending ? "Saving…" : "Save"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </Modal>

@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { classifySourceType, type SourceType } from "@/lib/source-classifier";
+import { loadInstagramReachSplit } from "@/lib/instagram-reach-split";
 import {
   CHANNEL_KEYS, isChannelKey, type ChannelKey, type PaidKpis,
   type PaidChannelView, type InstagramChannelView, type InstagramPostItem,
@@ -233,7 +234,7 @@ async function loadMetaAds(hotelClientId: string, start: Date, end: Date): Promi
 }
 
 async function loadInstagram(hotelClientId: string, start: Date, end: Date): Promise<InstagramChannelView> {
-  const [social, posts, allPosts, conversions, sessions, connection] = await Promise.all([
+  const [social, posts, allPosts, conversions, sessions, connection, reachSplit] = await Promise.all([
     agencyScoped(prisma.socialSnapshot).findMany({
       where: { hotelClientId, date: { gte: start, lte: end } },
       select: { profileViews: true, websiteClicks: true, reach: true },
@@ -257,6 +258,7 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
     conversionsInRange(hotelClientId, start, end),
     sessionsInRange(hotelClientId, start, end),
     agencyScoped(prisma.instagramConnection).findFirst({ where: { hotelClientId }, select: { id: true } }),
+    loadInstagramReachSplit(hotelClientId, start, end),
   ]);
 
   const igConv = conversions.filter((c) => classifySourceType(c) === "instagram_organic");
@@ -314,13 +316,15 @@ async function loadInstagram(hotelClientId: string, start: Date, end: Date): Pro
 
   return {
     channelType: "organic_social", channelName: "Instagram Organic",
-    hasData: social.length > 0 || posts.length > 0 || allPosts.length > 0 || igSessions.length > 0 || connection != null,
+    hasData: social.length > 0 || posts.length > 0 || allPosts.length > 0 || igSessions.length > 0
+      || connection != null || reachSplit.influencerContent.postCount > 0 || reachSplit.unattributed.count > 0,
     kpis: {
       profileVisits, postReach, postImpressions,
       engagementRate: postReach > 0 ? (interactions / postReach) * 100 : 0,
       likes, comments, saves, shares, websiteClicks,
       sessionsFromInstagram: igSessions.length, bookings, revenue,
     },
+    reachSplit,
     topPosts, posts: postsPayload, trend,
   };
 }
