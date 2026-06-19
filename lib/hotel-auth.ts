@@ -2,6 +2,7 @@ import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { SHARE_TOKEN_HEADER, isShareTokenShape } from "@/lib/share-token";
 
 // Authorization for the hotel-owner dashboard (/hotel/[hotelClientId]). A user may
 // view a hotel only if they are its creator (hotel_client whose Clerk id matches
@@ -109,4 +110,70 @@ export async function requireHotelOwnerAccess(hotelClientId: string): Promise<Ho
     return { agencyId: hotel.agencyId, hotelId: hotel.id, isOwner: false, isAgencyMember: true };
   }
   return null;
+}
+
+/**
+ * Authorization gate for the PUBLIC share-link dashboard (/h/<shareToken>).
+ *
+ * The 256-bit share token IS the credential — there is no session. A request is
+ * authorized only when the token resolves to an active hotel AND that hotel is the
+ * exact one the URL addresses (`hotel.id === hotelClientId`). This last check is
+ * what stops a valid token for hotel A from ever reading hotel B's data through a
+ * URL like /api/hotel/<B>/...  with A's token in the header.
+ *
+ * Returns null — never throws — for an invalid, revoked, soft-deleted, or
+ * suspended-agency token, OR a token/hotel mismatch. Callers answer 404 (NOT 403)
+ * so we never reveal that a token's format happened to be correct.
+ *
+ * The returned access has isOwner=false and isAgencyMember=false: a share-link
+ * viewer is a read-only stranger, never an owner. (No write route consults this
+ * helper — all writes require a Clerk session via the other gates.)
+ */
+export async function requireShareTokenAccess(
+  token: string | null | undefined,
+  hotelClientId: string,
+): Promise<HotelOwnerAccess | null> {
+  const t = (token ?? "").trim();
+  // Cheap shape guard avoids a DB round-trip on obviously-bogus tokens.
+  if (!isShareTokenShape(t)) return null;
+
+  const hotel = await prisma.hotelClient.findUnique({
+    where: { shareToken: t },
+    select: {
+      id: true,
+      agencyId: true,
+      shareTokenRevoked: true,
+      deletedAt: true,
+      agency: { select: { suspendedAt: true } },
+    },
+  });
+  if (!hotel || hotel.shareTokenRevoked || hotel.deletedAt || hotel.agency.suspendedAt) return null;
+  // The token must address THIS hotel — never a sibling, even in the same agency.
+  if (hotel.id !== hotelClientId) return null;
+
+  return { agencyId: hotel.agencyId, hotelId: hotel.id, isOwner: false, isAgencyMember: false };
+}
+
+/**
+ * Unified READ gate for the /api/hotel/[hotelClientId]/* data routes, accepting
+ * EITHER a Clerk session (logged-in owner or agency member) OR a share token.
+ *
+ * Resolution order: if the request carries the share-token header we treat it as a
+ * share-link request (Clerk is irrelevant); otherwise we fall back to the Clerk
+ * gate. The result is discriminated so each route returns the RIGHT status:
+ *   • bad/again share token  → 404 (don't confirm the token format was valid)
+ *   • denied Clerk session   → 403 (the historical behaviour these routes return)
+ */
+export type ReadAccessResult =
+  | { ok: true; access: HotelOwnerAccess }
+  | { ok: false; status: 403 | 404 };
+
+export async function requireReadAccess(req: Request, hotelClientId: string): Promise<ReadAccessResult> {
+  const headerToken = req.headers.get(SHARE_TOKEN_HEADER);
+  if (headerToken) {
+    const access = await requireShareTokenAccess(headerToken, hotelClientId);
+    return access ? { ok: true, access } : { ok: false, status: 404 };
+  }
+  const access = await requireHotelOwnerAccess(hotelClientId);
+  return access ? { ok: true, access } : { ok: false, status: 403 };
 }

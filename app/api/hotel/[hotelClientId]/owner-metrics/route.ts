@@ -1,4 +1,4 @@
-import { requireHotelOwnerAccess } from "@/lib/hotel-auth";
+import { requireReadAccess } from "@/lib/hotel-auth";
 import { runWithAgencyScope } from "@/lib/tenant";
 import { TtlLruCache } from "@/lib/lru-cache";
 import { parseAgencyWindow } from "@/lib/agency-revenue";
@@ -16,8 +16,9 @@ const cache = new TtlLruCache<OwnerMetrics>(200, 5 * 60_000);
 
 export async function GET(request: Request, { params }: { params: Promise<{ hotelClientId: string }> }) {
   const { hotelClientId } = await params;
-  const access = await requireHotelOwnerAccess(hotelClientId);
-  if (!access) return Response.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await requireReadAccess(request, hotelClientId);
+  if (!auth.ok) return Response.json({ error: auth.status === 404 ? "Not found" : "Forbidden" }, { status: auth.status });
+  const access = auth.access;
 
   const { start, end } = parseAgencyWindow(new URL(request.url).searchParams);
 

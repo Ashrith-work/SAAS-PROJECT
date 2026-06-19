@@ -1,4 +1,4 @@
-import { requireHotelOwnerAccess } from "@/lib/hotel-auth";
+import { requireReadAccess } from "@/lib/hotel-auth";
 import { runWithAgencyScope } from "@/lib/tenant";
 import { parseAgencyWindow } from "@/lib/agency-revenue";
 import { calculateHotelSavings, hotelMonthlyTrend, lastNMonths } from "@/lib/savings";
@@ -13,8 +13,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ hotelClientId: string }> }) {
   const { hotelClientId } = await params;
-  const access = await requireHotelOwnerAccess(hotelClientId);
-  if (!access) return Response.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await requireReadAccess(request, hotelClientId);
+  if (!auth.ok) return Response.json({ error: auth.status === 404 ? "Not found" : "Forbidden" }, { status: auth.status });
+  const access = auth.access;
 
   const { start, end } = parseAgencyWindow(new URL(request.url).searchParams);
 

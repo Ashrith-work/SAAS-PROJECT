@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
 
 // Commission Saved vs OTAs (Part 5) — per-hotel. Shows the period's direct-booking
 // savings (revenue × the hotel's OTA rate), a vs-previous delta, and a 12-month
@@ -24,7 +25,16 @@ type Data = {
 function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
 function monthLabel(m: string) { return new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" }); }
 
-export function CommissionSavings({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
+export function CommissionSavings({
+  hotelId,
+  apiBase = "/api/agency/hotels",
+  shareToken,
+}: {
+  hotelId: string;
+  apiBase?: string;
+  /** When set, the request is a public share-link read (sends the token header). */
+  shareToken?: string;
+}) {
   const [rangeKey, setRangeKey] = useState("30");
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,13 +51,16 @@ export function CommissionSavings({ hotelId, apiBase = "/api/agency/hotels" }: {
     abort.current = ctrl;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`${apiBase}/${hotelId}/savings?startDate=${startDate}&endDate=${endDate}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/savings?startDate=${startDate}&endDate=${endDate}`, {
+      signal: ctrl.signal,
+      headers: shareToken ? { [SHARE_TOKEN_HEADER]: shareToken } : undefined,
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setData(d as Data); })
       .catch(() => {})
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, startDate, endDate, apiBase]);
+  }, [hotelId, startDate, endDate, apiBase, shareToken]);
 
   const delta = useMemo(() => {
     if (!data || data.previous.totalSavings <= 0) return null;

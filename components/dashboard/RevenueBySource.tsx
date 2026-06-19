@@ -16,6 +16,7 @@ import {
   SOURCE_TYPE_LABEL,
   type SourceType,
 } from "@/lib/source-classifier";
+import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
 import type { Granularity, RevenueBySource as RbsData } from "@/lib/revenue-by-source";
 
 // Revenue by Source (Part 4) — per-hotel section. Client-fetches the
@@ -93,7 +94,16 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-export function RevenueBySource({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
+export function RevenueBySource({
+  hotelId,
+  apiBase = "/api/agency/hotels",
+  shareToken,
+}: {
+  hotelId: string;
+  apiBase?: string;
+  /** When set, the request is a public share-link read (sends the token header). */
+  shareToken?: string;
+}) {
   const [granularity, setGranularity] = useState<Granularity>("source");
   const [rangeKey, setRangeKey] = useState("30");
   const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set());
@@ -119,7 +129,7 @@ export function RevenueBySource({ hotelId, apiBase = "/api/agency/hotels" }: { h
     try {
       const res = await fetch(
         `${apiBase}/${hotelId}/revenue-by-source?${params.toString()}`,
-        { signal: ctrl.signal },
+        { signal: ctrl.signal, headers: shareToken ? { [SHARE_TOKEN_HEADER]: shareToken } : undefined },
       );
       if (!res.ok) {
         setData(null);
@@ -132,7 +142,7 @@ export function RevenueBySource({ hotelId, apiBase = "/api/agency/hotels" }: { h
     } finally {
       if (abortRef.current === ctrl) setLoading(false);
     }
-  }, [hotelId, granularity, startDate, endDate, selectedTypes, apiBase]);
+  }, [hotelId, granularity, startDate, endDate, selectedTypes, apiBase, shareToken]);
 
   useEffect(() => {
     // Legitimate data-fetch-on-change effect: load() sets loading/error/data.

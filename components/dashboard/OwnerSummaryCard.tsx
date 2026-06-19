@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
 
 // Owner Summary card (Part 5) — a calm, glanceable plain-English read of recent
 // performance at the very top of the hotel dashboard. Period toggle (default 7d),
@@ -25,7 +26,16 @@ function agoLabel(iso: string): string {
   return `${h} hour${h === 1 ? "" : "s"} ago`;
 }
 
-export function OwnerSummaryCard({ hotelId, apiBase = "/api/agency/hotels" }: { hotelId: string; apiBase?: string }) {
+export function OwnerSummaryCard({
+  hotelId,
+  apiBase = "/api/agency/hotels",
+  shareToken,
+}: {
+  hotelId: string;
+  apiBase?: string;
+  /** When set, the request is a public share-link read (sends the token header). */
+  shareToken?: string;
+}) {
   const [period, setPeriod] = useState<Period>("7d");
   const [data, setData] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,13 +51,16 @@ export function OwnerSummaryCard({ hotelId, apiBase = "/api/agency/hotels" }: { 
     setLoading(true);
     setShown(false);
     setError(false);
-    fetch(`${apiBase}/${hotelId}/summary?period=${period}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/summary?period=${period}`, {
+      signal: ctrl.signal,
+      headers: shareToken ? { [SHARE_TOKEN_HEADER]: shareToken } : undefined,
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) { setData(d as Summary); requestAnimationFrame(() => setShown(true)); } })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, period, apiBase]);
+  }, [hotelId, period, apiBase, shareToken]);
 
   return (
     <section className="rounded-xl border border-brand/30 bg-brand/5 p-4 sm:p-5">

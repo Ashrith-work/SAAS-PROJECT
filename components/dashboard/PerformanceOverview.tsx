@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { formatCurrency, formatMultiple, formatNumber } from "@/lib/format";
 import { SOURCE_TYPE_LABEL, type SourceType } from "@/lib/source-classifier";
+import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
 import type { OwnerMetrics } from "@/lib/owner-metrics";
 
 // Performance Overview (Tier A) — 10 owner-overview items added to the hotel
@@ -102,11 +103,14 @@ export function PerformanceOverview({
   from,
   to,
   apiBase = "/api/agency/hotels",
+  shareToken,
 }: {
   hotelId: string;
   from: string;
   to: string;
   apiBase?: string;
+  /** When set, the request is a public share-link read (sends the token header). */
+  shareToken?: string;
 }) {
   const [data, setData] = useState<OwnerMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,13 +124,16 @@ export function PerformanceOverview({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(false);
-    fetch(`${apiBase}/${hotelId}/owner-metrics?startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/owner-metrics?startDate=${from}&endDate=${to}`, {
+      signal: ctrl.signal,
+      headers: shareToken ? { [SHARE_TOKEN_HEADER]: shareToken } : undefined,
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) setData(d as OwnerMetrics); })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, from, to, apiBase]);
+  }, [hotelId, from, to, apiBase, shareToken]);
 
   return (
     <section className="space-y-4">

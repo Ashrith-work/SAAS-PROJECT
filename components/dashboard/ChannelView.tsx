@@ -7,6 +7,7 @@ import {
   Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { formatCurrency, formatCurrencyCents, formatNumber, formatMultiple } from "@/lib/format";
+import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
 import type {
   ChannelView as ChannelViewData, PaidChannelView, InstagramChannelView, InstagramPostItem,
   FacebookChannelView, InfluencerChannelView, DirectChannelView, OtherChannelView,
@@ -26,7 +27,7 @@ const RANGE_PRESETS = [
 ] as const;
 
 export function ChannelView({
-  hotelId, channel, from, to, currentRange, apiBase = "/api/agency/hotels", ownerView = false,
+  hotelId, channel, from, to, currentRange, apiBase = "/api/agency/hotels", ownerView = false, shareToken,
 }: {
   hotelId: string;
   channel: Exclude<ChannelKey, "all">;
@@ -37,6 +38,8 @@ export function ChannelView({
   apiBase?: string;
   /** Hotel-owner view: hide agency-only management CTAs (Connect Meta, Go to Influencers). */
   ownerView?: boolean;
+  /** When set, requests are public share-link reads (sends the token header). */
+  shareToken?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -54,13 +57,16 @@ export function ChannelView({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(false);
-    fetch(`${apiBase}/${hotelId}/channel-view?channel=${channel}&startDate=${from}&endDate=${to}`, { signal: ctrl.signal })
+    fetch(`${apiBase}/${hotelId}/channel-view?channel=${channel}&startDate=${from}&endDate=${to}`, {
+      signal: ctrl.signal,
+      headers: shareToken ? { [SHARE_TOKEN_HEADER]: shareToken } : undefined,
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (abort.current === ctrl) setData(d as ChannelViewData); })
       .catch((e) => { if ((e as Error).name !== "AbortError" && abort.current === ctrl) setError(true); })
       .finally(() => { if (abort.current === ctrl) setLoading(false); });
     return () => ctrl.abort();
-  }, [hotelId, channel, from, to, apiBase, reloadKey]);
+  }, [hotelId, channel, from, to, apiBase, shareToken, reloadKey]);
 
   const meta = CHANNEL_META[channel];
 
