@@ -1,8 +1,22 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { NavLink } from "@/components/ui/NavLink";
+import {
+  AppSidebar,
+  AppMobileNav,
+  IconDashboard,
+  IconBilling,
+  IconAudit,
+  IconSync,
+  type NavItem,
+} from "@/components/nav/AppSidebar";
 import { getPlatformRole } from "@/lib/auth";
+
+const ADMIN_NAV: NavItem[] = [
+  { href: "/admin", label: "Overview", icon: IconDashboard, exact: true },
+  { href: "/admin/billing", label: "Billing", icon: IconBilling },
+  { href: "/admin/audit", label: "Audit log", icon: IconAudit },
+  { href: "/admin/sync-now", label: "Sync now", icon: IconSync },
+];
 
 // Super-admin shell. The proxy already gates /admin to super_admin; this re-checks
 // server-side as defense in depth (and to render an authoritative role-aware UI).
@@ -15,29 +29,29 @@ export default async function AdminLayout({
   if (role !== "super_admin") redirect("/");
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/admin" className="font-semibold tracking-tight text-ink">
-              HotelTrack
-            </Link>
+    <div className="flex min-h-full">
+      <AppSidebar
+        brand={{
+          href: "/admin",
+          label: "HotelTrack",
+          badge: (
             <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
               Admin
             </span>
-            <nav className="ml-2 flex items-center gap-1 text-sm">
-              <NavLink href="/admin" exact>
-                Overview
-              </NavLink>
-              <NavLink href="/admin/billing">Billing</NavLink>
-              <NavLink href="/admin/audit">Audit log</NavLink>
-              <NavLink href="/admin/sync-now">Sync now</NavLink>
-            </nav>
-          </div>
+          ),
+        }}
+        items={ADMIN_NAV}
+      />
+      <div className="flex min-h-full min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-page/80 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <p className="text-base font-semibold tracking-tight text-ink">Super admin</p>
           <UserButton />
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl px-6 py-8">{children}</main>
+        </header>
+        <AppMobileNav items={ADMIN_NAV} />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
