@@ -12,6 +12,7 @@ import { AgencyContactForm } from "@/components/agency/AgencyContactForm";
 import { saveAgencyContact } from "./actions";
 import { ensureInviteCode, inviteUrl } from "@/lib/hotel-invite";
 import { InviteCodeManager } from "./InviteCodeManager";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 // Server-side relative time (avoids Date.now() in a client render).
 function relativeAgo(d: Date, now: Date): string {
@@ -101,6 +102,17 @@ export default async function SettingsPage() {
       </div>
 
       <BackfillProgress key={backfillJob?.id ?? "none"} initialJob={backfillJob} />
+
+      {/* ── Appearance (theme) ───────────────────────────────────────────── */}
+      <section className="rounded-card border border-line bg-card p-6 shadow-card">
+        <h2 className="font-medium">Appearance</h2>
+        <p className="mt-1 text-sm text-ink-tertiary">
+          Choose how HotelTrack looks. System follows your device setting.
+        </p>
+        <div className="mt-4">
+          <ThemeToggle />
+        </div>
+      </section>
 
       {/* ── Agency contact information (visible to hotel clients) ─────────── */}
       <section className="rounded-xl border border-line p-6">

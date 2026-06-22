@@ -64,7 +64,7 @@ function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
         <h3 className="font-medium">Invoice history</h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="ht-table w-full text-left text-sm">
           <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
             <tr>
               <th className="px-4 py-3 font-medium">Invoice</th>

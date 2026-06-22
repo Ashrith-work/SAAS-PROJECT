@@ -94,7 +94,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="ht-table w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
             <tr>
               <th className="px-4 py-2 font-medium">When</th>
@@ -132,7 +132,7 @@ export function ConversionJourneys({ journeys }: { journeys: ConversionJourney[]
           onClick={() => setOpenId(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-elevated p-5 shadow-xl"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-card border border-line bg-elevated p-5 shadow-float"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">

@@ -17,7 +17,7 @@ export function IntegrationCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-card p-6">
+    <section className="rounded-card border border-line bg-card p-6 shadow-card">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-elevated">

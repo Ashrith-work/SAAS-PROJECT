@@ -53,7 +53,7 @@ export function InfluencersTab({ influencers, hotels }: { influencers: Influence
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full text-sm">
+          <table className="ht-table w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
                 <th className="px-4 py-2 font-medium">Name</th>

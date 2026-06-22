@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import {
   Cell,
   Legend,
@@ -46,7 +48,7 @@ export function TrafficSourceChart({
               const pct = total > 0 ? ` (${((n / total) * 100).toFixed(1)}%)` : "";
               return [`${formatNumber(n)}${pct}`, String(name)] as [string, string];
             }}
-            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+            contentStyle={CHART_TOOLTIP}
           />
           <Legend
             verticalAlign="bottom"

@@ -89,7 +89,7 @@ export function FunnelAnalysis({ funnel }: { funnel: FunnelView }) {
 
       {/* Per-stage stats */}
       <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full text-left text-sm">
+        <table className="ht-table w-full text-left text-sm">
           <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
             <tr>
               <th className="px-4 py-2 font-medium">Stage</th>

@@ -92,7 +92,7 @@ export function ContentPerformanceTable({ rows }: { rows: ContentPerf[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="ht-table w-full text-left text-sm">
         <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             {COLUMNS.map((c) => (

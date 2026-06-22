@@ -18,7 +18,7 @@ export function InfluencerPerformance({ rows }: { rows: InfluencerPerfRow[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="ht-table w-full text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
             <th className="px-4 py-2 font-medium">Influencer</th>

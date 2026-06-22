@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -90,7 +92,7 @@ export function AgencySavings() {
       </div>
 
       {/* KPI */}
-      <div className="rounded-xl border border-line p-4">
+      <div className="rounded-card border border-line p-4">
         {data == null ? (
           <p className="text-sm text-ink-tertiary">{loading ? "Loading…" : "Could not load savings."}</p>
         ) : data.bookingCount === 0 ? (
@@ -109,10 +111,10 @@ export function AgencySavings() {
       </div>
 
       {data && data.hotelBreakdown.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-line">
+        <div className="overflow-hidden rounded-card border border-line">
           <div className="border-b border-line px-4 py-3"><h3 className="font-medium">Savings by hotel</h3></div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ht-table w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
                   <th className="px-4 py-2 font-medium">Hotel</th>
@@ -151,7 +153,7 @@ export function AgencySavings() {
                 <Tooltip
                   labelFormatter={(m) => monthLabel(String(m))}
                   formatter={(value, name) => [formatCurrency(Number(value) || 0), activeHotels.find((h) => h.id === name)?.name ?? String(name)] as [string, string]}
-                  contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+                  contentStyle={CHART_TOOLTIP}
                 />
                 {activeHotels.map((h) => <Bar key={h.id} dataKey={h.id} stackId="sav" fill={h.color} />)}
               </BarChart>

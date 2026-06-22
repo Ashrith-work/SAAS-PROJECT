@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import {
   Area,
   AreaChart,
@@ -71,7 +73,7 @@ export function FollowerChart({
               [formatNumber(Number(value) || 0), "Followers"] as [string, string]
             }
             labelFormatter={(label) => shortDate(String(label))}
-            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+            contentStyle={CHART_TOOLTIP}
           />
           <Area
             type="monotone"

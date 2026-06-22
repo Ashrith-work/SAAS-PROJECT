@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
+import { NavLink } from "@/components/ui/NavLink";
 import { prisma } from "@/lib/prisma";
 
 // Minimal shell for the hotel-owner area. No agency nav — hotel owners only ever
@@ -23,12 +24,8 @@ export default async function HotelLayout({ children }: { children: React.ReactN
       <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
-            <Link href={dashboardHref} className="font-semibold text-ink">HotelTrack</Link>
-            {hotel && (
-              <Link href={dashboardHref} className="text-sm font-medium text-ink-secondary hover:text-ink">
-                My Dashboard
-              </Link>
-            )}
+            <Link href={dashboardHref} className="font-semibold tracking-tight text-ink">HotelTrack</Link>
+            {hotel && <NavLink href={dashboardHref}>My Dashboard</NavLink>}
           </div>
           <UserButton />
         </div>

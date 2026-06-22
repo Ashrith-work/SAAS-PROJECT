@@ -101,7 +101,7 @@ function KpiCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-line p-4">
+    <div className="rounded-card border border-line bg-card p-4 shadow-card">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
         {label}
       </p>
@@ -125,7 +125,7 @@ function DemographicCard({
 }) {
   const total = rows.reduce((s, r) => s + r.value, 0);
   return (
-    <div className="rounded-xl border border-line bg-card p-4">
+    <div className="rounded-card border border-line bg-card p-4 shadow-card">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{title}</p>
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-ink-tertiary">—</p>
@@ -157,7 +157,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line">
+    <section className="overflow-hidden rounded-card border border-line bg-card shadow-card">
       <div className="border-b border-line px-4 py-3">
         <h2 className="font-medium">{title}</h2>
         {subtitle && <p className="mt-0.5 text-sm text-ink-tertiary">{subtitle}</p>}
@@ -1425,7 +1425,7 @@ export default async function HotelDashboardPage({
             </div>
             <Link
               href={`/agency/hotel/${hotel.id}/integrations`}
-              className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
+              className="rounded-button border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
             >
               Manage Integrations
             </Link>
@@ -1479,7 +1479,7 @@ export default async function HotelDashboardPage({
       {integrationStatus.anyBrokenOrExpired && (
         <Link
           href={`/agency/hotel/${hotel.id}/integrations`}
-          className="flex items-center justify-between gap-3 rounded-2xl border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-ink-secondary hover:bg-warning/20"
+          className="flex items-center justify-between gap-3 rounded-card border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-ink-secondary hover:bg-warning/20"
         >
           <span>
             <strong>An integration needs attention.</strong> A connection for this
@@ -1607,7 +1607,7 @@ export default async function HotelDashboardPage({
               </p>
             ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="ht-table w-full text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
                   <tr>
                     <th className="px-4 py-2 font-medium">Campaign</th>
@@ -1868,7 +1868,7 @@ export default async function HotelDashboardPage({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="ht-table w-full text-left text-sm">
               <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Influencer</th>
@@ -2049,7 +2049,7 @@ export default async function HotelDashboardPage({
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-line">
-                  <table className="w-full text-left text-sm">
+                  <table className="ht-table w-full text-left text-sm">
                     <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                       <tr>
                         <th className="px-4 py-2 font-medium">Post</th>
@@ -2125,7 +2125,7 @@ export default async function HotelDashboardPage({
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-line">
-                  <table className="w-full text-left text-sm">
+                  <table className="ht-table w-full text-left text-sm">
                     <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                       <tr>
                         <th className="px-4 py-2 font-medium">Story</th>

@@ -45,12 +45,12 @@ export function ExportMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="rounded-lg border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
+        className="rounded-button border border-line-strong bg-elevated px-3 py-2 text-sm font-medium text-ink-secondary hover:bg-line-strong"
       >
         {label} ▾
       </button>
       {open && (
-        <div className="absolute right-0 z-10 mt-2 w-44 overflow-hidden rounded-lg border border-line bg-elevated shadow-lg">
+        <div className="absolute right-0 z-10 mt-2 w-44 overflow-hidden rounded-button border border-line bg-elevated shadow-float">
           <a
             href={hrefFor("xlsx")}
             onClick={() => setOpen(false)}

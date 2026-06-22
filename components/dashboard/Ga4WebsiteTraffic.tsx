@@ -31,7 +31,7 @@ const CHANNELS: { key: keyof Ga4Dashboard["channels"]; label: string; color: str
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line">
+    <section className="overflow-hidden rounded-card border border-line">
       <div className="border-b border-line px-4 py-3">
         <h2 className="font-medium">{title}</h2>
         {subtitle && <p className="mt-0.5 text-sm text-ink-tertiary">{subtitle}</p>}

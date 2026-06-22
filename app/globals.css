@@ -1,59 +1,141 @@
 @import "tailwindcss";
 
 /* ──────────────────────────────────────────────────────────────────────────
-   HotelTrack dark theme — SINGLE SOURCE OF TRUTH for color.
-   We ship one coherent dark theme (no light/dark toggle). Every color the app
-   uses should come from a token below; avoid hardcoded hex in components.
+   HotelTrack theme tokens — SINGLE SOURCE OF TRUTH for color.
 
-   Tailwind v4 generates utilities from each --color-* name, e.g.
-   --color-card  ->  bg-card / text-card / border-card / ring-card
-   The default Tailwind palette (gray/blue/emerald/amber/red…) still exists, so
-   existing dark classes keep working while we migrate.
+   Dark is the DEFAULT (it's the product's identity): the dark palette lives on
+   `:root`, so a page with no theme class renders dark with zero flash. The
+   `.light` class (set on <html> by the theme toggle / no-flash script) overrides
+   only the surface/line/ink/overlay tokens — accents, code and brand are shared.
+
+   The Tailwind color utilities are mapped to these CSS variables in @theme below
+   (e.g. bg-card -> var(--card)), so every utility swaps at runtime when the class
+   on <html> changes. Avoid hardcoded hex in components; use the tokens.
    ────────────────────────────────────────────────────────────────────────── */
-@theme {
+
+:root,
+.dark {
+  color-scheme: dark;
+
   /* Surfaces */
-  --color-page: #0a0e1a; /* very dark navy, slightly warmer than black */
-  --color-card: #111827; /* default card — one step up from the page */
-  --color-elevated: #1f2937; /* modals / popovers / hover — one more step */
-  --color-code: #030712; /* code blocks — almost black, max contrast */
+  --page: #0f172a; /* slate-900 — app background */
+  --card: #111827; /* default card — one step up from the page */
+  --elevated: #1f2937; /* modals / popovers / hover — one more step */
+  --code: #030712; /* code blocks — almost black (shared across themes) */
 
   /* Borders & dividers */
-  --color-line: #1f2937; /* default subtle border */
-  --color-line-strong: #374151; /* stronger border / focus ring */
+  --line: #1f2937;
+  --line-strong: #374151;
 
-  /* Text (never pure white) */
-  --color-ink: #f9fafb; /* primary */
-  --color-ink-secondary: #d1d5db; /* secondary / body */
-  --color-ink-tertiary: #9ca3af; /* labels / captions */
-  --color-ink-disabled: #6b7280; /* disabled */
-  --color-codeink: #93c5fd; /* code text — light blue */
+  /* Text */
+  --ink: #f9fafb;
+  --ink-secondary: #d1d5db;
+  --ink-tertiary: #9ca3af;
+  --ink-disabled: #6b7280;
+  --codeink: #93c5fd; /* code text — light blue (shared) */
 
-  /* Brand & semantic accents (brightened for dark backgrounds) */
-  --color-brand: #3b82f6;
-  --color-brand-hover: #2563eb;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-info: #3b82f6;
+  /* Brand & semantic accents (shared across themes) */
+  --brand: #3b82f6;
+  --brand-hover: #2563eb;
+  --accent: #8b5cf6;
+  --accent-hover: #7c3aed;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
 
-  --font-sans: var(--font-geist-sans);
+  /* Surface overlays (zebra / hover / header tint on data tables) — light-on-dark */
+  --overlay-header: rgba(255, 255, 255, 0.025);
+  --overlay-soft: rgba(255, 255, 255, 0.02);
+  --overlay-hover: rgba(255, 255, 255, 0.045);
+
+  /* Scrollbars */
+  --scrollbar-thumb: #374151;
+  --scrollbar-thumb-hover: #4b5563;
+}
+
+.light {
+  color-scheme: light;
+
+  --page: #f8fafc;
+  --card: #ffffff;
+  --elevated: #f1f5f9; /* hover / popover surface in light */
+  /* --code / --codeink inherit (code blocks stay dark in both themes) */
+
+  --line: #e5e7eb;
+  --line-strong: #cbd5e1;
+
+  --ink: #111827;
+  --ink-secondary: #374151;
+  --ink-tertiary: #6b7280;
+  --ink-disabled: #9ca3af;
+
+  /* Overlays flip to dark-on-light so zebra/hover stay visible on light surfaces */
+  --overlay-header: rgba(0, 0, 0, 0.03);
+  --overlay-soft: rgba(0, 0, 0, 0.02);
+  --overlay-hover: rgba(0, 0, 0, 0.04);
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+}
+
+@theme {
+  /* Color utilities resolve to the runtime CSS variables above. The --color-*
+     namespace tells Tailwind these are colors (so /opacity variants generate),
+     regardless of the var() value. */
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-elevated: var(--elevated);
+  --color-code: var(--code);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-tertiary: var(--ink-tertiary);
+  --color-ink-disabled: var(--ink-disabled);
+  --color-codeink: var(--codeink);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* Radius scale → rounded-card / rounded-button / rounded-input / …
+     Additive; does not override Tailwind's default rounded-* utilities. */
+  --radius-card: 16px;
+  --radius-button: 10px;
+  --radius-input: 10px;
+  --radius-table: 16px;
+  --radius-chart: 16px;
+  --radius-sidebar: 10px;
+
+  /* Shadow scale → shadow-card / shadow-card-hover / shadow-float.
+     Tuned subtle/enterprise. Faint on dark (elevation is border-driven there),
+     and carry their full weight in light mode. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 4px 6px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-float: 0 10px 25px rgba(0, 0, 0, 0.08);
+
+  /* Typography — Inter for UI, mono for code. */
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
 }
 
-:root {
-  --background: #0a0e1a;
-  --foreground: #f9fafb;
-  color-scheme: dark;
-}
-
 html {
-  background: var(--background);
+  background: var(--page);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -61,31 +143,105 @@ body {
    bg-info/10 + border-l-4 border-info, bg-warning/10 + border-warning, etc.
    No bespoke utilities needed — Tailwind generates the /10 variants. */
 
-/* Native form controls + selects render dark (date pickers, option lists, the
-   calendar icon, autofill). Without this they flash white on dark pages. */
-input,
-textarea,
-select {
-  color-scheme: dark;
-}
-
+/* Native form controls + selects follow the active theme (date pickers, option
+   lists, the calendar icon, autofill). color-scheme is set per theme above. */
 select option {
-  background-color: #111827;
-  color: #f9fafb;
+  background-color: var(--card);
+  color: var(--ink);
 }
 
-/* Subtle dark scrollbars so they don't read as bright light-mode tracks. */
+/* ── Premium data tables ─────────────────────────────────────────────────────
+   Opt in by adding `ht-table` to a <table>. Unifies the header treatment and
+   adds row hover + subtle zebra striping, all from tokens. Additive: the zebra
+   and hover rules skip any row that already sets its own background utility
+   (e.g. highlighted / total / disabled rows), so intentional row colors are
+   never clobbered. Columns, sorting and content are untouched — visual only. */
+.ht-table thead {
+  background-color: var(--overlay-header);
+  border-bottom: 1px solid var(--line);
+}
+.ht-table tbody tr:nth-child(even):not([class*="bg-"]) {
+  background-color: var(--overlay-soft);
+}
+.ht-table tbody tr:not([class*="bg-"]):hover {
+  background-color: var(--overlay-hover);
+}
+
+/* ── Recharts chrome follows the theme ───────────────────────────────────────
+   Only the chart FRAME (grid lines, axis lines, axis tick labels) is themed
+   here; data series colors stay as set in JS. CSS beats Recharts' inline
+   presentation attributes, so dark axis hex no longer leaks into light mode. */
+.recharts-cartesian-grid line {
+  stroke: var(--line) !important;
+}
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: var(--line) !important;
+}
+.recharts-cartesian-axis-tick-value {
+  fill: var(--ink-tertiary) !important;
+}
+
+/* ── Interaction polish ──────────────────────────────────────────────────────
+   Keyboard focus is always visible (accessibility); charts fade/scale in on
+   mount. Interactive card hover-lift is applied per-component via Tailwind
+   (hover:-translate-y-0.5). All motion is disabled under reduced-motion. */
+
+/* Visible focus ring on every interactive element for keyboard users. Element
+   selectors (not :where) so it survives Tailwind's base reset; elements that
+   opt out via `focus:outline-none` already provide their own ring instead. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="tab"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Charts fade + slightly scale in on mount (runs once; resize doesn't remount). */
+@keyframes chart-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.recharts-responsive-container {
+  animation: chart-in 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Subtle themed scrollbars so they don't read as bright light-mode tracks. */
 * {
-  scrollbar-color: #374151 transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: var(--scrollbar-thumb-hover);
 }

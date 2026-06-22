@@ -33,7 +33,7 @@ export function CodeBlock({
   }
 
   return (
-    <div className="sg-codeblock my-4 overflow-hidden rounded-xl border border-line bg-code">
+    <div className="sg-codeblock my-4 overflow-hidden rounded-card border border-line bg-code">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
         <span className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           {caption ?? "Code"}
@@ -41,7 +41,7 @@ export function CodeBlock({
         <button
           type="button"
           onClick={copy}
-          className="rounded-md border border-white/15 px-2.5 py-1 text-xs font-medium text-ink-secondary transition hover:bg-white/10 print:hidden"
+          className="rounded-button border border-white/15 px-2.5 py-1 text-xs font-medium text-ink-secondary transition hover:bg-white/10 print:hidden"
         >
           {copied ? "Copied!" : "Copy"}
         </button>

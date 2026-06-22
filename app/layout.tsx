@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import { ThemeProvider, THEME_INIT_SCRIPT } from "@/components/theme/ThemeProvider";
 import { validatePlatformEnv } from "@/lib/env-validation";
 
 // Fail loud at startup if platform integration credentials are missing/empty or
@@ -9,8 +10,8 @@ import { validatePlatformEnv } from "@/lib/env-validation";
 // once per server instance at module load.
 validatePlatformEnv();
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -34,16 +35,17 @@ export default function RootLayout({
     <ClerkProvider
       appearance={{
         variables: {
-          colorBackground: "#111827",
-          colorInputBackground: "#0a0e1a",
-          colorInputText: "#f9fafb",
-          colorText: "#f9fafb",
-          colorTextSecondary: "#9ca3af",
-          colorPrimary: "#3b82f6",
-          colorNeutral: "#f9fafb",
-          colorDanger: "#ef4444",
-          colorSuccess: "#10b981",
-          colorWarning: "#f59e0b",
+          // CSS-var references so Clerk widgets follow the active theme.
+          colorBackground: "var(--card)",
+          colorInputBackground: "var(--page)",
+          colorInputText: "var(--ink)",
+          colorText: "var(--ink)",
+          colorTextSecondary: "var(--ink-tertiary)",
+          colorPrimary: "var(--brand)",
+          colorNeutral: "var(--ink)",
+          colorDanger: "var(--danger)",
+          colorSuccess: "var(--success)",
+          colorWarning: "var(--warning)",
         },
         elements: {
           card: "bg-card border border-line",
@@ -54,9 +56,15 @@ export default function RootLayout({
     >
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        suppressHydrationWarning
+        className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
       >
-        <body className="flex min-h-full flex-col">{children}</body>
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        </head>
+        <body className="flex min-h-full flex-col">
+          <ThemeProvider>{children}</ThemeProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

@@ -37,10 +37,10 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const KPI_ACCENT = {
   zinc: { bar: "bg-ink-disabled", text: "text-ink-tertiary" },
-  blue: { bar: "bg-blue-500", text: "text-info" },
-  amber: { bar: "bg-amber-500", text: "text-warning" },
-  emerald: { bar: "bg-emerald-500", text: "text-success" },
-  violet: { bar: "bg-violet-500", text: "text-violet-400" },
+  blue: { bar: "bg-brand", text: "text-info" },
+  amber: { bar: "bg-warning", text: "text-warning" },
+  emerald: { bar: "bg-success", text: "text-success" },
+  violet: { bar: "bg-accent", text: "text-accent" },
 } as const;
 type Accent = keyof typeof KPI_ACCENT;
 
@@ -73,7 +73,7 @@ function KpiCard({
     ) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-line p-4">
+    <div className="relative overflow-hidden rounded-card border border-line bg-card p-4 shadow-card">
       <span className={`absolute inset-y-0 left-0 w-1 ${a.bar}`} aria-hidden />
       <p className={`text-xs font-medium uppercase tracking-wide ${a.text}`}>{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
@@ -95,7 +95,7 @@ function ChartCard({
 }) {
   return (
     <section
-      className={`overflow-hidden rounded-xl border border-line ${className ?? ""}`}
+      className={`overflow-hidden rounded-card border border-line bg-card shadow-card ${className ?? ""}`}
     >
       <div className="border-b border-line px-4 py-3">
         <h2 className="font-medium">{title}</h2>
@@ -310,7 +310,7 @@ export default async function AgencyDashboardPage({
           <ExportMenu basePath="/api/agency/export" />
           <Link
             href="/agency/hotels/new"
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
+            className="rounded-button bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
           >
             Add Hotel Client
           </Link>
@@ -405,7 +405,7 @@ export default async function AgencyDashboardPage({
       )}
 
       {pixelMode && (
-        <div className="rounded-xl border border-dashed border-line p-6 text-sm text-ink-tertiary">
+        <div className="rounded-card border border-dashed border-line p-6 text-sm text-ink-tertiary">
           Per-content / per-source attribution is disabled in Facebook Pixel mode.
           The Pixel reports website conversions to Meta, not HotelTrack — open
           Meta Ads Manager for content-level breakdowns, and the{" "}
@@ -418,13 +418,13 @@ export default async function AgencyDashboardPage({
       <div>
         <h2 className="mb-3 font-medium">Hotel clients</h2>
         {hotels.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-line p-12 text-center">
+          <div className="rounded-card border border-dashed border-line p-12 text-center">
             <p className="text-ink-tertiary">
               No hotel clients yet.
             </p>
             <Link
               href="/agency/hotels/new"
-              className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
+              className="mt-4 inline-block rounded-button bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
             >
               Add your first hotel client
             </Link>
@@ -437,7 +437,7 @@ export default async function AgencyDashboardPage({
                 <Link
                   key={h.id}
                   href={`/agency/hotel/${h.id}`}
-                  className="group rounded-xl border border-line p-5 transition-colors hover:border-line-strong"
+                  className="group rounded-card border border-line bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card-hover"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

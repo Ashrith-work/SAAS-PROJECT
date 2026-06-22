@@ -43,7 +43,7 @@ export function DeltaBadge({
 
 export function KpiCard({ spec }: { spec: KpiSpec }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong">
+    <div className="rounded-card border border-line bg-card p-5 shadow-card transition hover:border-line-strong hover:shadow-card-hover">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
           {spec.label}

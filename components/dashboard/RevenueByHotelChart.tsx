@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import {
   Bar,
   BarChart,
@@ -62,7 +64,7 @@ export function RevenueByHotelChart({
             formatter={(value) =>
               [formatCurrency(Number(value) || 0), "Revenue"] as [string, string]
             }
-            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+            contentStyle={CHART_TOOLTIP}
           />
           <Bar dataKey="revenue" radius={[0, 6, 6, 0]} barSize={22}>
             {sorted.map((_, i) => (

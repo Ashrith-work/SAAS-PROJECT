@@ -126,7 +126,7 @@ export function InviteCodeManager({
           </p>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line">
-            <table className="w-full text-left text-sm">
+            <table className="ht-table w-full text-left text-sm">
               <thead className="bg-card text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-3 py-2 font-medium">Hotel email</th>

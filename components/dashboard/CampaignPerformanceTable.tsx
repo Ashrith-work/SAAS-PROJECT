@@ -102,7 +102,7 @@ export function CampaignPerformanceTable({ rows }: { rows: CampaignRow[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="ht-table w-full text-left text-sm">
         <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             <TH label="Campaign" k="campaignName" />

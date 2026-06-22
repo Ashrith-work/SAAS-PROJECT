@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -138,7 +140,7 @@ export function ChannelView({
 
 function Panel({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-card">
+    <section className="overflow-hidden rounded-card border border-line bg-card">
       {title && <div className="border-b border-line px-4 py-3"><h3 className="text-sm font-medium text-ink">{title}</h3></div>}
       {children}
     </section>
@@ -147,7 +149,7 @@ function Panel({ title, children }: { title?: string; children: React.ReactNode 
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-line bg-card p-4">
+    <div className="rounded-card border border-line bg-card p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-tertiary">{sub}</p>}
@@ -186,7 +188,7 @@ function TrendChart({ data, series }: { data: Array<Record<string, number | stri
             <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={44} />
             {hasRight && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={44} />}
             <Tooltip
-              contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+              contentStyle={CHART_TOOLTIP}
               formatter={(value, name) => {
                 const s = series.find((x) => x.label === name);
                 return [s?.currency ? formatCurrency(Number(value) || 0) : formatNumber(Number(value) || 0), name] as [string, string];
@@ -213,7 +215,7 @@ function TrendChart({ data, series }: { data: Array<Record<string, number | stri
 function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="ht-table w-full text-left text-sm">
         <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             {head.map((h, i) => (
@@ -380,7 +382,7 @@ function fmtReach(n: number | null): string {
 
 function BigReachCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)]" style={{ borderLeft: `4px solid ${accent}` }}>
+    <div className="rounded-card border border-line bg-card p-5 shadow-card" style={{ borderLeft: `4px solid ${accent}` }}>
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-3xl font-semibold tabular-nums text-ink">{value}</p>
       <p className="mt-1 text-sm text-ink-tertiary">{sub}</p>
@@ -413,7 +415,7 @@ function ReachSplitSection({ split, hotelId, ownerView, onLinked }: { split: Rea
       </div>
 
       {total > 0 ? (
-        <div className="rounded-xl border border-line bg-card p-4">
+        <div className="rounded-card border border-line bg-card p-4">
           <div className="flex items-center justify-between text-xs font-medium">
             <span style={{ color: OWNED_COLOR }}>Owned {ownedPct}%</span>
             <span style={{ color: INFLUENCER_COLOR }}>Influencer {infPct}%</span>
@@ -426,7 +428,7 @@ function ReachSplitSection({ split, hotelId, ownerView, onLinked }: { split: Rea
           <p className="mt-2 text-xs text-ink-tertiary">Total reach {formatNumber(total)} across owned + influencer content this period.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-line bg-card px-4 py-6 text-center text-sm text-ink-tertiary">
+        <div className="rounded-card border border-line bg-card px-4 py-6 text-center text-sm text-ink-tertiary">
           No reach recorded in this period yet.
         </div>
       )}
@@ -497,7 +499,7 @@ function ReachSplitAreaChart({ data }: { data: ReachSplit["trendDaily"] }) {
               tickFormatter={(d: string) => (typeof d === "string" ? d.slice(5) : d)} minTickGap={24} />
             <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={44} />
             <Tooltip
-              contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+              contentStyle={CHART_TOOLTIP}
               formatter={(value, name) => [formatNumber(Number(value) || 0), name] as [string, string]}
             />
             <Area type="monotone" dataKey="ownedReach" name="Owned reach" stackId="reach"
@@ -522,7 +524,7 @@ function UnattributedMentionsPanel({ split, hotelId, ownerView, onLinked }: { sp
   const [linking, setLinking] = useState<{ id: string; label: string } | null>(null);
   if (split.unattributed.count === 0) return null;
   return (
-    <details className="group overflow-hidden rounded-xl border border-line bg-card">
+    <details className="group overflow-hidden rounded-card border border-line bg-card">
       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
         <span className="text-sm font-medium text-ink">
           Unattributed Mentions
@@ -616,7 +618,7 @@ function LinkMentionModal({ hotelId, mentionId, posterLabel, onClose, onLinked }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border border-line bg-elevated p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-card border border-line bg-elevated p-5 shadow-float" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-ink">Link {posterLabel} to an influencer</h3>
         <p className="mt-1 text-sm text-ink-tertiary">Future posts from this account will be credited to that influencer automatically.</p>
         <select className="mt-4 w-full rounded-lg border border-line-strong bg-card px-3 py-2 text-sm text-ink"
@@ -720,7 +722,7 @@ function InstagramContent({ posts }: { posts: InstagramChannelView["posts"] }) {
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-card">
+    <section className="overflow-hidden rounded-card border border-line bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <h3 className="text-sm font-medium text-ink">My Instagram Content</h3>
         <div className="flex items-center gap-2">
@@ -745,7 +747,7 @@ function InstagramContent({ posts }: { posts: InstagramChannelView["posts"] }) {
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="ht-table w-full text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-2 font-medium">Post Type</th>
@@ -954,11 +956,11 @@ function ChannelSkeleton() {
     <div className="space-y-4" aria-hidden>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-24 animate-pulse rounded-xl border border-line bg-card" />
+          <div key={i} className="h-24 animate-pulse rounded-card border border-line bg-card" />
         ))}
       </div>
-      <div className="h-72 animate-pulse rounded-xl border border-line bg-card" />
-      <div className="h-48 animate-pulse rounded-xl border border-line bg-card" />
+      <div className="h-72 animate-pulse rounded-card border border-line bg-card" />
+      <div className="h-48 animate-pulse rounded-card border border-line bg-card" />
     </div>
   );
 }

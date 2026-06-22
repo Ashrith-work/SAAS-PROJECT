@@ -38,7 +38,7 @@ export function BudgetStatusCard({ status }: { status: BudgetCardStatus }) {
   const pct = Math.round(status.pct);
   const head = HEADLINE[status.state];
   return (
-    <div className={`rounded-2xl border bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] ${ACCENT[status.state]}`}>
+    <div className={`rounded-card border bg-card p-5 shadow-card ${ACCENT[status.state]}`}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
           Budget status

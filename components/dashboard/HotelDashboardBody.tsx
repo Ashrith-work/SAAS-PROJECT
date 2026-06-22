@@ -192,14 +192,14 @@ export async function HotelDashboardBody({
       </header>
 
       {showRestrictedNotice && (
-        <div className="rounded-2xl border border-info/40 bg-info/10 px-4 py-3 text-sm text-ink-secondary sm:px-5">
+        <div className="rounded-card border border-info/40 bg-info/10 px-4 py-3 text-sm text-ink-secondary sm:px-5">
           That area is managed by your agency and isn&apos;t available to hotel accounts. Here&apos;s your
           dashboard with everything for {hotelName}.
         </div>
       )}
 
       {!installed && (
-        <section className="rounded-2xl border border-warning/40 bg-warning/10 p-4 sm:p-5">
+        <section className="rounded-card border border-warning/40 bg-warning/10 p-4 sm:p-5">
           <h2 className="font-medium text-ink">Finish setup: install your tracking snippet</h2>
           <p className="mt-1 text-sm text-ink-secondary">
             Your dashboard fills in once your website is sending visits. Ask {agencyName} if you
@@ -224,7 +224,7 @@ export async function HotelDashboardBody({
       </section>
 
       {/* Revenue by Source — 3-way granularity (source / +medium / +campaign). */}
-      <section className="overflow-hidden rounded-2xl border border-line bg-card">
+      <section className="overflow-hidden rounded-card border border-line bg-card">
         <div className="border-b border-line px-4 py-3 sm:px-5">
           <h2 className="font-medium text-ink">Revenue by Source</h2>
           <p className="mt-0.5 text-sm text-ink-tertiary">
@@ -237,7 +237,7 @@ export async function HotelDashboardBody({
       </section>
 
       {/* Commission Saved vs OTAs — KPI + monthly trend. */}
-      <section className="overflow-hidden rounded-2xl border border-line bg-card">
+      <section className="overflow-hidden rounded-card border border-line bg-card">
         <div className="border-b border-line px-4 py-3 sm:px-5">
           <h2 className="font-medium text-ink">Commission Saved vs OTAs</h2>
           <p className="mt-0.5 text-sm text-ink-tertiary">
@@ -250,7 +250,7 @@ export async function HotelDashboardBody({
       </section>
 
       {/* Recent Visitor Journeys + funnel — page-by-page paths and drop-off. */}
-      <section className="overflow-hidden rounded-2xl border border-line bg-card">
+      <section className="overflow-hidden rounded-card border border-line bg-card">
         <div className="border-b border-line px-4 py-3 sm:px-5">
           <h2 className="font-medium text-ink">Recent Visitor Journeys</h2>
           <p className="mt-0.5 text-sm text-ink-tertiary">

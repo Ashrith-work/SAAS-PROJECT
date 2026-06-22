@@ -48,8 +48,8 @@ export function ChannelPerformanceTable({ rows }: { rows: ChannelRow[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-line bg-card shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
-      <table className="w-full text-left text-sm">
+    <div className="overflow-x-auto rounded-card border border-line bg-card shadow-card">
+      <table className="ht-table w-full text-left text-sm">
         <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-tertiary">
           <tr>
             <Th hint="The traffic source (utm_source). Direct / untagged visits group as 'Direct'.">

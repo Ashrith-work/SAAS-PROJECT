@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -86,7 +88,7 @@ function TypeBadge({ type }: { type: SourceType }) {
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-line p-4">
+    <div className="rounded-card border border-line p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
       {hint && <p className="mt-0.5 truncate text-xs text-ink-tertiary">{hint}</p>}
@@ -255,11 +257,11 @@ export function RevenueBySource({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-line bg-card px-4 py-6 text-center text-sm text-danger">{error}</div>
+        <div className="rounded-card border border-line bg-card px-4 py-6 text-center text-sm text-danger">{error}</div>
       )}
 
       {!error && data && data.totals.bookings === 0 && (
-        <div className="rounded-xl border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
+        <div className="rounded-card border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
           No bookings recorded in this date range. Make sure your tracking snippet is installed
           and visitors are completing bookings.
         </div>
@@ -268,8 +270,8 @@ export function RevenueBySource({
       {!error && data && data.totals.bookings > 0 && (
         <>
           {/* Table */}
-          <div className={`overflow-x-auto rounded-xl border border-line ${loading ? "opacity-60" : ""}`}>
-            <table className="w-full text-sm">
+          <div className={`overflow-x-auto rounded-card border border-line ${loading ? "opacity-60" : ""}`}>
+            <table className="ht-table w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
                   <th className="px-4 py-2 font-medium">{GRAN_LABEL[granularity]}</th>
@@ -325,7 +327,7 @@ export function RevenueBySource({
                   <YAxis tickFormatter={(v: number) => formatCurrency(v, { compact: true })} tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={56} />
                   <Tooltip
                     formatter={(value, name) => [formatCurrency(Number(value) || 0), SOURCE_TYPE_LABEL[name as SourceType] ?? String(name)] as [string, string]}
-                    contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+                    contentStyle={CHART_TOOLTIP}
                   />
                   {activeTypes.map((t) => (
                     <Bar key={t} dataKey={t} stackId="rev" fill={SOURCE_TYPE_COLOR[t]} />
@@ -338,7 +340,7 @@ export function RevenueBySource({
       )}
 
       {loading && !data && (
-        <div className="rounded-xl border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
+        <div className="rounded-card border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
           Loading revenue…
         </div>
       )}

@@ -63,7 +63,7 @@ export function ContactAgencyCard({
   // ── Empty state (no fields filled) — shouldn't happen for new signups ──
   if (!hasAny) {
     return (
-      <section className="rounded-xl border border-line bg-card p-5">
+      <section className="rounded-card border border-line bg-card p-5">
         <h2 className="font-medium text-ink">Contact info not yet added</h2>
         {viewerIsAgency ? (
           <>
@@ -93,7 +93,7 @@ export function ContactAgencyCard({
     : null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-card">
+    <section className="overflow-hidden rounded-card border border-line bg-card">
       {/* Collapsed header (always visible) */}
       <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

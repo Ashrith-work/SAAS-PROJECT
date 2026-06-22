@@ -63,7 +63,7 @@ export function OwnerSummaryCard({
   }, [hotelId, period, apiBase, shareToken]);
 
   return (
-    <section className="rounded-xl border border-brand/30 bg-brand/5 p-4 sm:p-5">
+    <section className="rounded-card border border-brand/30 bg-brand/5 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">Performance summary</p>
         <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-page/60">

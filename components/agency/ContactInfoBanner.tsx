@@ -26,7 +26,7 @@ export function ContactInfoBanner({
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3">
+    <div className="flex items-center gap-3 rounded-card border border-warning/40 bg-warning/10 px-4 py-3">
       <span aria-hidden className="text-lg leading-none">
         ⓘ
       </span>

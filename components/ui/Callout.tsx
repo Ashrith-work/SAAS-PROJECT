@@ -17,13 +17,13 @@ const TONE: Record<
   },
   warn: {
     wrap: "bg-warning/10 border-warning",
-    badge: "bg-warning text-[#0a0e1a]",
+    badge: "bg-warning text-[#0f172a]",
     label: "text-warning",
     icon: "!",
   },
   success: {
     wrap: "bg-success/10 border-success",
-    badge: "bg-success text-[#0a0e1a]",
+    badge: "bg-success text-[#0f172a]",
     label: "text-success",
     icon: "✓",
   },

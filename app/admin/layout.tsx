@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
+import { NavLink } from "@/components/ui/NavLink";
 import { getPlatformRole } from "@/lib/auth";
 
 // Super-admin shell. The proxy already gates /admin to super_admin; this re-checks
@@ -18,25 +19,19 @@ export default async function AdminLayout({
       <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/admin" className="font-semibold text-ink">
+            <Link href="/admin" className="font-semibold tracking-tight text-ink">
               HotelTrack
             </Link>
             <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
               Admin
             </span>
             <nav className="ml-2 flex items-center gap-1 text-sm">
-              <Link href="/admin" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
+              <NavLink href="/admin" exact>
                 Overview
-              </Link>
-              <Link href="/admin/billing" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
-                Billing
-              </Link>
-              <Link href="/admin/audit" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
-                Audit log
-              </Link>
-              <Link href="/admin/sync-now" className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink">
-                Sync now
-              </Link>
+              </NavLink>
+              <NavLink href="/admin/billing">Billing</NavLink>
+              <NavLink href="/admin/audit">Audit log</NavLink>
+              <NavLink href="/admin/sync-now">Sync now</NavLink>
             </nav>
           </div>
           <UserButton />

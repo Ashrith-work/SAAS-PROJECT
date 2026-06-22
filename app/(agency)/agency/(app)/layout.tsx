@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { UserButton } from "@clerk/nextjs";
+import { NavLink } from "@/components/ui/NavLink";
 import { getCurrentMember } from "@/lib/auth";
 import { isActiveStatus } from "@/lib/plans";
 import { mustCompleteContactInfo } from "@/lib/agency-contact";
@@ -46,7 +47,10 @@ export default async function AgencyAppLayout({
       <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
-            <Link href="/agency/dashboard" className="font-semibold text-ink">
+            <Link
+              href="/agency/dashboard"
+              className="font-semibold tracking-tight text-ink"
+            >
               HotelTrack
             </Link>
             <nav className="flex items-center gap-1 text-sm">
@@ -58,13 +62,9 @@ export default async function AgencyAppLayout({
                 { href: "/agency/settings", label: "Settings" },
                 { href: "/agency/billing", label: "Billing" },
               ].map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-md px-3 py-1.5 text-ink-tertiary transition hover:bg-elevated hover:text-ink"
-                >
+                <NavLink key={item.href} href={item.href}>
                   {item.label}
-                </Link>
+                </NavLink>
               ))}
             </nav>
           </div>

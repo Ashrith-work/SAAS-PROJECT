@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -114,7 +116,7 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
 
   if (hotels.length === 0) {
     return (
-      <div className="rounded-xl border border-line bg-card px-4 py-12 text-center">
+      <div className="rounded-card border border-line bg-card px-4 py-12 text-center">
         <p className="text-sm text-ink-tertiary">No hotels yet — add your first hotel to start tracking revenue.</p>
         <a href="/agency/hotels/new" className="mt-3 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Add your first hotel</a>
       </div>
@@ -155,13 +157,13 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
       </div>
 
       {noBookings ? (
-        <div className="rounded-xl border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
+        <div className="rounded-card border border-line bg-card px-4 py-10 text-center text-sm text-ink-tertiary">
           No bookings recorded in this date range. Make sure tracking snippets are installed on your hotels&apos; websites.
         </div>
       ) : (
         <>
           {/* ROW 3 — daily stacked revenue by source type */}
-          <section className="rounded-xl border border-line">
+          <section className="rounded-card border border-line">
             <div className="border-b border-line px-4 py-3"><h2 className="font-medium">Daily revenue by source</h2></div>
             <div className="p-4">
               <div className="h-64 w-full">
@@ -171,7 +173,7 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
                     <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={{ stroke: "#1f2937" }} minTickGap={20} />
                     <YAxis tickFormatter={(v: number) => formatCurrency(v, { compact: true })} tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} axisLine={false} width={56} />
                     <Tooltip formatter={(v, n) => [formatCurrency(Number(v) || 0), SOURCE_TYPE_LABEL[n as SourceType] ?? String(n)] as [string, string]}
-                      contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }} />
+                      contentStyle={CHART_TOOLTIP} />
                     {activeTypes.map((t) => <Bar key={t} dataKey={t} stackId="rev" fill={SOURCE_TYPE_COLOR[t]} />)}
                   </BarChart>
                 </ResponsiveContainer>
@@ -180,7 +182,7 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
           </section>
 
           {/* ROW 4 — revenue by source table */}
-          <section className="overflow-hidden rounded-xl border border-line">
+          <section className="overflow-hidden rounded-card border border-line">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
               <h2 className="font-medium">Revenue by source</h2>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong">
@@ -198,7 +200,7 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
               ))}
             </div>
             <div className={`overflow-x-auto p-1 ${loading ? "opacity-60" : ""}`}>
-              <table className="w-full text-sm">
+              <table className="ht-table w-full text-sm">
                 <thead>
                   <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
                     <th className="px-4 py-2 font-medium">{GRAN_LABEL[granularity]}</th>
@@ -235,10 +237,10 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
           </section>
 
           {/* ROW 5 — hotel performance table */}
-          <section className="overflow-hidden rounded-xl border border-line">
+          <section className="overflow-hidden rounded-card border border-line">
             <div className="border-b border-line px-4 py-3"><h2 className="font-medium">Hotel performance</h2></div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="ht-table w-full text-sm">
                 <thead>
                   <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-tertiary">
                     <th className="px-4 py-2 font-medium">Hotel</th>
@@ -296,7 +298,7 @@ export function AgencyRevenueRollup({ hotels }: { hotels: Hotel[] }) {
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
   return (
-    <div className="rounded-xl border border-line p-4">
+    <div className="rounded-card border border-line p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
       {hint && <p className={`mt-0.5 text-xs ${tone ?? "text-ink-tertiary"}`}>{hint}</p>}
@@ -305,7 +307,7 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?
 }
 function TopCard({ label, name, value }: { label: string; name: string; value: string }) {
   return (
-    <div className="rounded-xl border border-line bg-card p-4">
+    <div className="rounded-card border border-line bg-card p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold text-ink">{name}</p>
       {value && <p className="text-sm text-ink-tertiary tabular-nums">{value}</p>}
@@ -337,7 +339,7 @@ function HotelFilter({ hotels, selected, onChange }: { hotels: Hotel[]; selected
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-line bg-elevated p-2 shadow-xl">
+          <div className="absolute z-20 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-line bg-elevated p-2 shadow-float">
             <button type="button" onClick={() => onChange(new Set())} className="mb-1 w-full rounded px-2 py-1 text-left text-xs text-brand hover:bg-card">All hotels</button>
             {hotels.map((h) => (
               <label key={h.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-card">
@@ -354,7 +356,7 @@ function HotelFilter({ hotels, selected, onChange }: { hotels: Hotel[]; selected
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="h-full w-full max-w-sm overflow-y-auto border-l border-line bg-elevated p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="h-full w-full max-w-sm overflow-y-auto border-l border-line bg-elevated p-5 shadow-float" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-ink">{title}</h3>
           <button type="button" onClick={onClose} className="rounded p-1 text-ink-tertiary hover:bg-line-strong" aria-label="Close">✕</button>

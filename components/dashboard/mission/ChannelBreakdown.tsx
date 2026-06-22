@@ -46,7 +46,7 @@ function ChannelCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong`}>
+    <div className={`rounded-card border border-line bg-card p-5 shadow-card transition hover:border-line-strong`}>
       <div className="mb-4 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
         <h3 className="text-sm font-semibold text-ink">{name}</h3>

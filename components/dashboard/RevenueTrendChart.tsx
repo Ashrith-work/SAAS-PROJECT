@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import {
   Area,
   CartesianGrid,
@@ -76,7 +78,7 @@ export function RevenueTrendChart({
               return [formatNumber(n), name] as [string, string];
             }}
             labelFormatter={(label) => shortDate(String(label))}
-            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+            contentStyle={CHART_TOOLTIP}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
           <Area

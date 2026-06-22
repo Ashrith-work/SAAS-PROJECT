@@ -39,7 +39,7 @@ function DeltaBadge({ delta, goodWhenUp = true }: { delta: number; goodWhenUp?: 
 
 function KpiCard({ spec }: { spec: KpiCardSpec }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong">
+    <div className="min-w-0 rounded-card border border-line bg-card p-5 shadow-card transition hover:border-line-strong">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
           {spec.label}

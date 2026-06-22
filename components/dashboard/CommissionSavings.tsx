@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -80,7 +82,7 @@ export function CommissionSavings({
         </div>
         <span className="group relative text-ink-tertiary" tabIndex={0} aria-label="How this is calculated">
           ⓘ
-          <span className="pointer-events-none absolute right-0 top-6 z-10 hidden w-72 rounded-lg border border-line bg-elevated p-3 text-xs text-ink-secondary shadow-xl group-hover:block group-focus:block">
+          <span className="pointer-events-none absolute right-0 top-6 z-10 hidden w-72 rounded-lg border border-line bg-elevated p-3 text-xs text-ink-secondary shadow-float group-hover:block group-focus:block">
             This assumes all snippet-tracked direct bookings would otherwise have gone through an OTA.
             Phone bookings, walk-ins, and bookings not tracked by the snippet are not included.
           </span>
@@ -88,7 +90,7 @@ export function CommissionSavings({
       </div>
 
       {/* KPI */}
-      <div className="rounded-xl border border-line p-4">
+      <div className="rounded-card border border-line p-4">
         {data == null ? (
           <p className="text-sm text-ink-tertiary">{loading ? "Loading…" : "Could not load savings."}</p>
         ) : data.otaRateUsed === 0 ? (
@@ -128,7 +130,7 @@ export function CommissionSavings({
                   if (n === "revenue") return [formatCurrency(Number(value) || 0), "Revenue"] as [string, string];
                   return [formatNumber(Number(value) || 0), "Bookings"] as [string, string];
                 }}
-                contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+                contentStyle={CHART_TOOLTIP}
               />
               <Line type="monotone" dataKey="savings" stroke={MONEY_GREEN} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </LineChart>

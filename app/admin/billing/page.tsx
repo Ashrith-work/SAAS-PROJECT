@@ -104,7 +104,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
           <p className="px-4 py-8 text-center text-sm text-ink-tertiary">No agencies yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="ht-table w-full text-left text-sm">
               <thead className="bg-elevated text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-3 font-medium">Agency</th>

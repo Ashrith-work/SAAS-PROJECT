@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_TOOLTIP } from "@/lib/chart-theme";
+
 import { useEffect, useRef, useState } from "react";
 import {
   Bar,
@@ -50,7 +52,7 @@ function InfoIcon({ text }: { text: string }) {
       aria-label={text}
     >
       ⓘ
-      <span className="pointer-events-none absolute right-0 top-6 z-20 hidden w-60 rounded-lg border border-line bg-elevated p-2.5 text-left text-xs font-normal normal-case leading-snug text-ink-secondary shadow-xl group-hover/info:block group-focus/info:block">
+      <span className="pointer-events-none absolute right-0 top-6 z-20 hidden w-60 rounded-lg border border-line bg-elevated p-2.5 text-left text-xs font-normal normal-case leading-snug text-ink-secondary shadow-float group-hover/info:block group-focus/info:block">
         {text}
       </span>
     </span>
@@ -67,7 +69,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative rounded-xl border border-line bg-card p-4">
+    <div className="relative rounded-card border border-line bg-card p-4">
       <p className="pr-6 text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <InfoIcon text={info} />
       {children}
@@ -147,7 +149,7 @@ export function PerformanceOverview({
       {loading && !data ? (
         <OverviewSkeleton />
       ) : error || !data ? (
-        <div className="rounded-xl border border-line bg-card px-4 py-8 text-center text-sm text-ink-tertiary">
+        <div className="rounded-card border border-line bg-card px-4 py-8 text-center text-sm text-ink-tertiary">
           Couldn&apos;t load performance metrics right now.
         </div>
       ) : (
@@ -269,7 +271,7 @@ function Loaded({ data, loading }: { data: OwnerMetrics; loading: boolean }) {
       </div>
 
       {/* Row 3 — Top campaigns table */}
-      <div className="relative overflow-hidden rounded-xl border border-line bg-card">
+      <div className="relative overflow-hidden rounded-card border border-line bg-card">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h3 className="text-sm font-medium text-ink">Top 5 Campaigns</h3>
           <span className="text-xs text-ink-tertiary">by booking revenue</span>
@@ -280,7 +282,7 @@ function Loaded({ data, loading }: { data: OwnerMetrics; loading: boolean }) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="ht-table w-full text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-2 font-medium">Campaign</th>
@@ -317,7 +319,7 @@ function Loaded({ data, loading }: { data: OwnerMetrics; loading: boolean }) {
       </div>
 
       {/* Row 4 — Bookings by source chart */}
-      <div className="rounded-xl border border-line bg-card">
+      <div className="rounded-card border border-line bg-card">
         <div className="border-b border-line px-4 py-3">
           <h3 className="text-sm font-medium text-ink">Bookings by Source</h3>
           <p className="mt-0.5 text-xs text-ink-tertiary">Booking revenue per marketing source this period.</p>
@@ -429,7 +431,7 @@ function BookingsBySourceChart({ data }: { data: OwnerMetrics["bookingsBySource"
               const bookings = p ? formatNumber(p.bookings) : "0";
               return [`${formatCurrency(Number(value) || 0)} · ${bookings} bookings · ${pct.toFixed(1)}% of revenue`, "Revenue"] as [string, string];
             }}
-            contentStyle={{ borderRadius: 8, border: "1px solid #374151", backgroundColor: "#1f2937", color: "#f9fafb", fontSize: 12 }}
+            contentStyle={CHART_TOOLTIP}
           />
           <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
             {rows.map((r) => (
@@ -447,15 +449,15 @@ function OverviewSkeleton() {
     <div className="space-y-4" aria-hidden>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 animate-pulse rounded-xl border border-line bg-card" />
+          <div key={i} className="h-24 animate-pulse rounded-card border border-line bg-card" />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 animate-pulse rounded-xl border border-line bg-card" />
+          <div key={i} className="h-24 animate-pulse rounded-card border border-line bg-card" />
         ))}
       </div>
-      <div className="h-40 animate-pulse rounded-xl border border-line bg-card" />
+      <div className="h-40 animate-pulse rounded-card border border-line bg-card" />
     </div>
   );
 }

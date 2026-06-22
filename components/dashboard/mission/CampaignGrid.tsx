@@ -46,7 +46,7 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
 
   if (cards.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-line-strong bg-card/50 px-6 py-14 text-center">
+      <div className="rounded-card border border-dashed border-line-strong bg-card/50 px-6 py-14 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-2xl">📈</div>
         <p className="text-sm font-semibold text-ink">No campaign attribution yet</p>
         <p className="mx-auto mt-1 max-w-sm text-sm text-ink-tertiary">
@@ -67,7 +67,7 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
               key={c.campaignKey}
               type="button"
               onClick={() => setOpenKey(c.campaignKey)}
-              className="group rounded-2xl border border-line bg-card p-5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition hover:border-line-strong"
+              className="group rounded-card border border-line bg-card p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card-hover"
             >
               <div className="flex items-start justify-between gap-2">
                 <h3 className="line-clamp-2 text-sm font-semibold text-ink">{c.campaignName}</h3>
@@ -107,7 +107,7 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
           onClick={() => setOpenKey(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-elevated p-6 shadow-[0_10px_40px_rgba(0,0,0,0.5)]"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-card border border-line bg-elevated p-6 shadow-float"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -127,7 +127,7 @@ export function CampaignGrid({ cards }: { cards: CampaignCard[] }) {
               </button>
             </div>
 
-            <div className="mt-5 rounded-2xl bg-card p-4 text-center">
+            <div className="mt-5 rounded-card bg-card p-4 text-center">
               <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">True ROAS</p>
               <p className={`text-5xl font-semibold tracking-tight tabular-nums ${roasColor(open.realRoas)}`}>
                 {formatMultiple(open.realRoas)}
