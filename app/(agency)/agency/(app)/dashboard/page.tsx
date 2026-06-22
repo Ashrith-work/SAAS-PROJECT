@@ -57,27 +57,36 @@ function KpiCard({
   accent?: Accent;
 }) {
   const a = KPI_ACCENT[accent];
-  const renderDelta =
+  const deltaPill =
     delta != null && Number.isFinite(delta) ? (
-      <p
-        className={`mt-1 text-xs font-medium tabular-nums ${
-          delta >= 0
-            ? "text-success"
-            : "text-danger"
+      <span
+        className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+          delta >= 0 ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
         }`}
       >
-        {delta >= 0 ? "▲" : "▼"} {formatPercent(Math.abs(delta))} vs prior 30d
-      </p>
-    ) : delta === null ? (
-      <p className="mt-1 text-xs text-ink-disabled">No prior period</p>
+        {delta >= 0 ? "↑" : "↓"} {formatPercent(Math.abs(delta))}
+      </span>
     ) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-card border border-line bg-card p-4 shadow-card">
-      <span className={`absolute inset-y-0 left-0 w-1 ${a.bar}`} aria-hidden />
-      <p className={`text-xs font-medium uppercase tracking-wide ${a.text}`}>{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {renderDelta}
+    <div className="rounded-card border border-line bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card-hover">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${a.bar}`} aria-hidden />
+          <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+            {label}
+          </p>
+        </div>
+        {deltaPill}
+      </div>
+      <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight text-ink lg:text-3xl">
+        {value}
+      </p>
+      {delta === null ? (
+        <p className="mt-1 text-[11px] text-ink-disabled">No prior period</p>
+      ) : delta != null && Number.isFinite(delta) ? (
+        <p className="mt-1 text-[11px] text-ink-disabled">vs prior 30 days</p>
+      ) : null}
     </div>
   );
 }

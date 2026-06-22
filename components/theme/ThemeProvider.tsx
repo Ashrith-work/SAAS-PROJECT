@@ -41,10 +41,10 @@ function subscribe(cb: () => void) {
   };
 }
 function readPreference(): Theme {
-  return (localStorage.getItem(THEME_STORAGE_KEY) as Theme | null) ?? "dark";
+  return (localStorage.getItem(THEME_STORAGE_KEY) as Theme | null) ?? "light";
 }
 function readServerPreference(): Theme {
-  return "dark"; // SSR default — matches :root, so no flash / mismatch
+  return "light"; // SSR default — matches :root, so no flash / mismatch
 }
 
 function systemPrefersDark(): boolean {
@@ -96,5 +96,5 @@ export function useTheme(): ThemeContextValue {
 }
 
 // Runs synchronously in <head> before first paint to avoid a theme flash. Reads
-// the saved preference and adds the matching class to <html>. Defaults to dark.
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":t==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):"dark";var c=document.documentElement.classList;if(r==="light"){c.add("light");c.remove("dark");}else{c.add("dark");c.remove("light");}}catch(e){}})();`;
+// the saved preference and adds the matching class to <html>. Defaults to light.
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":t==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):"light";var c=document.documentElement.classList;if(r==="dark"){c.add("dark");c.remove("light");}else{c.add("light");c.remove("dark");}}catch(e){}})();`;

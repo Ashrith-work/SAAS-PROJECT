@@ -3,10 +3,10 @@
 /* ──────────────────────────────────────────────────────────────────────────
    HotelTrack theme tokens — SINGLE SOURCE OF TRUTH for color.
 
-   Dark is the DEFAULT (it's the product's identity): the dark palette lives on
-   `:root`, so a page with no theme class renders dark with zero flash. The
-   `.light` class (set on <html> by the theme toggle / no-flash script) overrides
-   only the surface/line/ink/overlay tokens — accents, code and brand are shared.
+   LIGHT is the default (premium reference aesthetic): the light palette lives on
+   `:root`, so a page with no theme class renders light with zero flash. The
+   `.dark` class (set on <html> by the theme toggle / no-flash script) overrides
+   the surface/line/ink/overlay tokens — accents, code and brand are shared.
 
    The Tailwind color utilities are mapped to these CSS variables in @theme below
    (e.g. bg-card -> var(--card)), so every utility swaps at runtime when the class
@@ -14,24 +14,24 @@
    ────────────────────────────────────────────────────────────────────────── */
 
 :root,
-.dark {
-  color-scheme: dark;
+.light {
+  color-scheme: light;
 
   /* Surfaces */
-  --page: #0f172a; /* slate-900 — app background */
-  --card: #111827; /* default card — one step up from the page */
-  --elevated: #1f2937; /* modals / popovers / hover — one more step */
-  --code: #030712; /* code blocks — almost black (shared across themes) */
+  --page: #f8fafc; /* slate-50 — app background */
+  --card: #ffffff; /* default card surface */
+  --elevated: #f1f5f9; /* hover / popover / modal surface */
+  --code: #030712; /* code blocks stay dark in both themes (shared) */
 
   /* Borders & dividers */
-  --line: #1f2937;
-  --line-strong: #374151;
+  --line: #e5e7eb;
+  --line-strong: #cbd5e1;
 
   /* Text */
-  --ink: #f9fafb;
-  --ink-secondary: #d1d5db;
-  --ink-tertiary: #9ca3af;
-  --ink-disabled: #6b7280;
+  --ink: #111827;
+  --ink-secondary: #374151;
+  --ink-tertiary: #6b7280;
+  --ink-disabled: #9ca3af;
   --codeink: #93c5fd; /* code text — light blue (shared) */
 
   /* Brand & semantic accents (shared across themes) */
@@ -44,39 +44,39 @@
   --danger: #ef4444;
   --info: #3b82f6;
 
-  /* Surface overlays (zebra / hover / header tint on data tables) — light-on-dark */
-  --overlay-header: rgba(255, 255, 255, 0.025);
-  --overlay-soft: rgba(255, 255, 255, 0.02);
-  --overlay-hover: rgba(255, 255, 255, 0.045);
-
-  /* Scrollbars */
-  --scrollbar-thumb: #374151;
-  --scrollbar-thumb-hover: #4b5563;
-}
-
-.light {
-  color-scheme: light;
-
-  --page: #f8fafc;
-  --card: #ffffff;
-  --elevated: #f1f5f9; /* hover / popover surface in light */
-  /* --code / --codeink inherit (code blocks stay dark in both themes) */
-
-  --line: #e5e7eb;
-  --line-strong: #cbd5e1;
-
-  --ink: #111827;
-  --ink-secondary: #374151;
-  --ink-tertiary: #6b7280;
-  --ink-disabled: #9ca3af;
-
-  /* Overlays flip to dark-on-light so zebra/hover stay visible on light surfaces */
+  /* Surface overlays (zebra / hover / header tint on data tables) — dark-on-light */
   --overlay-header: rgba(0, 0, 0, 0.03);
   --overlay-soft: rgba(0, 0, 0, 0.02);
   --overlay-hover: rgba(0, 0, 0, 0.04);
 
+  /* Scrollbars */
   --scrollbar-thumb: #cbd5e1;
   --scrollbar-thumb-hover: #94a3b8;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --page: #0f172a; /* slate-900 */
+  --card: #111827;
+  --elevated: #1f2937;
+  /* --code / --codeink inherit (code blocks stay dark in both themes) */
+
+  --line: #1f2937;
+  --line-strong: #374151;
+
+  --ink: #f9fafb;
+  --ink-secondary: #d1d5db;
+  --ink-tertiary: #9ca3af;
+  --ink-disabled: #6b7280;
+
+  /* Overlays flip to light-on-dark so zebra/hover stay visible on dark surfaces */
+  --overlay-header: rgba(255, 255, 255, 0.025);
+  --overlay-soft: rgba(255, 255, 255, 0.02);
+  --overlay-hover: rgba(255, 255, 255, 0.045);
+
+  --scrollbar-thumb: #374151;
+  --scrollbar-thumb-hover: #4b5563;
 }
 
 @theme {
@@ -116,8 +116,8 @@
   --radius-sidebar: 10px;
 
   /* Shadow scale → shadow-card / shadow-card-hover / shadow-float.
-     Tuned subtle/enterprise. Faint on dark (elevation is border-driven there),
-     and carry their full weight in light mode. */
+     Tuned subtle/enterprise — they carry their full weight on the light default
+     and read faintly on dark (where elevation is border-driven). */
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-card-hover: 0 4px 6px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-float: 0 10px 25px rgba(0, 0, 0, 0.08);
@@ -140,11 +140,9 @@ body {
 }
 
 /* Translucent callout backgrounds use opacity modifiers on the semantic tokens:
-   bg-info/10 + border-l-4 border-info, bg-warning/10 + border-warning, etc.
-   No bespoke utilities needed — Tailwind generates the /10 variants. */
+   bg-info/10 + border-l-4 border-info, bg-warning/10 + border-warning, etc. */
 
-/* Native form controls + selects follow the active theme (date pickers, option
-   lists, the calendar icon, autofill). color-scheme is set per theme above. */
+/* Native form controls + selects follow the active theme. */
 select option {
   background-color: var(--card);
   color: var(--ink);
@@ -160,6 +158,19 @@ select option {
   background-color: var(--overlay-header);
   border-bottom: 1px solid var(--line);
 }
+/* Uniform header typography across every data table (reference look). Alignment
+   and padding stay per-cell so right-aligned numeric headers are untouched. */
+.ht-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-tertiary);
+  white-space: nowrap;
+}
+.ht-table tbody tr {
+  transition: background-color 0.12s ease;
+}
 .ht-table tbody tr:nth-child(even):not([class*="bg-"]) {
   background-color: var(--overlay-soft);
 }
@@ -170,7 +181,7 @@ select option {
 /* ── Recharts chrome follows the theme ───────────────────────────────────────
    Only the chart FRAME (grid lines, axis lines, axis tick labels) is themed
    here; data series colors stay as set in JS. CSS beats Recharts' inline
-   presentation attributes, so dark axis hex no longer leaks into light mode. */
+   presentation attributes, so axis/grid hex no longer leaks across themes. */
 .recharts-cartesian-grid line {
   stroke: var(--line) !important;
 }
@@ -181,15 +192,16 @@ select option {
 .recharts-cartesian-axis-tick-value {
   fill: var(--ink-tertiary) !important;
 }
+/* Donut/pie segment separators match the card surface (white in light, dark
+   card in dark) so slices read cleanly in both themes. */
+.recharts-pie .recharts-sector {
+  stroke: var(--card);
+}
 
 /* ── Interaction polish ──────────────────────────────────────────────────────
    Keyboard focus is always visible (accessibility); charts fade/scale in on
    mount. Interactive card hover-lift is applied per-component via Tailwind
    (hover:-translate-y-0.5). All motion is disabled under reduced-motion. */
-
-/* Visible focus ring on every interactive element for keyboard users. Element
-   selectors (not :where) so it survives Tailwind's base reset; elements that
-   opt out via `focus:outline-none` already provide their own ring instead. */
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
@@ -204,7 +216,6 @@ textarea:focus-visible,
   outline-offset: 2px;
 }
 
-/* Charts fade + slightly scale in on mount (runs once; resize doesn't remount). */
 @keyframes chart-in {
   from {
     opacity: 0;
@@ -230,7 +241,7 @@ textarea:focus-visible,
   }
 }
 
-/* Subtle themed scrollbars so they don't read as bright light-mode tracks. */
+/* Subtle themed scrollbars. */
 * {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }

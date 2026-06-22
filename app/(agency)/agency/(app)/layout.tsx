@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { UserButton } from "@clerk/nextjs";
-import { NavLink } from "@/components/ui/NavLink";
+import { AgencySidebar, AgencyMobileNav } from "@/components/nav/AgencySidebar";
 import { getCurrentMember } from "@/lib/auth";
 import { isActiveStatus } from "@/lib/plans";
 import { mustCompleteContactInfo } from "@/lib/agency-contact";
@@ -43,40 +42,25 @@ export default async function AgencyAppLayout({
   }
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-6">
-            <Link
-              href="/agency/dashboard"
-              className="font-semibold tracking-tight text-ink"
-            >
-              HotelTrack
-            </Link>
-            <nav className="flex items-center gap-1 text-sm">
-              {[
-                { href: "/agency/dashboard", label: "Dashboard" },
-                { href: "/agency/hotels", label: "Hotel Clients" },
-                { href: "/agency/influencers", label: "Influencers" },
-                { href: "/agency/alerts", label: "Alerts" },
-                { href: "/agency/settings", label: "Settings" },
-                { href: "/agency/billing", label: "Billing" },
-              ].map((item) => (
-                <NavLink key={item.href} href={item.href}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+    <div className="flex min-h-full">
+      <AgencySidebar />
+      <div className="flex min-h-full min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-page/80 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <div className="min-w-0">
+            <p className="text-xs text-ink-tertiary">Welcome back</p>
+            <p className="truncate text-base font-semibold tracking-tight text-ink">
+              {member.agency.name}
+            </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-ink-tertiary sm:inline">
-              {member.agency.name}
-            </span>
             <UserButton />
           </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">{children}</main>
+        </header>
+        <AgencyMobileNav />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
