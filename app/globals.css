@@ -3,10 +3,14 @@
 /* ──────────────────────────────────────────────────────────────────────────
    HotelTrack theme tokens — SINGLE SOURCE OF TRUTH for color.
 
-   LIGHT is the default (premium reference aesthetic): the light palette lives on
-   `:root`, so a page with no theme class renders light with zero flash. The
-   `.dark` class (set on <html> by the theme toggle / no-flash script) overrides
-   the surface/line/ink/overlay tokens — accents, code and brand are shared.
+   LIGHT is the default: the light palette lives on `:root`, so a page with no
+   theme class renders light with zero flash. The `.dark` class (set on <html> by
+   the theme toggle / no-flash script) overrides the tokens for dark.
+
+   Blue-based brand palette with gold (#C8A230 / #D9B65A) as the single accent.
+   Unlike the previous build, brand + semantic accents are NOT shared — they have
+   distinct light/dark values (blue lightens on navy; gold lightens slightly) so
+   both themes hold WCAG AA contrast. Code tokens stay shared (code is always dark).
 
    The Tailwind color utilities are mapped to these CSS variables in @theme below
    (e.g. bg-card -> var(--card)), so every utility swaps at runtime when the class
@@ -18,31 +22,39 @@
   color-scheme: light;
 
   /* Surfaces */
-  --page: #f8fafc; /* slate-50 — app background */
+  --page: #f7f9fc; /* off-white app background (softer than pure white) */
   --card: #ffffff; /* default card surface */
-  --elevated: #f1f5f9; /* hover / popover / modal surface */
+  --elevated: #eef2f8; /* hover / popover / modal surface */
   --code: #030712; /* code blocks stay dark in both themes (shared) */
 
   /* Borders & dividers */
-  --line: #e5e7eb;
-  --line-strong: #cbd5e1;
+  --line: #e3e8ef;
+  --line-strong: #cbd6e3;
 
   /* Text */
-  --ink: #111827;
-  --ink-secondary: #374151;
-  --ink-tertiary: #6b7280;
-  --ink-disabled: #9ca3af;
+  --ink: #16202e; /* text primary */
+  --ink-secondary: #33425a;
+  --ink-tertiary: #5a6b82; /* text muted — AA on page/card (~5:1) */
+  --ink-disabled: #92a0b3;
   --codeink: #93c5fd; /* code text — light blue (shared) */
 
-  /* Brand & semantic accents (shared across themes) */
-  --brand: #3b82f6;
-  --brand-hover: #2563eb;
-  --accent: #8b5cf6;
-  --accent-hover: #7c3aed;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
+  /* Brand & semantic accents */
+  --brand: #1e4fa3; /* deep professional blue */
+  --brand-hover: #18408a;
+  --accent: #c8a230; /* mustard gold — the single accent (carried from brand decks) */
+  --accent-hover: #b0901f;
+  --success: #1e8e5a; /* positive / up */
+  --warning: #f59e0b; /* unchanged (not part of the new palette) */
+  --danger: #c0392b; /* negative / down */
+  --info: #1e4fa3;
+
+  /* Landing / inverted-panel tokens (deep blue band that stays dark in both
+     themes — used by the public marketing page so its panels survive dark mode). */
+  --band: #1e4fa3; /* hero / feature / CTA / footer band background */
+  --band-ink: #ffffff; /* text on the band */
+  --band-ink-muted: #c9d8f0; /* muted text on the band — AA on --band (~5.5:1) */
+  --accent-soft: #e8d9a0; /* light gold for SMALL gold text on the band (AA-safe) */
+  --on-accent: #122237; /* dark text on gold fills — AA on both golds */
 
   /* Surface overlays (zebra / hover / header tint on data tables) — dark-on-light */
   --overlay-header: rgba(0, 0, 0, 0.03);
@@ -50,33 +62,50 @@
   --overlay-hover: rgba(0, 0, 0, 0.04);
 
   /* Scrollbars */
-  --scrollbar-thumb: #cbd5e1;
-  --scrollbar-thumb-hover: #94a3b8;
+  --scrollbar-thumb: #cbd6e3;
+  --scrollbar-thumb-hover: #93a4bc;
 }
 
 .dark {
   color-scheme: dark;
 
-  --page: #0f172a; /* slate-900 */
-  --card: #111827;
-  --elevated: #1f2937;
+  --page: #0b1a2e; /* navy */
+  --card: #122237;
+  --elevated: #1a2c44;
   /* --code / --codeink inherit (code blocks stay dark in both themes) */
 
-  --line: #1f2937;
-  --line-strong: #374151;
+  --line: #1e3350;
+  --line-strong: #2c4a6e;
 
-  --ink: #f9fafb;
-  --ink-secondary: #d1d5db;
-  --ink-tertiary: #9ca3af;
-  --ink-disabled: #6b7280;
+  --ink: #e6ecf3; /* text primary */
+  --ink-secondary: #c2cfdf;
+  --ink-tertiary: #93a4bc; /* text muted — AA on page/card (~6:1) */
+  --ink-disabled: #5e708a;
+
+  /* Brand & semantic accents — blue lightens for contrast on navy; gold lightens. */
+  --brand: #4d8df0;
+  --brand-hover: #6ba1f2;
+  --accent: #d9b65a;
+  --accent-hover: #e6c674;
+  --success: #3fbf87; /* positive / up */
+  --danger: #e5715f; /* negative / down */
+  --info: #4d8df0;
+
+  /* Landing / inverted-panel tokens — a deep navy-blue band, distinct from the
+     page/card so panels still read as panels in dark mode. */
+  --band: #122b49;
+  --band-ink: #e6ecf3;
+  --band-ink-muted: #9fb2cc; /* AA on --band (~6:1) */
+  --accent-soft: #d9b65a; /* gold reads strongly on the deep dark band (AA) */
+  --on-accent: #122237;
 
   /* Overlays flip to light-on-dark so zebra/hover stay visible on dark surfaces */
   --overlay-header: rgba(255, 255, 255, 0.025);
   --overlay-soft: rgba(255, 255, 255, 0.02);
   --overlay-hover: rgba(255, 255, 255, 0.045);
 
-  --scrollbar-thumb: #374151;
-  --scrollbar-thumb-hover: #4b5563;
+  --scrollbar-thumb: #2c4a6e;
+  --scrollbar-thumb-hover: #3c5a80;
 }
 
 @theme {
@@ -101,10 +130,17 @@
   --color-brand-hover: var(--brand-hover);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-info: var(--info);
+
+  /* Landing inverted-panel band */
+  --color-band: var(--band);
+  --color-band-ink: var(--band-ink);
+  --color-band-ink-muted: var(--band-ink-muted);
 
   /* Radius scale → rounded-card / rounded-button / rounded-input / …
      Additive; does not override Tailwind's default rounded-* utilities. */

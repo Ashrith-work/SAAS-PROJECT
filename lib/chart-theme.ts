@@ -32,13 +32,15 @@ export const CHART_TOOLTIP = {
   boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
 } as const;
 
-// Brand & semantic series colors (mirror the --color-* accent tokens).
+// Brand & semantic series colors (mirror the --color-* accent tokens). Recharts
+// needs one literal per series (it can't read the per-theme CSS vars), so these
+// use values that stay legible on both the light and dark card surfaces.
 export const SERIES = {
-  brand: "#3b82f6",
-  accent: "#8b5cf6",
-  success: "#10b981",
+  brand: "#4d8df0", // --brand (dark value: reads on white and on navy cards)
+  accent: "#c8a230", // --accent (gold — the single accent)
+  success: "#1e8e5a", // --success (positive / up)
   warning: "#f59e0b",
-  danger: "#ef4444",
+  danger: "#c0392b", // --danger (negative / down)
   pink: "#ec4899",
   teal: "#14b8a6",
   indigo: "#6366f1",

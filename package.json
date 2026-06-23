@@ -39,6 +39,7 @@
     "@prisma/client": "^7.8.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "lucide-react": "^1.21.0",
     "next": "16.2.6",
     "pg": "^8.21.0",
     "razorpay": "^2.9.6",
