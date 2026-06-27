@@ -15,6 +15,7 @@ import {
 import { formatCurrency, formatMultiple, formatNumber } from "@/lib/format";
 import { SOURCE_TYPE_LABEL, type SourceType } from "@/lib/source-classifier";
 import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
+import { GlowCard } from "@/components/ui/spotlight-card";
 import type { OwnerMetrics } from "@/lib/owner-metrics";
 
 // Performance Overview (Tier A) — 10 owner-overview items added to the hotel
@@ -69,11 +70,11 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative rounded-card border border-line bg-card p-4">
+    <GlowCard className="relative rounded-card border border-line bg-card p-4">
       <p className="pr-6 text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
       <InfoIcon text={info} />
       {children}
-    </div>
+    </GlowCard>
   );
 }
 

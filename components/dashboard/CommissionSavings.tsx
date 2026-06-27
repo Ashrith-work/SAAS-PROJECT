@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { SHARE_TOKEN_HEADER } from "@/lib/share-token";
+import { GlowCard } from "@/components/ui/spotlight-card";
 
 // Commission Saved vs OTAs (Part 5) — per-hotel. Shows the period's direct-booking
 // savings (revenue × the hotel's OTA rate), a vs-previous delta, and a 12-month
@@ -90,7 +91,7 @@ export function CommissionSavings({
       </div>
 
       {/* KPI */}
-      <div className="rounded-card border border-line p-4">
+      <GlowCard className="rounded-card border border-line p-4">
         {data == null ? (
           <p className="text-sm text-ink-tertiary">{loading ? "Loading…" : "Could not load savings."}</p>
         ) : data.otaRateUsed === 0 ? (
@@ -112,7 +113,7 @@ export function CommissionSavings({
             )}
           </>
         )}
-      </div>
+      </GlowCard>
 
       {/* Trend */}
       {data && trendHasData && (

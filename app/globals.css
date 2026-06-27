@@ -64,6 +64,13 @@
   /* Scrollbars */
   --scrollbar-thumb: #cbd6e3;
   --scrollbar-thumb-hover: #93a4bc;
+
+  /* KPI spotlight glow — deeper, muted emerald (#167C4A); brighter emerald looks
+     cheap on white, so the color is deeper and the alphas are lower than dark. */
+  --kpi-glow-rgb: 22 124 74;
+  --kpi-glow-spot-a: 0.1;
+  --kpi-glow-ring-a: 0.28;
+  --kpi-glow-halo-a: 0.14;
 }
 
 .dark {
@@ -106,6 +113,12 @@
 
   --scrollbar-thumb: #2c4a6e;
   --scrollbar-thumb-hover: #3c5a80;
+
+  /* KPI spotlight glow — brand emerald (#2ECC71) on the dark surface. */
+  --kpi-glow-rgb: 46 204 113;
+  --kpi-glow-spot-a: 0.15;
+  --kpi-glow-ring-a: 0.34;
+  --kpi-glow-halo-a: 0.22;
 }
 
 @theme {
@@ -264,6 +277,53 @@ textarea:focus-visible,
 }
 .recharts-responsive-container {
   animation: chart-in 0.35s ease-out both;
+}
+
+/* ── KPI spotlight glow ───────────────────────────────────────────────────────
+   Hover-only emerald spotlight for dashboard KPI tiles (see GlowCard in
+   components/ui/spotlight-card.tsx). Fixed brand hue (no cursor hue-spread); only
+   the hovered card paints (opacity 0 at rest, eased in on hover). Movement is
+   fully removed under reduced-motion, leaving a static, subtle border glow. The
+   color + per-theme alphas come from the --kpi-glow-* tokens above. */
+.kpi-glow {
+  position: relative;
+  isolation: isolate;
+}
+.kpi-glow__layer {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.kpi-glow__spot {
+  background: radial-gradient(
+    240px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    rgb(var(--kpi-glow-rgb) / var(--kpi-glow-spot-a)),
+    transparent 60%
+  );
+}
+.kpi-glow__ring {
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--kpi-glow-rgb) / var(--kpi-glow-ring-a)),
+    0 0 26px -8px rgb(var(--kpi-glow-rgb) / var(--kpi-glow-halo-a));
+}
+.kpi-glow[data-hover="true"] .kpi-glow__layer {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No moving spotlight; keep a static, always-on, subtle emerald border glow. */
+  .kpi-glow__spot {
+    display: none;
+  }
+  .kpi-glow__ring {
+    opacity: 1;
+    transition: none;
+    box-shadow: inset 0 0 0 1px rgb(var(--kpi-glow-rgb) / 0.18);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

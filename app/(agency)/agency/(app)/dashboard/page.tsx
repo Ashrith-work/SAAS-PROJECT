@@ -10,6 +10,7 @@ import { RevenueByHotelChart } from "@/components/dashboard/RevenueByHotelChart"
 import { TrafficSourceChart } from "@/components/dashboard/TrafficSourceChart";
 import { AgencyRevenueRollup } from "@/components/dashboard/AgencyRevenueRollup";
 import { AgencySavings } from "@/components/dashboard/AgencySavings";
+import { GlowCard } from "@/components/ui/spotlight-card";
 import { isPixelMode } from "@/lib/tracking-mode";
 import {
   formatCurrency,
@@ -69,7 +70,7 @@ function KpiCard({
     ) : null;
 
   return (
-    <div className="rounded-card border border-line bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card-hover">
+    <GlowCard className="rounded-card border border-line bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card-hover">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`h-2 w-2 shrink-0 rounded-full ${a.bar}`} aria-hidden />
@@ -87,7 +88,7 @@ function KpiCard({
       ) : delta != null && Number.isFinite(delta) ? (
         <p className="mt-1 text-[11px] text-ink-disabled">vs prior 30 days</p>
       ) : null}
-    </div>
+    </GlowCard>
   );
 }
 
