@@ -17,9 +17,6 @@ import {
   ArrowRight,
   Play,
   Mail,
-  Check,
-  Sparkles,
-  IndianRupee,
   MousePointerClick,
   Crosshair,
 } from "lucide-react";
@@ -341,73 +338,6 @@ export default async function Home({
         </div>
       </section>
 
-      {/* ── Pricing ─────────────────────────────────────────────────────────── */}
-      <section id="pricing" className="scroll-mt-20">
-        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
-          <div className="mx-auto max-w-2xl text-center">
-            <Eyebrow>Pricing</Eyebrow>
-            <h2 style={serif} className="mt-4 text-3xl font-bold tracking-tight sm:text-[2.6rem] sm:leading-[1.12]">
-              Simple plans that scale with your hotels.
-            </h2>
-            <p className="mt-5 text-base leading-relaxed text-[var(--lp-ink-muted)]">
-              Monthly pricing in Indian rupees. No setup fees — cancel anytime.
-            </p>
-          </div>
-
-          <div className="mt-14 grid items-stretch gap-6 lg:grid-cols-3">
-            {PLANS.map((plan) => (
-              <div
-                key={plan.name}
-                className={`relative flex flex-col rounded-2xl border p-7 sm:p-8 ${
-                  plan.featured
-                    ? "border-[var(--lp-emerald)] bg-[var(--lp-card)] shadow-[0_30px_90px_-40px_var(--lp-glow-strong)] lg:-mt-4 lg:mb-4"
-                    : "border-[var(--lp-border)] bg-[var(--lp-card)]"
-                }`}
-              >
-                {plan.featured && (
-                  <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--lp-gold)] px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[var(--lp-gold-ink)] shadow-sm">
-                    <Sparkles aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.25} />
-                    Recommended
-                  </span>
-                )}
-                <h3 style={serif} className="text-xl font-bold">
-                  {plan.name}
-                </h3>
-                <p className="mt-1.5 min-h-10 text-sm text-[var(--lp-ink-muted)]">{plan.tagline}</p>
-
-                <div className="mt-5 flex items-baseline gap-1">
-                  <IndianRupee aria-hidden="true" className="h-6 w-6 self-center text-[var(--lp-ink)]" strokeWidth={2.25} />
-                  <span style={serif} className="text-4xl font-bold tracking-tight">
-                    {plan.price}
-                  </span>
-                  <span className="text-sm text-[var(--lp-ink-muted)]">/mo</span>
-                </div>
-
-                <a
-                  href="#demo"
-                  className={`mt-6 ${plan.featured ? btnSolid : btnOutline} w-full justify-center`}
-                >
-                  {plan.featured ? "Book a Demo" : "Get started"}
-                </a>
-
-                <ul className="mt-7 space-y-3 border-t border-[var(--lp-border)] pt-7">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm">
-                      <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--lp-emerald)]" strokeWidth={2.5} />
-                      <span className="text-[var(--lp-ink-muted)]">{f}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-          <p className="mt-8 text-center text-xs text-[var(--lp-ink-faint)]">
-            Prices exclusive of applicable GST. Plan limits shown are illustrative —
-            final inclusions confirmed during your demo.
-          </p>
-        </div>
-      </section>
-
       {/* ── Final CTA + contact ─────────────────────────────────────────────── */}
       <section id="demo" className="scroll-mt-20 border-t border-[var(--lp-border)] bg-[var(--lp-panel)]">
         <div className="relative mx-auto max-w-3xl overflow-hidden px-5 py-24 text-center sm:px-8 sm:py-32">
@@ -535,7 +465,6 @@ const cardHover =
 const NAV_LINKS = [
   { label: "Product", href: "#how" },
   { label: "Features", href: "#features" },
-  { label: "Pricing", href: "#pricing" },
 ];
 
 const HIGHLIGHTS = [
@@ -622,49 +551,6 @@ const STEPS = [
     icon: LayoutDashboard,
     title: "See unified attribution",
     body: "Watch content → visit → booking → revenue come together in one dashboard, per hotel, with ad ROI and OTA savings.",
-  },
-];
-
-const PLANS = [
-  {
-    name: "Starter",
-    tagline: "For a single property getting started with attribution.",
-    price: "2,499",
-    featured: false,
-    features: [
-      "1 hotel property",
-      "Website tracking snippet",
-      "Core attribution dashboard",
-      "Meta Ads, Instagram & GA4 connections",
-      "Email support",
-    ],
-  },
-  {
-    name: "Growth",
-    tagline: "For growing hotels and small agencies scaling direct revenue.",
-    price: "6,499",
-    featured: true,
-    features: [
-      "Up to 5 hotel properties",
-      "Everything in Starter",
-      "Multi-touch attribution models",
-      "Campaign ROAS & funnel reports",
-      "OTA commission savings tracking",
-      "Priority support",
-    ],
-  },
-  {
-    name: "Premium",
-    tagline: "For agencies managing a portfolio of hotel clients.",
-    price: "12,999",
-    featured: false,
-    features: [
-      "Unlimited hotel properties",
-      "Everything in Growth",
-      "View-only hotel client dashboards & share links",
-      "PDF & Excel data exports",
-      "Priority onboarding & support",
-    ],
   },
 ];
 
