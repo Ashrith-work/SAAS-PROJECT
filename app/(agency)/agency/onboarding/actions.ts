@@ -19,6 +19,13 @@ export async function createAgencyForCurrentUser(formData: FormData) {
   if (name.length > 120) return { error: "Agency name must be 120 characters or fewer." };
 
   const user = await currentUser();
+  // L1: a hotel-owner (hotel_client) must not self-promote into an agency_admin
+  // by calling onboarding directly — they're a view-only login for their own
+  // hotel. Block before any agency is created or the role is overwritten below.
+  // (Role-less new signups and existing agency_admins re-running this pass.)
+  if (user?.publicMetadata?.role === "hotel_client") {
+    return { error: "This account is a hotel login and can't create an agency." };
+  }
   const email =
     user?.primaryEmailAddress?.emailAddress ??
     user?.emailAddresses?.[0]?.emailAddress ??

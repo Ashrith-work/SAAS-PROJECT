@@ -40,27 +40,53 @@ export async function POST(request: Request, { params }: { params: Promise<{ hot
   const postedAt = Number.isFinite(postedAtRaw) ? new Date(postedAtRaw) : new Date();
 
   try {
-    const post = await prisma.influencerInstagramPost.upsert({
+    // Tenant-safe write. instagramPostId is GLOBALLY @unique, so a plain
+    // upsert keyed on it could match — and its `update` branch overwrite — a
+    // DIFFERENT agency's row. Look the post up first; if it belongs to another
+    // agency, refuse rather than clobber it. Otherwise update our own row by
+    // primary id (agencyScoped also filters agencyId, so never cross-tenant) or
+    // create a fresh one.
+    const existing = await prisma.influencerInstagramPost.findUnique({
       where: { instagramPostId: parsed.shortcode },
-      create: {
-        agencyId: member.agencyId,
-        hotelClientId: hotelId,
-        influencerId,
-        instagramPostId: parsed.shortcode,
-        instagramUserId: influencer.instagramUserId ?? "",
-        postedAt,
-        mediaType: parsed.mediaType,
-        permalink: parsed.permalink,
-        captionText: typeof body.caption === "string" ? body.caption : null,
-        reach: null, // not available via API for others' posts
-        taggedHotelAccount: false,
-        mentionedHotelInCaption: true, // the agency is asserting this post mentions the hotel
-      },
-      update: { influencerId, mediaType: parsed.mediaType, permalink: parsed.permalink, syncedAt: new Date() },
-      select: { id: true },
+      select: { id: true, agencyId: true },
     });
+    if (existing && existing.agencyId !== member.agencyId) {
+      return Response.json(
+        { error: "That post is already tracked by another account." },
+        { status: 409 },
+      );
+    }
+
+    let postId: string;
+    if (existing) {
+      const updated = await agencyScoped(prisma.influencerInstagramPost).update({
+        where: { id: existing.id },
+        data: { influencerId, mediaType: parsed.mediaType, permalink: parsed.permalink, syncedAt: new Date() },
+        select: { id: true },
+      });
+      postId = updated.id;
+    } else {
+      const created = await agencyScoped(prisma.influencerInstagramPost).create({
+        data: {
+          agencyId: member.agencyId,
+          hotelClientId: hotelId,
+          influencerId,
+          instagramPostId: parsed.shortcode,
+          instagramUserId: influencer.instagramUserId ?? "",
+          postedAt,
+          mediaType: parsed.mediaType,
+          permalink: parsed.permalink,
+          captionText: typeof body.caption === "string" ? body.caption : null,
+          reach: null, // not available via API for others' posts
+          taggedHotelAccount: false,
+          mentionedHotelInCaption: true, // the agency is asserting this post mentions the hotel
+        },
+        select: { id: true },
+      });
+      postId = created.id;
+    }
     await prisma.influencer.updateMany({ where: { id: influencerId, agencyId: member.agencyId }, data: { lastDetectedAt: new Date() } });
-    return Response.json({ ok: true, id: post.id });
+    return Response.json({ ok: true, id: postId });
   } catch {
     return Response.json({ error: "Could not save the post." }, { status: 503 });
   }

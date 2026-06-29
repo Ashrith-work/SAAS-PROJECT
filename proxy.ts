@@ -34,6 +34,10 @@ const isPublicRoute = createRouteMatcher([
   // The scheduled Meta sync is called by Vercel Cron (no Clerk session); it
   // enforces its own CRON_SECRET bearer-token check.
   "/api/meta/sync(.*)",
+  // Daily Meta OAuth token-refresh cron (Vercel Cron, no Clerk session); gated
+  // by its own CRON_SECRET bearer check. Without this entry Clerk redirects the
+  // session-less cron to sign-in and the refresh never runs.
+  "/api/meta/refresh-tokens(.*)",
   // Same pattern: cron-style trigger, gated by CRON_SECRET inside the route.
   "/api/alerts/run(.*)",
   "/api/instagram/sync(.*)",

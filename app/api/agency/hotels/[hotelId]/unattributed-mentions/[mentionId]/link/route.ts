@@ -39,30 +39,52 @@ export async function POST(
   if (!mention) return Response.json({ error: "Mention not found" }, { status: 404 });
   if (!influencer) return Response.json({ error: "Choose an influencer that belongs to your agency." }, { status: 404 });
 
+  // Tenant-safe write (see influencer-posts route). instagramPostId is GLOBALLY
+  // @unique, so the upsert below could otherwise match and overwrite another
+  // agency's row. Resolve it first; refuse if a different agency owns it. Done
+  // OUTSIDE the tx so we can return a clean 409 (a throw inside the tx would
+  // surface as the generic 503 below).
+  const existingPost = await prisma.influencerInstagramPost.findUnique({
+    where: { instagramPostId: mention.instagramPostId },
+    select: { id: true, agencyId: true },
+  });
+  if (existingPost && existingPost.agencyId !== member.agencyId) {
+    return Response.json(
+      { error: "That post is already tracked by another account." },
+      { status: 409 },
+    );
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.influencerInstagramPost.upsert({
-        where: { instagramPostId: mention.instagramPostId },
-        create: {
-          agencyId: member.agencyId,
-          hotelClientId: hotelId,
-          influencerId,
-          instagramPostId: mention.instagramPostId,
-          instagramUserId: mention.posterInstagramUserId ?? influencer.instagramUserId ?? "",
-          postedAt: mention.postedAt,
-          mediaType: mention.mediaType,
-          permalink: mention.permalink,
-          captionText: mention.captionText,
-          reach: mention.reach,
-          likes: mention.likes,
-          comments: mention.comments,
-          saves: mention.saves,
-          shares: mention.shares,
-          taggedHotelAccount: mention.taggedHotelAccount,
-          mentionedHotelInCaption: mention.mentionedHotelInCaption,
-        },
-        update: { influencerId, syncedAt: new Date() },
-      });
+      if (existingPost) {
+        // Our own row (agencyId verified above) — update by primary id only.
+        await tx.influencerInstagramPost.update({
+          where: { id: existingPost.id },
+          data: { influencerId, syncedAt: new Date() },
+        });
+      } else {
+        await tx.influencerInstagramPost.create({
+          data: {
+            agencyId: member.agencyId,
+            hotelClientId: hotelId,
+            influencerId,
+            instagramPostId: mention.instagramPostId,
+            instagramUserId: mention.posterInstagramUserId ?? influencer.instagramUserId ?? "",
+            postedAt: mention.postedAt,
+            mediaType: mention.mediaType,
+            permalink: mention.permalink,
+            captionText: mention.captionText,
+            reach: mention.reach,
+            likes: mention.likes,
+            comments: mention.comments,
+            saves: mention.saves,
+            shares: mention.shares,
+            taggedHotelAccount: mention.taggedHotelAccount,
+            mentionedHotelInCaption: mention.mentionedHotelInCaption,
+          },
+        });
+      }
       // Learn the poster id for future auto-matching; stamp last-detected.
       await tx.influencer.update({
         where: { id: influencerId },
