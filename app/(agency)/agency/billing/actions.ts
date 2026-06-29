@@ -32,6 +32,7 @@ export async function createSubscription(
 ): Promise<Result<{ subscriptionId: string; keyId: string; planKey: PlanKey }>> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
   if (!isPlanKey(rawPlan)) return { ok: false, error: "Unknown plan." };
   const planKey = rawPlan;
 
@@ -73,6 +74,7 @@ export async function verifySubscriptionPayment(args: {
 }): Promise<Result> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
 
   // The subscription must be the one we created for THIS agency.
   if (member.agency.razorpaySubscriptionId !== args.razorpay_subscription_id) {
@@ -106,6 +108,7 @@ export async function verifySubscriptionPayment(args: {
 export async function changePlan(rawPlan: string): Promise<Result> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
   if (!isPlanKey(rawPlan)) return { ok: false, error: "Unknown plan." };
   const subId = member.agency.razorpaySubscriptionId;
   if (!subId) return { ok: false, error: "No active subscription to change." };
@@ -129,6 +132,7 @@ export async function changePlan(rawPlan: string): Promise<Result> {
 export async function pauseSubscription(): Promise<Result> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
   const subId = member.agency.razorpaySubscriptionId;
   if (!subId) return { ok: false, error: "No active subscription." };
 
@@ -149,6 +153,7 @@ export async function pauseSubscription(): Promise<Result> {
 export async function resumeSubscription(): Promise<Result> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
   const subId = member.agency.razorpaySubscriptionId;
   if (!subId) return { ok: false, error: "No active subscription." };
 
@@ -173,6 +178,7 @@ export async function resumeSubscription(): Promise<Result> {
 export async function cancelSubscription(): Promise<Result> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage billing." };
   const subId = member.agency.razorpaySubscriptionId;
   if (!subId) return { ok: false, error: "No active subscription." };
 

@@ -49,6 +49,9 @@ export async function saveMetaToken(
   if (!member) {
     return { error: "Your session has expired — please sign in again.", ok: false };
   }
+  if (member.role !== "admin") {
+    return { error: "Only an agency admin can connect integrations.", ok: false };
+  }
 
   const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
   if (!hotelId) return { error: "Missing hotel.", ok: false };
@@ -146,6 +149,7 @@ export async function saveMetaToken(
 export async function disconnectMetaToken(formData: FormData): Promise<void> {
   const member = await getCurrentMember();
   if (!member) return;
+  if (member.role !== "admin") return; // admin-only: disconnecting an integration
 
   const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
   if (!hotelId) return;
@@ -207,6 +211,7 @@ export async function saveNotificationSettings(
 ): Promise<NotificationState> {
   const member = await getCurrentMember();
   if (!member) return { error: "Your session has expired — please sign in again.", ok: false };
+  if (member.role !== "admin") return { error: "Only an agency admin can change notification settings.", ok: false };
 
   const alertEmailAddress = ((formData.get("alertEmailAddress") as string | null) ?? "").trim() || null;
   const emailAlertsEnabled = formData.get("emailAlertsEnabled") === "on";
@@ -239,6 +244,9 @@ export async function saveAgencyContact(
   if (!member) {
     return { ok: false, formError: "Your session has expired — please sign in again." };
   }
+  if (member.role !== "admin") {
+    return { ok: false, formError: "Only an agency admin can edit agency contact info." };
+  }
 
   const result = validateAgencyContact({
     mobile: String(formData.get("mobile") ?? ""),
@@ -262,6 +270,7 @@ export async function saveAgencyContact(
 export async function regenerateAgencyInviteCode(): Promise<{ ok: boolean; code?: string; error?: string }> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage the invite code." };
   const code = await regenerateInviteCode(member.agencyId);
   revalidatePath("/agency/settings");
   return { ok: true, code };
@@ -273,6 +282,7 @@ export async function setAgencyInviteStatus(
 ): Promise<{ ok: boolean; status?: string; error?: string }> {
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "Your session has expired — please sign in again." };
+  if (member.role !== "admin") return { ok: false, error: "Only an agency admin can manage the invite code." };
   await setInviteCodeStatus(member.agencyId, status);
   revalidatePath("/agency/settings");
   return { ok: true, status };
@@ -291,6 +301,9 @@ export async function mapAdAccount(
   const member = await getCurrentMember();
   if (!member) {
     return { error: "Your session has expired — please sign in again.", ok: false };
+  }
+  if (member.role !== "admin") {
+    return { error: "Only an agency admin can map ad accounts.", ok: false };
   }
 
   const hotelId = ((formData.get("hotelId") as string | null) ?? "").trim();
