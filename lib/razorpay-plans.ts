@@ -11,6 +11,15 @@
 // This module is pure data + helpers (no SDK import) so it can be imported from
 // any server component. Limits are enforced server-side (hotel/member creation)
 // and surfaced on the billing page. `Infinity` means unlimited.
+//
+// FREE BETA (see lib/billing-config.ts): while BILLING_ENABLED is false, the
+// access/feature gates below (hasDashboardAccess, hotelLimit, memberLimit,
+// planHasGa4) unconditionally grant full, unlimited, highest-tier access. The
+// plan DATA (PLANS, prices, etc.) is left untouched so billing snaps back the
+// instant BILLING_ENABLED is flipped to true. isActiveStatus stays a pure
+// reflection of the Razorpay status so admin analytics remain honest.
+
+import { BILLING_ENABLED } from "./billing-config";
 
 export type PlanKey = "starter" | "growth" | "agency";
 
@@ -83,13 +92,15 @@ export function nextPlan(planKey: string): Plan | null {
   return PLANS[PLAN_ORDER[idx + 1]];
 }
 
-/** Hotel cap for a plan key (Infinity = unlimited). */
+/** Hotel cap for a plan key (Infinity = unlimited). Unlimited during the free beta. */
 export function hotelLimit(planKey: string): number {
+  if (!BILLING_ENABLED) return Infinity;
   return getPlan(planKey).limits.hotels;
 }
 
-/** Team-member cap for a plan key (Infinity = unlimited). */
+/** Team-member cap for a plan key (Infinity = unlimited). Unlimited during the free beta. */
 export function memberLimit(planKey: string): number {
+  if (!BILLING_ENABLED) return Infinity;
   return getPlan(planKey).limits.members;
 }
 
@@ -115,10 +126,26 @@ export function isActiveStatus(status: string | null | undefined): boolean {
 }
 
 /**
+ * Whether the signed-in agency may reach the gated dashboard. This is the single
+ * paywall check used by the agency app layout.
+ *
+ * During the free beta (BILLING_ENABLED=false) every authenticated agency has
+ * full access regardless of its Razorpay status. Flip BILLING_ENABLED=true to
+ * restore the paywall, which then requires a live `active` subscription. Kept
+ * separate from isActiveStatus so admin billing analytics stay truthful.
+ */
+export function hasDashboardAccess(status: string | null | undefined): boolean {
+  if (!BILLING_ENABLED) return true;
+  return isActiveStatus(status);
+}
+
+/**
  * Whether a plan unlocks the Google Analytics 4 integration. GA4 is a paid
  * upgrade — the Starter tier is gated and shown an "Upgrade to Growth" overlay
- * on the integrations page. Growth and Agency both include it.
+ * on the integrations page. Growth and Agency both include it. Unlocked for
+ * everyone during the free beta.
  */
 export function planHasGa4(planKey: string | null | undefined): boolean {
+  if (!BILLING_ENABLED) return true;
   return planKey === "growth" || planKey === "agency";
 }

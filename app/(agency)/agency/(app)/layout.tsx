@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { UserButton } from "@clerk/nextjs";
 import { AgencySidebar, AgencyMobileNav } from "@/components/nav/AgencySidebar";
 import { getCurrentMember } from "@/lib/auth";
-import { isActiveStatus } from "@/lib/plans";
+import { hasDashboardAccess } from "@/lib/plans";
+import { BILLING_ENABLED } from "@/lib/billing-config";
 import { mustCompleteContactInfo } from "@/lib/agency-contact";
 
 // Shell for the signed-in agency app (dashboard, hotel clients, …). Onboarding
@@ -34,7 +35,12 @@ export default async function AgencyAppLayout({
   // inactive, the agency can still reach Billing (it lives outside this layout
   // group) and Settings, so they can pay or manage their account — everything
   // else bounces to Billing. The pathname is provided by proxy.ts.
-  if (!isActiveStatus(member.agency.subscriptionStatus)) {
+  //
+  // During the free beta (BILLING_ENABLED=false) hasDashboardAccess() returns
+  // true for everyone, so this redirect never fires and signed-in users go
+  // straight to the dashboard. Flipping BILLING_ENABLED back on restores the
+  // original subscription gate unchanged.
+  if (!hasDashboardAccess(member.agency.subscriptionStatus)) {
     const pathname = (await headers()).get("x-pathname") ?? "";
     if (!pathname.startsWith("/agency/settings")) {
       redirect("/agency/billing?inactive=1");
@@ -43,7 +49,7 @@ export default async function AgencyAppLayout({
 
   return (
     <div className="flex min-h-full">
-      <AgencySidebar />
+      <AgencySidebar billingEnabled={BILLING_ENABLED} />
       <div className="flex min-h-full min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-page/80 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="min-w-0">
@@ -56,7 +62,7 @@ export default async function AgencyAppLayout({
             <UserButton />
           </div>
         </header>
-        <AgencyMobileNav />
+        <AgencyMobileNav billingEnabled={BILLING_ENABLED} />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
           {children}
         </main>

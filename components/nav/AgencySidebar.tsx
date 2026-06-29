@@ -60,9 +60,18 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// Hide the Billing item during the free beta (BILLING_ENABLED=false). The flag
+// is read on the server and passed in, since this is a client component and
+// BILLING_ENABLED isn't exposed to the browser bundle. When billing is on, the
+// full nav (including Billing) is shown.
+function navItems(billingEnabled: boolean) {
+  return billingEnabled ? NAV : NAV.filter((item) => item.href !== "/agency/billing");
+}
+
 // Desktop: fixed left sidebar.
-export function AgencySidebar() {
+export function AgencySidebar({ billingEnabled }: { billingEnabled: boolean }) {
   const pathname = usePathname();
+  const items = navItems(billingEnabled);
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-card lg:flex">
       <div className="flex h-16 items-center px-5">
@@ -74,7 +83,7 @@ export function AgencySidebar() {
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
@@ -98,11 +107,12 @@ export function AgencySidebar() {
 }
 
 // Mobile: horizontal scrollable nav under the top bar.
-export function AgencyMobileNav() {
+export function AgencyMobileNav({ billingEnabled }: { billingEnabled: boolean }) {
   const pathname = usePathname();
+  const items = navItems(billingEnabled);
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-line bg-card px-3 py-2 lg:hidden">
-      {NAV.map((item) => {
+      {items.map((item) => {
         const active = isActive(pathname, item.href);
         return (
           <Link

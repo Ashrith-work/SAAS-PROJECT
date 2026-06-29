@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { getCurrentMember } from "@/lib/auth";
 import { PLAN_ORDER, PLANS, getPlan, isActiveStatus, formatInr } from "@/lib/razorpay-plans";
+import { BILLING_ENABLED } from "@/lib/billing-config";
 import { listInvoices, type InvoiceView } from "@/lib/razorpay-invoices";
 import { BillingPanel } from "./BillingPanel";
 
@@ -104,9 +105,58 @@ function InvoiceHistory({ invoices }: { invoices: InvoiceView[] }) {
   );
 }
 
+// Shown while BILLING_ENABLED is false (free beta). Replaces the whole paywall —
+// no plan cards, no Razorpay checkout — with a simple "free during beta" notice.
+// The page itself stays reachable from the sidebar so the nav doesn't 404; flip
+// BILLING_ENABLED=true to restore the real billing UI below.
+function FreeBetaBilling({ agencyName }: { agencyName: string }) {
+  return (
+    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
+          <p className="text-sm text-ink-tertiary">{agencyName}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/agency/dashboard" className="text-sm text-ink-tertiary hover:underline">
+            ← Dashboard
+          </Link>
+          <UserButton />
+        </div>
+      </header>
+
+      <div className="rounded-xl border-l-4 border-success bg-success/10 p-6">
+        <h2 className="text-lg font-medium text-ink">Free during beta 🎉</h2>
+        <p className="mt-1 text-sm text-ink-secondary">
+          HotelTrack is completely free while we&apos;re in beta. You have full access
+          to every feature — unlimited hotel clients, team members, GA4 analytics and
+          reports — with nothing to pay and no plan to choose.
+        </p>
+        <p className="mt-3 text-sm text-ink-tertiary">
+          We&apos;ll let you know well in advance before paid plans begin. Until then,
+          enjoy everything on the house.
+        </p>
+        <Link
+          href="/agency/dashboard"
+          className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
+        >
+          Go to dashboard →
+        </Link>
+      </div>
+    </main>
+  );
+}
+
 export default async function BillingPage({ searchParams }: { searchParams: Promise<SP> }) {
   const member = await getCurrentMember();
   if (!member) redirect("/agency/onboarding");
+
+  // Free beta: skip the entire paywall / Razorpay checkout and show the beta
+  // notice instead. All the billing code below stays intact for when billing
+  // is re-enabled (BILLING_ENABLED=true).
+  if (!BILLING_ENABLED) {
+    return <FreeBetaBilling agencyName={member.agency.name} />;
+  }
 
   const sp = await searchParams;
   const status = member.agency.subscriptionStatus;
