@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIpFromHeaders } from "@/lib/ratelimit";
 
 // Public endpoint hit cross-origin by the tracking snippet (t.js) on hotel
 // websites. Returns ONLY the conversion config for the one hotel identified by
@@ -19,6 +20,16 @@ export async function GET(request: Request) {
   const siteId = new URL(request.url).searchParams.get("id");
   if (!siteId) {
     return Response.json({ error: "Missing id" }, { status: 400, headers: CORS });
+  }
+
+  // Cross-instance flood guard (per site+IP). Fails OPEN on a store outage so the
+  // snippet keeps working; CORS headers stay on the 429 for the cross-origin call.
+  const rl = await rateLimit("trackConfig", `${siteId}:${clientIpFromHeaders(request.headers)}`);
+  if (!rl.ok) {
+    return Response.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { ...CORS, "Retry-After": String(rl.retryAfterSec) } },
+    );
   }
 
   let hotel;

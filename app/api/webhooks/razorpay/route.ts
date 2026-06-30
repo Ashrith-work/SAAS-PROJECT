@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { rateLimit, tooManyRequests, clientIpFromHeaders } from "@/lib/ratelimit";
 import { verifyWebhookSignature } from "@/lib/razorpay";
 import { planForPlanId, isPlanKey, getPlan, type PlanKey } from "@/lib/razorpay-plans";
 import {
@@ -50,6 +51,11 @@ export async function POST(request: Request) {
   if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
     return Response.json({ error: "Webhook not configured" }, { status: 500 });
   }
+
+  // Defense-in-depth flood guard (the HMAC signature below is the real auth).
+  // Fails OPEN so a store outage never drops a genuine billing webhook.
+  const rl = await rateLimit("webhook", clientIpFromHeaders(request.headers));
+  if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
   const body = await request.text();
   const signature = request.headers.get("x-razorpay-signature");

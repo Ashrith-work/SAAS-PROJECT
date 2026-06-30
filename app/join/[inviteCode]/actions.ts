@@ -1,7 +1,9 @@
 "use server";
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIpFromHeaders } from "@/lib/ratelimit";
 import { agencyScopedFor } from "@/lib/tenant";
 import { sendEmail } from "@/lib/email";
 import { newHotelJoinedEmail, hotelWelcomeEmail } from "@/lib/hotel-invite";
@@ -39,6 +41,13 @@ export type HotelSignupResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string>; existingEmail?: boolean };
 
 export async function completeHotelSignup(input: HotelSignupInput): Promise<HotelSignupResult> {
+  // Throttle signups per IP (invite-code probing + account-creation spam). Fails
+  // CLOSED so a store outage can't open the floodgates.
+  const rl = await rateLimit("joinSignup", clientIpFromHeaders(await headers()));
+  if (!rl.ok) {
+    return { ok: false, error: "Too many attempts. Please wait a minute and try again." };
+  }
+
   const { userId: sessionUserId } = await auth();
 
   // Resolve the inviting agency; reject a disabled/regenerated/suspended code.

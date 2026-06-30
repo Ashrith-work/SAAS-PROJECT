@@ -1,8 +1,9 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIpFromHeaders } from "@/lib/ratelimit";
 import {
   verifySharePassword,
   signUnlock,
@@ -23,6 +24,10 @@ export async function unlockShare(
   const token = ((formData.get("token") as string | null) ?? "").trim();
   const password = (formData.get("password") as string | null) ?? "";
   if (!token) return { error: "This link is invalid." };
+  // Anti-brute-force: cap password attempts per (token + IP). Fails CLOSED so a
+  // store outage can't open the gate to guessing.
+  const rl = await rateLimit("sharePassword", `${token}:${clientIpFromHeaders(await headers())}`);
+  if (!rl.ok) return { error: "Too many attempts. Please wait a minute and try again." };
   // Defensive cap so a hostile request can't force expensive hash work.
   if (password.length > 1024) return { error: "Password is too long." };
 

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { agencyScopedFor } from "@/lib/tenant-scope";
 import { clientIpFrom, hashIp } from "@/lib/hotel-share";
+import { rateLimit } from "@/lib/ratelimit";
 import { HotelDashboardBody } from "@/components/dashboard/HotelDashboardBody";
 import { ShareLinkWarningBanner } from "@/components/dashboard/ShareLinkWarningBanner";
 
@@ -40,6 +41,12 @@ export default async function PublicHotelDashboard({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { shareToken } = await params;
+
+  // Per-IP throttle before the token lookup — blunts scraping/enumeration of the
+  // token space. Fails CLOSED, surfaced as a neutral 404 (consistent with how
+  // this page hides every other access failure).
+  const throttle = await rateLimit("hotelOwner", clientIpFrom(await headers()) ?? "anon");
+  if (!throttle.ok) notFound();
 
   // The token IS the credential — look the hotel up by it directly (NOT scoped to
   // a session). We deliberately fetch only this one hotel; no other hotel is ever

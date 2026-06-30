@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIpFromHeaders } from "@/lib/ratelimit";
 import { resolveRange } from "@/lib/attribution";
 import { loadHotelReport } from "@/lib/report-data";
 import { unlockCookieName, verifyUnlock } from "@/lib/share";
@@ -38,6 +39,18 @@ export default async function SharePage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { uuid } = await params;
+
+  // Per-IP throttle BEFORE any DB work, to blunt share-token enumeration. Fails
+  // CLOSED (blocks on a store outage) — the safe choice for an unguessable link.
+  const rl = await rateLimit("sharePage", clientIpFromHeaders(await headers()));
+  if (!rl.ok) {
+    return (
+      <ShareMessage
+        title="Too many requests"
+        body="Please wait a moment and try again."
+      />
+    );
+  }
 
   const link = await prisma.shareLink.findUnique({
     where: { token: uuid },

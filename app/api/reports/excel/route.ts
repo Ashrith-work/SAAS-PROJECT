@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { getCurrentMember } from "@/lib/auth";
+import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { prisma } from "@/lib/prisma";
 import { agencyScoped } from "@/lib/tenant";
 import { sanitizeAoa, sanitizeRows } from "@/lib/xlsx";
@@ -22,6 +23,11 @@ const slug = (s: string) =>
 export async function GET(request: Request) {
   const member = await getCurrentMember();
   if (!member) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Throttle expensive report generation per signed-in member. Fails OPEN so a
+  // store outage never blocks a paying user's export.
+  const rl = await rateLimit("export", member.id);
+  if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
   const url = new URL(request.url);
   const hotelId = url.searchParams.get("hotelId") ?? "";

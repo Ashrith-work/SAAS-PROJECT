@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, tooManyRequests, clientIpFromHeaders } from "@/lib/ratelimit";
 import { verifyOauthState } from "@/lib/signed-state";
 import { encryptWithAudit } from "@/lib/token-audit";
 import { getTokenForApiCall } from "@/lib/token-access";
@@ -30,6 +31,10 @@ function integrationsUrl(hotelClientId: string, params: Record<string, string>):
 }
 
 export async function GET(request: Request) {
+  // Per-IP cap to slow brute-forcing of the signed state token. Fails CLOSED.
+  const rl = await rateLimit("oauthCallback", clientIpFromHeaders(request.headers));
+  if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
+
   const url = new URL(request.url);
   const state = (url.searchParams.get("state") ?? "").trim();
   const code = (url.searchParams.get("code") ?? "").trim();

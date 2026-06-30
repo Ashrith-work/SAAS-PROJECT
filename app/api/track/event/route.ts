@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { rateLimit } from "@/lib/ratelimit";
 import { saltedHash } from "@/lib/pii";
 import { cleanCode, isCouponRedeemable, couponRejectReason } from "@/lib/coupon";
 import {
@@ -31,12 +32,10 @@ import {
 // data and (for identify) a SALTED hash of already-client-hashed PII — never raw
 // personal data. Fast + resilient: validates input, never throws.
 
-// Per-(siteId + IP) cap for visit/conversion. Generous for a real user, tight
-// enough to stop a flood.
-const RATE_LIMIT_PER_MIN = 60;
-// Journey events (pageview/page_exit/click/form/identify) fire on every page, so
-// they get a higher, per-visitor cap (Part 2: 200/min per visitorId).
-const JOURNEY_RATE_LIMIT_PER_MIN = 200;
+// Primary flood guards (per-site+IP for visit/conversion; per-visitor for
+// journey events) live in lib/ratelimit POLICIES.trackEvent / .trackJourney and
+// run on Upstash Redis so they hold across Vercel instances.
+//
 // Fine per-SESSION caps (Part 3): beyond these, click/form events drop silently.
 // Enforced over the session-idle window so one session's events count together.
 const CLICK_CAP_PER_SESSION = 50;
@@ -47,6 +46,9 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  // Ingestion responses must never be cached by browsers/CDNs (every POST is a
+  // distinct event). Applies to all replies via reply() + the manual 429 path.
+  "Cache-Control": "no-store",
 };
 
 function reply(status: number, body?: unknown) {
@@ -71,6 +73,30 @@ function str(v: unknown): string | null {
     .slice(0, 512);
   return cleaned.length ? cleaned : null;
 }
+
+// Strip PII from a stored URL (audit P-1/P-2). Full hrefs/referrers/landing
+// pages routinely carry query strings with emails, booking refs, and sometimes
+// session/payment tokens — we only need origin + path for attribution/display.
+// Drops ?query and #hash; keeps host + pathname. UTM attribution is unaffected
+// (UTMs arrive as their own fields, not parsed from the URL here).
+function urlPathOnly(v: unknown): string | null {
+  const s = str(v);
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    return (u.origin + u.pathname).slice(0, 512);
+  } catch {
+    // Not an absolute URL (e.g. a bare path) — strip any ?query / #hash manually.
+    const bare = s.split(/[?#]/)[0]!;
+    return bare.length ? bare : null;
+  }
+}
+
+// Upper bound for a single booking's conversion value (audit: unbounded revenue
+// injection). The column is Decimal(12,2); a real hotel booking is far below
+// this. A value over the cap is dropped (event still records, just no revenue)
+// so a known siteId can't poison a hotel's revenue KPIs with one request.
+const MAX_CONVERSION_VALUE = 10_000_000; // ₹1,00,00,000
 
 // 'sess_' + uuid (36 chars incl hyphens).
 const isSessionId = (v: unknown): v is string =>
@@ -159,14 +185,17 @@ export async function POST(request: Request) {
     type === "form_field_blurred" ||
     type === "identify";
 
-  // Rate limit — per-visitor for journey events, per-(site+IP) for the rest.
+  // Cross-instance flood guard (Upstash Redis): per-visitor for journey events,
+  // per-(site+IP) for visit/conversion. Fails OPEN on a store outage so a Redis
+  // blip never drops a real booking. (The per-session click/form fine caps below
+  // stay in-memory — cheap, in-session best-effort.)
   const rl = isJourney
-    ? checkRateLimit(`pv:${visitorId ?? ip}`, { limit: JOURNEY_RATE_LIMIT_PER_MIN, windowMs: 60_000 })
-    : checkRateLimit(`evt:${siteId}:${ip}`, { limit: RATE_LIMIT_PER_MIN, windowMs: 60_000 });
+    ? await rateLimit("trackJourney", visitorId ?? ip)
+    : await rateLimit("trackEvent", `${siteId}:${ip}`);
   if (!rl.ok) {
     return new Response(JSON.stringify({ error: "Too many events" }), {
       status: 429,
-      headers: { ...CORS, "Content-Type": "application/json", "Retry-After": Math.ceil(rl.resetInMs / 1000).toString() },
+      headers: { ...CORS, "Content-Type": "application/json", "Retry-After": String(rl.retryAfterSec) },
     });
   }
 
